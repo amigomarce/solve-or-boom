@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { CONFIG, tune } from './config';
 import * as QUESTIONS from './questions';
+import { parseCSV, decodeCSV, type ParsedQuestion } from './game/csv';
+import { LEVELS, type Level } from './game/types';
 import type { Loose } from './game/types';
 import { params, manual, clock, seedFrom, install } from './hook';
 import {
@@ -14,7 +16,7 @@ import {
 import { yawTo, angDiff, lerp, levelFor, roundPay, hitChance, armourHit, fmtTime } from './game/rules';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
-import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, button } from './screen';
+import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 
 // ---- Built to be checked ----------------------------------------------------------------
 const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
@@ -81,14 +83,14 @@ function loadCSV(file: File | undefined): void {
   if (!file) return;
   const fr = new FileReader();
   fr.onload = () => {
-    const res = QUESTIONS.parseCSV(String(fr.result));
+    const res = parseCSV(decodeCSV(fr.result as ArrayBuffer));
+    session.skipped = res.skipped;
     if (res.questions.length >= 1) {
-      session.custom = res.questions; session.customName = file.name; session.subject = 'custom';
-      session.status = `Loaded ${res.questions.length} questions from ${file.name}` +
-        (res.skipped.length ? ` (${res.skipped.length} rows skipped)` : '');
-    } else session.status = `No questions found in ${file.name}: ${res.skipped[0] || 'empty file'}`;
+      session.custom = res.questions; session.customName = file.name; session.subject = QUESTIONS.CUSTOM;
+      session.status = `${res.questions.length === 1 ? 'Cargada 1 pregunta' : `Cargadas ${res.questions.length} preguntas`} de ${file.name}`;
+    } else session.status = `No hay preguntas válidas en ${file.name}`;
   };
-  fr.readAsText(file);
+  fr.readAsArrayBuffer(file);
 }
 csvInput.addEventListener('change', () => { loadCSV(csvInput.files?.[0]); csvInput.value = ''; });
 addEventListener('dragover', e => e.preventDefault());
@@ -385,11 +387,20 @@ const SHOP: { id: string; name: string; price: string; desc: string }[] = [
 
 // ---- Session: what the person creating the match picked (kept between matches) ------------
 const session = {
-  subject: 'math',
+  subject: 'matematicas',
+  /** facil | medio | dificil: the level of the whole match (a custom CSV ignores it). */
+  level: 'medio' as Level,
   topics: Object.fromEntries(Object.entries(QUESTIONS.SUBJECTS).map(([k, s]) => [k, Object.keys(s.topics)])),
-  custom: [] as QUESTIONS.CustomQuestion[], customName: '', status: '',
+  custom: [] as ParsedQuestion[], customName: '', status: '',
+  /** Rows the last CSV upload skipped. */
+  skipped: 0,
+  /** Questions available for the current subject, topics and level (after the level fallback); null = generated. */
+  get available(): number | null {
+    const topics = this.subject === QUESTIONS.CUSTOM ? [] : this.topics[this.subject];
+    return QUESTIONS.availableCount(this.subject, topics, this.level, this.custom);
+  },
 };
-const SUBJECT_LIST = ['math', 'science', 'geography', 'english', 'custom'];
+const SUBJECT_LIST = ['matematicas', 'ciencias', 'geografia', 'lengua', QUESTIONS.CUSTOM];
 
 // ---- State ----------------------------------------------------------------------------
 /** The match state: built field by field in reset(); typing still to do. */
@@ -417,7 +428,7 @@ function reset() {
     players: ROSTER.map(newPlayer), human: null, lossStreak: [0, 0],
     bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
-    hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, rtrT: 0, bombSeen: false,
+    wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, rtrT: 0, bombSeen: false,
   };
   state.human = state.players[0];
   state.players.forEach(resetGuns);
@@ -434,9 +445,9 @@ function spawnSpots(side: string): number[][] {
 
 function startMatch() {
   reset();
-  const topics = session.subject === 'custom' ? [] : session.topics[session.subject];
-  state.deck = QUESTIONS.deck(session.subject, topics, session.custom, rng);
-  state.subjectLabel = session.subject === 'custom' ? `My questions (${session.customName})`
+  const topics = session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject];
+  state.deck = QUESTIONS.deck(session.subject, topics, session.level, session.custom, rng);
+  state.subjectLabel = session.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${session.customName})`
     : `${QUESTIONS.SUBJECTS[session.subject].name}: ${topics.map(t => QUESTIONS.SUBJECTS[session.subject].topics[t]).join(', ')}`;
   startRound();
   events.push({ type: 'match', subject: session.subject });
@@ -444,7 +455,7 @@ function startMatch() {
 function startRound() {
   state.round++;
   state.phase = 'buy'; state.phaseT = tune.buy_time; state.roundT = tune.round_time;
-  state.menu = false; state.card = null; state.alert = null; state.banner = null; state.plantT = 0;
+  state.menu = false; closeCard(true); state.alert = null; state.banner = null; state.plantT = 0;
   mapState.gatesClosed = true; state.gateT = 0;
   const sides: Record<string, number> = { att: 0, def: 0 };
   for (const p of state.players) {
@@ -553,7 +564,7 @@ function kill(t: Loose, from: Loose): void {
     if (sideOf(state.human) === 'att') say(t.human ? 'You dropped the bomb!' : 'The bomb was dropped!');
   }
   if (state.bomb.defuser === t) state.bomb.defuser = null;
-  if (t.human) { state.menu = false; state.card = null; state.spec = 0; t.scoped = false; nextSpec(); }
+  if (t.human) { state.menu = false; closeCard(true); state.spec = 0; t.scoped = false; nextSpec(); }
   events.push({ type: 'kill', who: t.name, by: from ? from.name : '' });
 }
 function nextSpec() {
@@ -845,7 +856,7 @@ function endRound(winSide: string, reason: string): void {
   }
   state.phase = 'post'; state.phaseT = tune.round_end_delay;
   state.banner = { text: `${squadName(win)} win the round`, reason, mine: win === state.human.squad };
-  state.menu = false; state.card = null;
+  state.menu = false; closeCard(true);
   (win === state.human.squad ? SFX.win : SFX.lose)();
   events.push({ type: 'roundEnd', win, reason, score: state.score.slice() });
 }
@@ -879,10 +890,10 @@ function afterRound() {
 // ---- You -------------------------------------------------------------------------------
 function inOwnBase(p: Loose): boolean { const z = zone[idx(cellOf(p.x), cellOf(p.z))]; return z === (sideOf(p) === 'att' ? 1 : 2); }
 function shopBlock(p: Loose, it: typeof SHOP[number]): string {
-  if (it.id === 'armor' && p.armor >= 100) return 'Full';
-  if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Full';
-  if (p.primary === it.id) return 'Owned';
-  if (p.money < tune[it.price]) return 'Need $' + tune[it.price];
+  if (it.id === 'armor' && p.armor >= 100) return 'Lleno';
+  if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Lleno';
+  if (p.primary === it.id) return 'Comprada';
+  if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
   return '';
 }
 function grant(p: Loose, id: string): void {
@@ -894,17 +905,41 @@ function grant(p: Loose, id: string): void {
   SFX.buy(); feed(`You bought: ${it.name}`, true);
   events.push({ type: 'buy', item: id });
 }
+/**
+ * The level of the question an item asks: the session level stepped up by `question_step_<item>`, at most Difícil.
+ * No item (the defuse) uses the session level. A custom CSV ignores levels, so it returns undefined.
+ */
+function questionLevel(item?: string): Level | undefined {
+  if (session.subject === QUESTIONS.CUSTOM) return undefined;
+  const step = item ? tune['question_step_' + item] : 0;
+  return LEVELS[Math.min(LEVELS.length - 1, LEVELS.indexOf(session.level) + step)];
+}
 function openCard(kind: string, item?: string): void {
-  state.card = { kind, item, q: state.deck.next(), picked: -1, wrongT: 0, okT: 0, anim: 0, got: 0 };
+  const level = questionLevel(item);
+  state.card = { kind, item, level, q: state.deck.next(level), picked: -1, wrongT: 0, wrongTotal: 0, okT: 0, anim: 0, got: 0 };
   if (locked) document.exitPointerLock();
+}
+/**
+ * Closes the open card. A question not yet answered goes back as the next draw (GDD Edge Cases); one in its
+ * wrong-answer lockout was already missed, and one already answered right is spent. While a right answer is
+ * being confirmed the card stays open unless `force` (death, the round ending, the bomb gone).
+ */
+function closeCard(force = false): void {
+  const c = state.card;
+  if (!c || (c.okT > 0 && !force)) return;
+  if (c.okT <= 0 && c.wrongT <= 0) state.deck.putBack(c.q);
+  state.card = null;
 }
 function answer(i: number): void {
   const c = state.card, p = state.human;
   if (!c || c.wrongT > 0 || c.okT > 0 || i >= c.q.choices.length) return;
   c.picked = i;
-  if (i === c.q.answer) { p.right++; c.okT = 0.35; SFX.right(); events.push({ type: 'answer', right: true }); }
+  if (i === c.q.answer) { p.right++; state.wrongStreak = 0; c.okT = 0.35; SFX.right(); events.push({ type: 'answer', right: true }); }
   else {
-    p.wrong++; c.wrongT = tune.wrong_delay; SFX.wrong(); events.push({ type: 'answer', right: false });
+    p.wrong++; state.wrongStreak++;
+    // The lockout grows by wrong_delay_growth for each wrong answer in a row, up to wrong_delay_max.
+    c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (state.wrongStreak - 1));
+    state.deck.miss(c.q); SFX.wrong(); events.push({ type: 'answer', right: false });
     if (c.kind === 'defuse') state.bomb.panicT = 1.6;
   }
 }
@@ -919,12 +954,12 @@ function updateCard(dt: number): void {
       else {
         c.got++;
         if (c.got >= tune.defuse_answers) { state.card = null; defuseBomb(state.human); }
-        else { c.q = state.deck.next(); c.picked = -1; }
+        else { c.q = state.deck.next(c.level); c.picked = -1; }
       }
     }
   } else if (c.wrongT > 0) {
     c.wrongT -= dt;
-    if (c.wrongT <= 0) { c.q = state.deck.next(); c.picked = -1; } // a wrong answer always brings a new question
+    if (c.wrongT <= 0) { c.q = state.deck.next(c.level); c.picked = -1; } // a wrong answer always brings a new question
   }
 }
 function humanUpdate(p: Loose, dt: number): void {
@@ -934,12 +969,15 @@ function humanUpdate(p: Loose, dt: number): void {
   const live = state.phase === 'live', buy = state.phase === 'buy';
   // Menus and cards first.
   if (pressed('KeyB')) {
-    if (state.card && state.card.kind === 'buy') state.card = null;
+    if (state.card && state.card.kind === 'buy') closeCard();
     else if (state.menu) state.menu = false;
     else if (buy && inOwnBase(p)) { state.menu = true; if (locked) document.exitPointerLock(); }
     else say(buy ? 'Buy in your own base' : 'Buying is only open during buy time');
   }
-  if (state.card && state.card.kind === 'defuse' && (pressed('KeyE') || state.bomb.state !== 'planted')) state.card = null;
+  if (state.card && state.card.kind === 'defuse') {
+    if (state.bomb.state !== 'planted') closeCard(true);
+    else if (pressed('KeyE')) closeCard();
+  }
   if (state.card) { updateCard(dt); p.moving = false; return; }
   if (state.menu) {
     if (!buy) { state.menu = false; say('Buy time is over'); }
@@ -1016,14 +1054,20 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       const i = SUBJECT_LIST.indexOf(session.subject);
       if (pressed('ArrowDown')) session.subject = SUBJECT_LIST[(i + 1) % SUBJECT_LIST.length];
       if (pressed('ArrowUp')) session.subject = SUBJECT_LIST[(i + SUBJECT_LIST.length - 1) % SUBJECT_LIST.length];
-      if (session.subject !== 'custom') {
+      if (session.subject !== QUESTIONS.CUSTOM) {
         const all = Object.keys(QUESTIONS.SUBJECTS[session.subject].topics);
         for (let k = 0; k < all.length; k++) if (pressed('Digit' + (k + 1))) toggleTopic(all[k]);
+        // The level: Left / Right step through Fácil, Medio, Difícil (a custom CSV ignores it, so it is locked there).
+        const l = LEVELS.indexOf(session.level);
+        if (pressed('ArrowLeft')) session.level = LEVELS[Math.max(0, l - 1)];
+        if (pressed('ArrowRight')) session.level = LEVELS[Math.min(LEVELS.length - 1, l + 1)];
       }
       if (act && act.startsWith('subj:')) session.subject = act.slice(5);
       if (act && act.startsWith('topic:')) toggleTopic(act.slice(6));
+      if (act && act.startsWith('level:')) session.level = act.slice(6) as Level;
       if (pressed('Enter') || pressed('Space') || act === 'start') {
-        if (session.subject === 'custom' && !session.custom.length) { session.status = 'Upload a CSV first (press U), or pick a built-in subject'; return; }
+        if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
+        if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
         startMatch(); scene = 'play';
       }
     },
@@ -1036,13 +1080,18 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('buy:')) tryBuy(act.slice(4));
       if (act && act.startsWith('ans:')) answer(Number(act.slice(4)));
       if (act === 'closebuy') state.menu = false;
-      if (act === 'closecard') state.card = null;
+      if (act === 'closecard') closeCard();
       if (act === 'spec' || (!state.human.alive && pressed('Space'))) nextSpec();
       state.t += dt;
       for (const p of state.players) { p.px = p.x; p.pz = p.z; }
       if (state.phase === 'buy') {
         state.phaseT -= dt;
         if (state.phaseT <= 0) {
+          // A right answer already given completes the purchase; any other open buy card closes (GDD Edge Cases).
+          if (state.card && state.card.kind === 'buy') {
+            if (state.card.okT > 0) grant(state.human, state.card.item);
+            closeCard(true);
+          }
           state.phase = 'live'; mapState.gatesClosed = false; state.gateT = 0.01; SFX.gate();
           say(sideOf(state.human) === 'att' ? 'Gates open: go!' : 'Gates open: hold the sites!', 2.5);
         }
@@ -1377,51 +1426,82 @@ function drawHUD(paused?: boolean): void {
 function drawShop() {
   const p = state.human, x = W / 2 - 330, y = 120, w = 660;
   rr(x, y, w, 440, 16, 'rgba(14,19,30,0.94)', '#ffd06a', 3);
-  text('BUY MENU', x + 28, y + 36, 28, '#ffd06a', 'left');
+  text('MENÚ DE COMPRA', x + 28, y + 36, 28, '#ffd06a', 'left');
   text(`$${p.money}`, x + w - 28, y + 36, 28, '#9ff08a', 'right');
-  text('Every item asks one question. Answer right to get it.', x + 28, y + 72, 17, '#c8d2e6', 'left', 'normal');
+  text('Cada objeto hace una pregunta. Responde bien para conseguirlo.', x + 28, y + 72, 17, '#c8d2e6', 'left', 'normal');
   SHOP.forEach((it, i) => {
     const by = y + 96 + i * 62, why = shopBlock(p, it);
     button(x + 24, by, w - 48, 54, '', why ? null : 'buy:' + it.id, { fill: why ? '#1b2232' : undefined });
     rr(x + 36, by + 11, 32, 32, 8, '#ffd06a', null); text(String(i + 1), x + 52, by + 27, 20, '#1b2232');
     text(it.name, x + 84, by + 18, 21, why ? '#7d8799' : '#fff', 'left');
     text(it.desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
-    text(why || `$${tune[it.price]}`, x + w - 44, by + 27, 20, why ? '#ff9a8a' : '#9ff08a', 'right');
+    text(why || `$${tune[it.price]}`, x + w - 44, by + 20, 20, why ? '#ff9a8a' : '#9ff08a', 'right');
+    const ql = questionLevel(it.id); // the level of the item's question (none for a custom CSV)
+    if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
-  text('1-5 or click to pick  |  B to close', x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
+  text('1-5 o clic para elegir  |  B para cerrar', x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
+}
+/** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
+function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {
+  ctx.strokeStyle = c; ctx.lineWidth = Math.max(3, s * 0.16); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (ok) { ctx.moveTo(x - s * 0.4, y); ctx.lineTo(x - s * 0.12, y + s * 0.3); ctx.lineTo(x + s * 0.42, y - s * 0.32); }
+  else { ctx.moveTo(x - s * 0.32, y - s * 0.32); ctx.lineTo(x + s * 0.32, y + s * 0.32); ctx.moveTo(x + s * 0.32, y - s * 0.32); ctx.lineTo(x - s * 0.32, y + s * 0.32); }
+  ctx.stroke(); ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
 }
 function drawCard() {
   const c = state.card, q = c.q;
-  const shake = c.wrongT > 0 ? Math.sin(c.wrongT * 60) * 10 * (c.wrongT / tune.wrong_delay) : 0;
+  const shake = c.wrongT > 0 ? Math.sin(c.wrongT * 60) * 10 * (c.wrongT / c.wrongTotal) : 0;
   const w = 820, h = 352, x = W / 2 - w / 2 + shake, y = H - h - 100 + (1 - c.anim) * 300;
-  const defuse = c.kind === 'defuse';
+  const defuse = c.kind === 'defuse', it = SHOP.find(s => s.id === c.item);
   const edge = c.okT > 0 ? '#7fe07a' : c.wrongT > 0 ? '#ff5a4a' : defuse ? '#ff7a5a' : '#ffd06a';
   rr(x, y, w, h, 18, 'rgba(250,248,240,0.97)', edge, 6);
-  const head = defuse ? `DEFUSE THE BOMB  |  ${fmtTime(state.bomb.timer)}` :
-    `BUY ${SHOP.find(s => s.id === c.item)!.name.toUpperCase()}  |  $${tune[SHOP.find(s => s.id === c.item)!.price]}`;
+  // The header: what the card is for; on a defuse it carries the bomb timer, so the card never hides it.
+  const head = defuse || !it ? `DESACTIVAR LA BOMBA  |  ${fmtTime(state.bomb.timer)}` : `COMPRAR ${it.name.toUpperCase()}  |  $${tune[it.price]}`;
   rr(x + 18, y + 16, w - 36, 42, 10, defuse ? '#b8321f' : '#26324a', null);
   text(head, x + 36, y + 37, 22, '#fff', 'left');
-  text(q.topic, x + w - 36, y + 37, 16, '#e4e9f4', 'right', 'normal');
+  ctx.font = `bold 22px ${FONT}`;
+  const tag = c.level ? `${q.topic}  ·  ${QUESTIONS.LEVEL_NAMES[c.level as Level]}` : q.topic;
+  text(clip(tag, w - 96 - ctx.measureText(head).width, 16, 'normal'), x + w - 36, y + 37, 16, '#e4e9f4', 'right', 'normal');
+  // The question: up to 3 lines, shrinking to 18 px; anything longer is cut with "…" (GDD Edge Cases).
   let size = 30, lines = wrapText(q.q, w - 80, size);
   while (lines.length > 3 && size > 18) { size -= 2; lines = wrapText(q.q, w - 80, size); }
-  lines.slice(0, 3).forEach((l, i) => text(l, W / 2 + shake, y + 92 + i * (size + 6) + (3 - Math.min(3, lines.length)) * 10, size, '#141a28'));
+  if (lines.length > 3) lines = [lines[0], lines[1], clip(lines.slice(2).join(' '), w - 80, size)];
+  lines.forEach((l, i) => text(l, W / 2 + shake, y + 92 + i * (size + 6) + (3 - lines.length) * 10, size, '#141a28'));
   const bw = (w - 60) / 2, bh = 62;
   q.choices.forEach((ch: string, i: number) => {
     const bx = x + 20 + (i % 2) * (bw + 20), by = y + 176 + Math.floor(i / 2) * (bh + 12);
+    const right = c.picked === i && c.okT > 0, wrong = c.picked === i && c.wrongT > 0;
     let fill = '#e9edf5', col = '#141a28';
-    if (c.picked === i && c.okT > 0) { fill = '#5cc85a'; col = '#fff'; }
-    if (c.picked === i && c.wrongT > 0) { fill = '#e04a3a'; col = '#fff'; }
+    if (right) fill = '#5cc85a'; // dark text on the green: white on it is under 3:1
+    if (wrong) { fill = '#e04a3a'; col = '#fff'; }
     const hover = mouse.x >= bx && mouse.x <= bx + bw && mouse.y >= by && mouse.y <= by + bh;
     rr(bx, by, bw, bh, 12, hover && c.picked < 0 ? '#dbe3f2' : fill, '#26324a', 2);
-    rr(bx + 12, by + 13, 36, 36, 8, "#26324a", null); text(String(i + 1), bx + 30, by + 31, 22, "#fff");
+    rr(bx + 12, by + 13, 36, 36, 8, '#26324a', null);
+    if (right || wrong) drawVerdict(right, bx + 30, by + 31, 22, '#fff'); // the badge's number becomes the mark
+    else text(String(i + 1), bx + 30, by + 31, 22, '#fff');
     let fs = 22; ctx.font = `bold ${fs}px ${FONT}`;
     while (ctx.measureText(ch).width > bw - 80 && fs > 14) { fs--; ctx.font = `bold ${fs}px ${FONT}`; }
-    text(ch, bx + 62, by + 31, fs, col, "left");
+    text(clip(ch, bw - 80, fs), bx + 62, by + 31, fs, col, 'left');
     if (c.picked < 0) buttons.push({ x: bx, y: by, w: bw, h: bh, act: 'ans:' + i });
   });
-  const foot = c.wrongT > 0 ? 'Wrong: here comes a new question...' : c.okT > 0 ? 'Right!' :
-    defuse ? `1-4 or click  |  E to step away${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} right` : ''}` : '1-4 or click to answer  |  B to cancel';
-  text(foot, W / 2 + shake, y + h - 20, 16, c.wrongT > 0 ? '#b8321f' : '#3a465e', 'center', c.wrongT > 0 || c.okT > 0 ? 'bold' : 'normal');
+  const fy = y + h - 20;
+  if (c.wrongT > 0 || c.okT > 0) { // the verdict in words and a drawn mark, never colour alone
+    const ok = c.okT > 0, msg = ok ? '¡Correcto!' : 'Incorrecto: ahora viene otra pregunta…', col = ok ? '#24702a' : '#b8321f';
+    ctx.font = `bold 18px ${FONT}`;
+    const sx = W / 2 + shake - (ctx.measureText(msg).width + 30) / 2;
+    drawVerdict(ok, sx + 10, fy, 20, col);
+    text(msg, sx + 30, fy, 18, col, 'left');
+  } else {
+    const hint = defuse ? `1-4 o clic para responder  |  E para alejarte${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`
+      : '1-4 o clic para responder  |  B para cancelar';
+    text(hint, W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal');
+  }
+  // The lockout bar under the card: it empties over the lockout, so the player sees why presses are ignored.
+  if (c.wrongT > 0) {
+    rr(x + 20, y + h + 8, w - 40, 8, 4, 'rgba(14,19,30,0.85)', null);
+    rr(x + 20, y + h + 8, (w - 40) * Math.max(0, c.wrongT / c.wrongTotal), 8, 4, '#ff5a4a', null);
+  }
 }
 
 // ---- Drawing: the session screen, results and figures -------------------------------------
@@ -1444,58 +1524,71 @@ function drawTitle() {
   text('SOLVE', tx, 74, 76, SIDE_CSS.def, 'left'); tx += tw1;
   text('OR', tx, 74, 76, '#ffffff', 'left'); tx += tw2;
   text('BOOM', tx, 74, 76, SIDE_CSS.att, 'left');
-  text('Answer right to buy your guns. Answer right to defuse the bomb.', W / 2, 132, 22, '#f2f5fb');
+  text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
+  const custom = session.subject === QUESTIONS.CUSTOM;
   // 1. subject
   rr(40, 170, 330, 400, 16, 'rgba(14,19,30,0.9)', null);
-  text('1. Subject', 64, 200, 24, '#ffd06a', 'left');
+  text('1. Asignatura', 64, 200, 24, '#ffd06a', 'left');
   SUBJECT_LIST.forEach((s, i) => {
     const on = session.subject === s;
-    const label = s === 'custom' ? 'My questions (CSV)' : QUESTIONS.SUBJECTS[s].name;
-    button(60, 228 + i * 64, 290, 52, label, 'subj:' + s, { align: 'left', fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff' });
+    const label = s === QUESTIONS.CUSTOM ? QUESTIONS.CUSTOM_NAME + ' (CSV)' : QUESTIONS.SUBJECTS[s].name;
+    button(60, 222 + i * 58, 290, 48, label, 'subj:' + s, { align: 'left', fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff' });
   });
-  text('Up / Down to change', 205, 552, 15, '#aab4c8', 'center', 'normal');
-  // 2. contents
+  text('Arriba / Abajo: asignatura', 205, 530, 15, '#aab4c8', 'center', 'normal');
+  text('Izquierda / Derecha: nivel', 205, 552, 15, '#aab4c8', 'center', 'normal');
+  // 2. contents: the level, then the topics (or the custom file), then what that choice gives
   rr(390, 170, 450, 400, 16, 'rgba(14,19,30,0.9)', null);
-  text('2. Contents', 414, 200, 24, '#ffd06a', 'left');
-  if (session.subject === 'custom') {
+  text('2. Contenido', 414, 200, 24, '#ffd06a', 'left');
+  text('Nivel', 414, 242, 18, custom ? '#8a93a3' : '#fff', 'left');
+  LEVELS.forEach((l, k) => {
+    const on = !custom && session.level === l;
+    button(482 + k * 112, 222, 104, 40, QUESTIONS.LEVEL_NAMES[l], custom ? null : 'level:' + l,
+      { size: 18, fill: custom ? '#1b2232' : on ? '#ffd06a' : undefined, color: custom ? '#8a93a3' : on ? '#1b2232' : '#fff', stroke: on ? '#fff3c4' : undefined });
+  });
+  if (custom) {
+    text('Un CSV propio no usa el nivel.', 414, 282, 15, '#aab4c8', 'left', 'normal');
     if (session.custom.length) {
-      text(`${session.custom.length} questions from`, 414, 244, 19, '#fff', 'left');
-      text(session.customName.slice(0, 40), 414, 272, 19, '#9ff08a', 'left');
-      session.custom.slice(0, 4).forEach((c, i) => {
-        const l = wrapText(c.q, 400, 16)[0];
-        text(`${i + 1}. ${l}`, 414, 316 + i * 30, 16, '#c8d2e6', 'left', 'normal');
-      });
+      text(clip(session.customName, 400, 18), 414, 316, 18, '#9ff08a', 'left');
+      session.custom.slice(0, 4).forEach((c, i) => text(clip(`${i + 1}. ${c.q}`, 400, 16, 'normal'), 414, 348 + i * 28, 16, '#c8d2e6', 'left', 'normal'));
     } else {
-      wrapText('No file yet. Upload a CSV of questions and answers with the button on the right, or drop the file on this window.', 400, 19)
-        .forEach((l, i) => text(l, 414, 248 + i * 28, 19, '#fff', 'left', 'normal'));
+      wrapText('Todavía no hay archivo. Sube un CSV con el botón de la derecha o suelta el archivo en esta ventana.', 400, 18)
+        .forEach((l, i) => text(l, 414, 318 + i * 26, 18, '#fff', 'left', 'normal'));
     }
+    if (session.custom.length > 0 && session.custom.length < 4) text('Pocas preguntas: se repetirán', 615, 556, 16, '#ffb366');
   } else {
     const subj = QUESTIONS.SUBJECTS[session.subject];
     Object.entries(subj.topics).forEach(([id, name], i) => {
-      const on = session.topics[session.subject].includes(id), by = 226 + i * 62;
-      button(410, by, 410, 52, '', 'topic:' + id, {});
-      rr(424, by + 12, 28, 28, 6, on ? '#ffd06a' : '#0d1220', '#ffd06a', 2);
-      if (on) { ctx.strokeStyle = '#1b2232'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(430, by + 26); ctx.lineTo(436, by + 33); ctx.lineTo(447, by + 18); ctx.stroke(); }
-      text(name, 466, by + 26, 19, on ? '#fff' : '#8893a3', 'left');
-      text(String(i + 1), 800, by + 26, 15, '#aab4c8', 'right', 'normal');
+      const on = session.topics[session.subject].includes(id), by = 274 + i * 50;
+      button(410, by, 410, 44, '', 'topic:' + id, {});
+      rr(424, by + 8, 28, 28, 6, on ? '#ffd06a' : '#0d1220', '#ffd06a', 2);
+      if (on) { ctx.strokeStyle = '#1b2232'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(430, by + 22); ctx.lineTo(436, by + 29); ctx.lineTo(447, by + 14); ctx.stroke(); }
+      text(name, 466, by + 22, 19, on ? '#fff' : '#8893a3', 'left');
+      text(String(i + 1), 800, by + 22, 15, '#aab4c8', 'right', 'normal');
     });
-    text(session.subject === 'math' ? 'Math questions are made fresh every time' :
-      `${Object.keys(subj.topics).reduce((n, t) => n + (session.topics[session.subject].includes(t) ? QUESTIONS.BANKS[t].length : 0), 0)} questions in the bank`,
-      615, 552, 15, '#aab4c8', 'center', 'normal');
   }
+  const n = session.available;
+  text(n === null ? 'Las preguntas de matemáticas se generan sin límite' : n === 1 ? '1 pregunta disponible' : `${n} preguntas disponibles`,
+    615, 532, 16, '#e4e9f4');
   // 3. your own questions
   rr(860, 170, 380, 400, 16, 'rgba(14,19,30,0.9)', null);
-  text('Your own questions', 884, 200, 24, '#ffd06a', 'left');
-  button(880, 226, 340, 56, 'Upload CSV (U)', 'upload', { size: 22 });
-  const help = ['One question per row. Any of:', 'question,answer', 'question,right,wrong,wrong,wrong', 'question,a,b,c,d,2  (2 = the right one)',
-    'Comma, semicolon or tab.', 'With 2 columns, wrong choices come', 'from the other rows\' answers.'];
-  help.forEach((l, i) => text(l, 884, 310 + i * 28, i >= 1 && i <= 3 ? 17 : 16, i >= 1 && i <= 3 ? '#9fd8ff' : '#e4e9f4', 'left', i >= 1 && i <= 3 ? 'bold' : 'normal'));
-  if (session.status) wrapText(session.status, 340, 16).slice(0, 2).forEach((l, i) => text(l, 884, 520 + i * 24, 16, '#ffe28a', 'left'));
+  text('Tus preguntas', 884, 200, 24, '#ffd06a', 'left');
+  button(880, 222, 340, 50, 'Subir CSV (U)', 'upload', { size: 22 });
+  // The accepted shapes: a format line is bold blue and never wraps (it has no spaces), so the long one is split by hand.
+  const help: [string, boolean][] = [['Una pregunta por fila, en una de estas formas:', false], ['pregunta,respuesta', true],
+    ['pregunta,correcta,incorrecta,', true], ['   incorrecta,incorrecta[,nivel]', true], ['pregunta,a,b,c,d,N  (N = la correcta)', true],
+    ['Separador: coma, punto y coma o tabulador.', false], ['Con 2 columnas, las incorrectas salen de las respuestas de otras filas.', false],
+    ['También puedes soltar el archivo en la ventana.', false]];
+  let hy = 292;
+  for (const [s, fmt] of help) for (const l of fmt ? [s] : wrapText(s, 336, 15)) {
+    text(l, 884, hy, 15, fmt ? '#9fd8ff' : '#e4e9f4', 'left', fmt ? 'bold' : 'normal'); hy += 20;
+  }
+  if (session.status) wrapText(session.status, 336, 16).slice(0, 2).forEach((l, i) => text(clip(l, 336, 16), 884, 506 + i * 22, 16, '#ffe28a', 'left'));
+  if (session.skipped > 0) text(session.skipped === 1 ? '1 fila omitida' : `${session.skipped} filas omitidas`, 884, 552, 16, '#ffb38a', 'left');
   // start
-  button(W / 2 - 200, 592, 400, 64, 'Start match (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
-  text('WASD move  |  Mouse aim  |  Click shoot  |  R reload  |  B buy  |  1-4 answer  |  E plant or defuse  |  P pause  |  M mute',
+  button(W / 2 - 200, 592, 400, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  text('WASD mover  |  Ratón apuntar  |  Clic disparar  |  R recargar  |  B comprar  |  1-4 responder  |  E plantar o desactivar  |  P pausa  |  M silencio',
     W / 2, 684, 16, '#e4e9f4', 'center', 'normal');
-  text('You and 3 bot teammates against 4 rival bots. First to 4 rounds; sides swap at halftime.', W / 2, 708, 15, '#aab4c8', 'center', 'normal');
+  text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 708, 15, '#aab4c8', 'center', 'normal');
 }
 function drawResults() {
   buttons.length = 0;

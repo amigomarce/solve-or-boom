@@ -60,6 +60,15 @@ export function wrapText(s: unknown, maxW: number, size: number): string[] {
   return lines;
 }
 
+/** Cuts text to fit maxW at the given size and weight, ending it with "…" when it was cut. */
+export function clip(s: string, maxW: number, size: number, weight = 'bold'): string {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  if (ctx.measureText(s).width <= maxW) return s;
+  let n = s.length;
+  while (n > 0 && ctx.measureText(s.slice(0, n).trimEnd() + '…').width > maxW) n--;
+  return s.slice(0, n).trimEnd() + '…';
+}
+
 /** Options for a drawn button. */
 export interface ButtonOpts { fill?: string; stroke?: string; color?: string; size?: number; align?: CanvasTextAlign }
 

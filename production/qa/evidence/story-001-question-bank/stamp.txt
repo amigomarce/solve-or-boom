@@ -1,0 +1,8 @@
+Reviewed-Content-Hash: src/game/csv.ts c9bca45d773775791dcb4185e4ee81ac33c6a5ee
+Reviewed-Content-Hash: src/game/deck.ts 9717b28f4a9e07d003993ac85ff91cba14e4143c
+Reviewed-Content-Hash: src/game/types.ts fa19963b8b1f34491de336288097ed72624c8ca4
+Reviewed-Content-Hash: src/questions.ts 359b624d4ecf6348ce5299029cb70ad60f64827a
+Reviewed-Content-Hash: src/main.ts cb0f1f0a338a5ffd227e56d2a4681734fa8f092a
+Reviewed-Content-Hash: src/screen.ts a46d146fc4dec56c3c68a04992389fbb6598f16f
+Reviewed-Content-Hash: data/config.json ccc563320a06367dfcac73169b19e9b0105b0781
+Reviewed-Content-Hash: data/config-notes.md 74a8bf51f9587d7db9f692a16e5bc7f6ef807640
