@@ -54,6 +54,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Ammo and reload: magazine and reserve beside health and armour; an empty gun clicks
 - [x] Mouse-look with sensitivity setting, hit markers, distinct guns (pistol, SMG, rifle, sniper), hurt direction marker
 - [x] One original map with two bomb sites (A and B), two bases, 3 lanes
+- [x] Map selector on the session screen: Pequeño (the original, 108×72 m), Grande (1.5×), Patio and Pasillos (162×108 m), each with its own round time; maps are data in data/maps/
 - [x] Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong
 
 ## Your systems

@@ -12,6 +12,7 @@ import { params, manual, clock, seedFrom, install } from './hook';
 import {
   CELL, MW, MH, WALL_H, EYE, grid, zone, isGate, idx, CRATES, SITE, siteCells, mapState,
   center, cellOf, walkable, solidSight, hitsWall, moveBody, losClear, walkClear, bfs,
+  MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell,
 } from './game/map';
 import { yawTo, angDiff, lerp, levelFor, roundPay, hitChance, armourHit, fmtTime } from './game/rules';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
@@ -123,28 +124,6 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D, w: 
 const SIDE_HEX: Record<string, number> = { att: 0xf08a24, def: 0x1fb3a6 };
 const SIDE_CSS: Record<string, string> = { att: '#f39436', def: '#2cc4b6' };
 
-// The painted floor: bases tinted by side, the sites with giant A and B.
-const floorTex = canvasTex(MW * 32, MH * 32, (g) => {
-  const P = 32;
-  g.fillStyle = '#7d705c'; g.fillRect(0, 0, MW * P, MH * P);
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const i = idx(x, y);
-    if (!grid[i]) continue;
-    g.fillStyle = zone[i] === 1 ? '#efb57c' : zone[i] === 2 ? '#93d6cc' : zone[i] >= 3 ? '#cdb68a' : ((x + y) % 2 ? '#dccba4' : '#d6c49c');
-    g.fillRect(x * P, y * P, P, P);
-    g.strokeStyle = 'rgba(80,60,30,0.18)'; g.lineWidth = 2; g.strokeRect(x * P + 1, y * P + 1, P - 2, P - 2);
-    if (isGate[i]) { g.fillStyle = 'rgba(40,40,40,0.35)'; for (let k = 0; k < 4; k++) g.fillRect(x * P + k * 8, y * P, 4, P); }
-  }
-  for (const [k, s] of Object.entries(SITE)) {
-    g.save(); g.translate((s.cx + 0.5) * P, (s.cy + 0.5) * P);
-    g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 10; g.strokeStyle = 'rgba(255,255,255,0.85)'; g.strokeText(k, 0, 6);
-    g.fillStyle = '#d2452f'; g.fillText(k, 0, 6); g.restore();
-  }
-});
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(MW * CELL, MH * CELL), new THREE.MeshLambertMaterial({ map: floorTex }));
-floor.rotation.x = -Math.PI / 2; floor.position.set(MW * CELL / 2, 0, MH * CELL / 2); world.add(floor);
-
 const wallTex = canvasTex(128, 128, (g, w, h) => {
   g.fillStyle = '#f2e7d2'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#e4d5ba'; g.fillRect(0, h * 0.62, w, h * 0.38);
@@ -158,38 +137,83 @@ const crateTex = canvasTex(128, 128, (g, w, h) => {
   g.lineWidth = 12; g.strokeStyle = '#9c6230'; g.beginPath(); g.moveTo(10, 10); g.lineTo(w - 10, h - 10); g.moveTo(w - 10, 10); g.lineTo(10, h - 10); g.stroke();
   g.lineWidth = 14; g.strokeStyle = '#6e421b'; g.strokeRect(0, 0, w, h);
 });
-{ // walls touching the floor, and the crates, as instanced boxes
-  const wallCells = [];
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    if (grid[idx(x, y)]) continue;
-    let near = false;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) near = true;
-    }
-    if (near) wallCells.push([x, y]);
-  }
-  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), new THREE.MeshLambertMaterial({ map: wallTex }), wallCells.length);
-  const m = new THREE.Matrix4(), col = new THREE.Color();
-  wallCells.forEach(([x, y], i) => {
-    m.makeTranslation(center(x), WALL_H / 2, center(y)); walls.setMatrixAt(i, m);
-    const v = ((x * 7 + y * 13) % 5) * 0.035;
-    col.setRGB(1 - v, 0.97 - v, 0.93 - v * 1.4); walls.setColorAt(i, col);
-  });
-  world.add(walls);
-  const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), CRATES.length * 2);
-  CRATES.forEach(([x, y], i) => {
-    m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
-    m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), 1.65, center(y)); crates.setMatrixAt(i * 2 + 1, m);
-  });
-  world.add(crates);
-}
+// The map's meshes: built for the loaded map (src/game/map.ts, from data/maps/), thrown away for the next.
+let mapGroup: THREE.Group | null = null, floorTex: THREE.CanvasTexture | null = null, builtFor = '';
 const gates: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>[] = [];
-for (let i = 0; i < MW * MH; i++) if (isGate[i]) {
-  const side = isGate[i] === 1 ? 'att' : 'def';
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(CELL, 3, CELL),
-    new THREE.MeshBasicMaterial({ color: SIDE_HEX[side], transparent: true, opacity: 0.33, depthWrite: false }));
-  mesh.position.set(center(i % MW), 1.5, center((i / MW) | 0)); world.add(mesh); gates.push(mesh);
+/** Builds the 3D world of the loaded map (floor, walls, crates, gates), disposing the previous map's. */
+function buildWorld(): void {
+  if (mapGroup) {
+    mapGroup.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+      o.geometry.dispose();
+      for (const m of [o.material].flat()) m.dispose();
+      if (o instanceof THREE.InstancedMesh) o.dispose();
+    });
+    world.remove(mapGroup);
+    floorTex?.dispose();
+  }
+  const group = new THREE.Group();
+  // The painted floor: bases tinted by side, the sites with giant A and B.
+  floorTex = canvasTex(MW * 32, MH * 32, (g) => {
+    const P = 32;
+    g.fillStyle = '#7d705c'; g.fillRect(0, 0, MW * P, MH * P);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const i = idx(x, y);
+      if (!grid[i]) continue;
+      g.fillStyle = zone[i] === 1 ? '#efb57c' : zone[i] === 2 ? '#93d6cc' : zone[i] >= 3 ? '#cdb68a' : ((x + y) % 2 ? '#dccba4' : '#d6c49c');
+      g.fillRect(x * P, y * P, P, P);
+      g.strokeStyle = 'rgba(80,60,30,0.18)'; g.lineWidth = 2; g.strokeRect(x * P + 1, y * P + 1, P - 2, P - 2);
+      if (isGate[i]) { g.fillStyle = 'rgba(40,40,40,0.35)'; for (let k = 0; k < 4; k++) g.fillRect(x * P + k * 8, y * P, 4, P); }
+    }
+    for (const [k, s] of Object.entries(SITE)) {
+      g.save(); g.translate((s.cx + 0.5) * P, (s.cy + 0.5) * P);
+      g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 10; g.strokeStyle = 'rgba(255,255,255,0.85)'; g.strokeText(k, 0, 6);
+      g.fillStyle = '#d2452f'; g.fillText(k, 0, 6); g.restore();
+    }
+  });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(MW * CELL, MH * CELL), new THREE.MeshLambertMaterial({ map: floorTex }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(MW * CELL / 2, 0, MH * CELL / 2); group.add(floor);
+  { // walls touching the floor, and the crates, as instanced boxes
+    const wallCells = [];
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      if (grid[idx(x, y)]) continue;
+      let near = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) near = true;
+      }
+      if (near) wallCells.push([x, y]);
+    }
+    const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), new THREE.MeshLambertMaterial({ map: wallTex }), wallCells.length);
+    const m = new THREE.Matrix4(), col = new THREE.Color();
+    wallCells.forEach(([x, y], i) => {
+      m.makeTranslation(center(x), WALL_H / 2, center(y)); walls.setMatrixAt(i, m);
+      const v = ((x * 7 + y * 13) % 5) * 0.035;
+      col.setRGB(1 - v, 0.97 - v, 0.93 - v * 1.4); walls.setColorAt(i, col);
+    });
+    group.add(walls);
+    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), CRATES.length * 2);
+    CRATES.forEach(([x, y], i) => {
+      m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
+      m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), 1.65, center(y)); crates.setMatrixAt(i * 2 + 1, m);
+    });
+    group.add(crates);
+  }
+  gates.length = 0;
+  for (let i = 0; i < MW * MH; i++) if (isGate[i]) {
+    const side = isGate[i] === 1 ? 'att' : 'def';
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(CELL, 3, CELL),
+      new THREE.MeshBasicMaterial({ color: SIDE_HEX[side], transparent: true, opacity: 0.33, depthWrite: false }));
+    mesh.position.set(center(i % MW), 1.5, center((i / MW) | 0)); group.add(mesh); gates.push(mesh);
+  }
+  const fog = world.fog as THREE.Fog; fog.near = MAP.view.fog[0]; fog.far = MAP.view.fog[1];
+  world.add(group); mapGroup = group; builtFor = MAP_ID;
+}
+/** Loads the map with this id (data/maps/) and builds its world, unless it is already up. */
+function useMap(id: string): void {
+  if (id === builtFor) return;
+  loadMap(id); buildWorld();
 }
 
 // ---- Figures: three bot roles, each with its own outline, coloured by side ---------------
@@ -388,6 +412,8 @@ const SHOP: { id: string; name: string; price: string; desc: string }[] = [
 // ---- Session: what the person creating the match picked (kept between matches) ------------
 const session = {
   subject: 'matematicas',
+  /** The map id (data/maps/): the match is played there and the title flyover shows it. */
+  map: String(tune.default_map),
   /** facil | medio | dificil: the level of the whole match (a custom CSV ignores it). */
   level: 'medio' as Level,
   topics: Object.fromEntries(Object.entries(QUESTIONS.SUBJECTS).map(([k, s]) => [k, Object.keys(s.topics)])),
@@ -439,11 +465,13 @@ const uiOpen = () => !!(state && (state.menu || state.card));
 const level = (): number => levelFor(state.round, tune.ramp_rounds);
 function say(m: string, t = 3.5): void { state.msg = m; state.msgT = t; }
 function feed(s: string, mine: boolean): void { state.feed.unshift({ s, t: 6, mine }); state.feed.length = Math.min(state.feed.length, 5); }
-function spawnSpots(side: string): number[][] {
-  return side === 'att' ? [[3, 11], [3, 12], [2, 10], [2, 13]] : [[32, 11], [32, 12], [33, 10], [33, 13]];
+/** The loaded map's spawn cells for a side (data/maps/). */
+function spawnSpots(side: string): Cell[] {
+  return side === 'att' ? MAP.spawns.att : MAP.spawns.def;
 }
 
 function startMatch() {
+  useMap(session.map);
   reset();
   const topics = session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject];
   state.deck = QUESTIONS.deck(session.subject, topics, session.level, session.custom, rng);
@@ -454,7 +482,7 @@ function startMatch() {
 }
 function startRound() {
   state.round++;
-  state.phase = 'buy'; state.phaseT = tune.buy_time; state.roundT = tune.round_time;
+  state.phase = 'buy'; state.phaseT = tune.buy_time; state.roundT = MAP.round_time;
   state.menu = false; closeCard(true); state.alert = null; state.banner = null; state.plantT = 0;
   mapState.gatesClosed = true; state.gateT = 0;
   const sides: Record<string, number> = { att: 0, def: 0 };
@@ -506,20 +534,21 @@ function botBuy(b: Loose): void {
 function siteSpot(S: string): number[] { const c = siteCells[S]; return c[Math.floor(rng() * c.length)]; }
 function routeTo(b: Loose, kind: string): void {
   const S = state.attackSite;
-  const lane = S === 'A' ? [[7, 5], [7, 3], [15, 3], [21, 3]] : [[7, 18], [7, 20], [15, 20], [21, 20]];
-  const mid = S === 'A' ? [[12, 12], [18, 11], [20, 8], [21, 6]] : [[12, 11], [18, 12], [20, 15], [21, 16]];
+  const copy = (c: Cell): Cell => [c[0], c[1]];
+  const r = S === 'A' ? MAP.routes.A : MAP.routes.B, lane = r.lane.map(copy), mid = r.mid.map(copy);
   b.routeKind = kind; b.arrived = false; b.path = [];
   if (kind === 'lane') b.wps = [...lane, siteSpot(S)];
   else if (kind === 'mid') b.wps = [...mid, siteSpot(S)];
-  else if (kind === 'hold') { b.wps = [[8, 11]]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
+  else if (kind === 'hold') { b.wps = [[MAP.attack_hold[0], MAP.attack_hold[1]]]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
   else b.wps = [siteSpot(S)];
   if (kind !== 'hold') b.holdYaw = -Math.PI / 2;
   if (state.bomb.carrier === b) b.wps[b.wps.length - 1] = [SITE[S].cx + (rng() < 0.5 ? -1 : 1), SITE[S].cy];
 }
 function anchorTo(b: Loose, a: string): void {
   b.anchor = a; b.arrived = false; b.path = []; b.holdYaw = Math.PI / 2;
-  if (a === 'mid') b.wps = [[28, 11]];
-  else if (a === 'conn') b.wps = [[20, 8 + (state.round % 2) * 7]];
+  const conn = MAP.anchors.conn[state.round % MAP.anchors.conn.length];
+  if (a === 'mid') b.wps = [[MAP.anchors.mid[0], MAP.anchors.mid[1]]];
+  else if (a === 'conn') b.wps = [[conn[0], conn[1]]];
   else b.wps = [siteSpot(a)];
 }
 function planRound() {
@@ -1065,6 +1094,9 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('subj:')) session.subject = act.slice(5);
       if (act && act.startsWith('topic:')) toggleTopic(act.slice(6));
       if (act && act.startsWith('level:')) session.level = act.slice(6) as Level;
+      // The map: C steps through them, a click picks one; the flyover behind shows it.
+      if (pressed('KeyC')) pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
+      if (act && act.startsWith('map:')) pickMap(act.slice(4));
       if (pressed('Enter') || pressed('Space') || act === 'start') {
         if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
         if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
@@ -1147,6 +1179,10 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
     draw() { drawWorld(); drawResults(); },
   },
 };
+/** Picks the session's map and shows it behind the session screen. */
+function pickMap(id: string): void {
+  session.map = id; useMap(id);
+}
 function toggleTopic(t: string): void {
   const list = session.topics[session.subject];
   const i = list.indexOf(t);
@@ -1277,14 +1313,15 @@ function drawBombMarker(b: Loose, mySide: string): void {
   text(`${Math.round(d)} m`, x, y + 16, 14, '#fff', 'center', 'normal');
   ctx.globalAlpha = 1;
 }
+const MINIMAP_W = 180, MINIMAP_H = 120; // the minimap's box in pixels; any map is scaled to fit it
 function drawMinimap(x0: number, y0: number): void {
-  const k = 5;
+  const k = Math.min(MINIMAP_W / MW, MINIMAP_H / MH), px = (c: number): number => Math.floor(c * k); // whole pixels: no seams
   rr(x0 - 6, y0 - 6, MW * k + 12, MH * k + 12, 8, 'rgba(15,20,32,0.72)', null);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = idx(x, y);
     if (!grid[i]) continue;
     ctx.fillStyle = grid[i] === 2 ? '#8a6a44' : zone[i] === 1 ? '#c98a50' : zone[i] === 2 ? '#5ea79e' : zone[i] >= 3 ? '#b49a6c' : '#cbbd9c';
-    ctx.fillRect(x0 + x * k, y0 + y * k, k, k);
+    ctx.fillRect(x0 + px(x), y0 + px(y), px(x + 1) - px(x), px(y + 1) - px(y));
   }
   text('A', x0 + (SITE.A.cx + 0.5) * k, y0 + (SITE.A.cy + 0.5) * k, 16, '#a3241a');
   text('B', x0 + (SITE.B.cx + 0.5) * k, y0 + (SITE.B.cy + 0.5) * k, 16, '#a3241a');
@@ -1506,8 +1543,8 @@ function drawCard() {
 
 // ---- Drawing: the session screen, results and figures -------------------------------------
 function flyover() {
-  const a = titleT * 0.06;
-  camera.position.set(MW * CELL / 2 + Math.cos(a) * 62, 46, MH * CELL / 2 + Math.sin(a) * 48);
+  const a = titleT * 0.06, [rx, rz, fy] = MAP.view.flyover;
+  camera.position.set(MW * CELL / 2 + Math.cos(a) * rx, fy, MH * CELL / 2 + Math.sin(a) * rz);
   camera.lookAt(MW * CELL / 2, 0, MH * CELL / 2);
   if (camera.fov !== 60) { camera.fov = 60; camera.updateProjectionMatrix(); }
   for (const g of Object.values(viewGuns)) g.group.visible = false;
@@ -1584,8 +1621,18 @@ function drawTitle() {
   }
   if (session.status) wrapText(session.status, 336, 16).slice(0, 2).forEach((l, i) => text(clip(l, 336, 16), 884, 506 + i * 22, 16, '#ffe28a', 'left'));
   if (session.skipped > 0) text(session.skipped === 1 ? '1 fila omitida' : `${session.skipped} filas omitidas`, 884, 552, 16, '#ffb38a', 'left');
+  // 4. the map: a button each, with its size; the chosen one lit
+  rr(40, 584, 760, 80, 16, 'rgba(14,19,30,0.9)', null);
+  text('Mapa', 60, 612, 24, '#ffd06a', 'left');
+  text('Tecla C', 60, 642, 15, '#aab4c8', 'left', 'normal');
+  MAP_IDS.forEach((id, i) => {
+    const on = session.map === id, m = MAPS[id], bx = 160 + i * 158;
+    button(bx, 592, 150, 64, '', 'map:' + id, { fill: on ? '#ffd06a' : undefined, stroke: on ? '#fff3c4' : undefined });
+    text(m.name, bx + 75, 614, 20, on ? '#1b2232' : '#fff');
+    text(`${m.width * CELL} x ${m.height * CELL} m`, bx + 75, 640, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
+  });
   // start
-  button(W / 2 - 200, 592, 400, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  button(820, 592, 420, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   text('WASD mover  |  Ratón apuntar  |  Clic disparar  |  R recargar  |  B comprar  |  1-4 responder  |  E plantar o desactivar  |  P pausa  |  M silencio',
     W / 2, 684, 16, '#e4e9f4', 'center', 'normal');
   text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 708, 15, '#aab4c8', 'center', 'normal');
@@ -1666,6 +1713,11 @@ install({
   },
 });
 
+// A value the panel (dev server) changes is read again: the default map, on the session screen.
+addEventListener('tune', e => {
+  if ((e as CustomEvent).detail?.key === 'default_map' && scene === 'title') pickMap(String(tune.default_map));
+});
+useMap(session.map);
 reset();
 scene = params.get('scene') || 'title';
 if (scene === 'play' || scene === 'pause' || scene === 'results') startMatch();

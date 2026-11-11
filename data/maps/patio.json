@@ -1,0 +1,38 @@
+{
+  "name": "Patio",
+  "width": 54,
+  "height": 36,
+  "round_time": 140,
+  "view": { "fog": [100, 250], "flyover": [93, 72, 62] },
+  "floor": [
+    { "rect": [1, 13, 6, 22], "zone": "att_base", "note": "west base: attackers spawn here" },
+    { "rect": [47, 13, 52, 22], "zone": "def_base", "note": "east base: defenders spawn here" },
+    { "rect": [15, 11, 38, 24], "note": "the courtyard" },
+    { "rect": [7, 16, 14, 19], "note": "west gate into the courtyard" },
+    { "rect": [39, 16, 46, 19], "note": "east gate into the courtyard" },
+    { "rect": [24, 2, 40, 8], "zone": "A", "note": "site A, on the courtyard's north side" },
+    { "rect": [24, 27, 40, 33], "zone": "B", "note": "site B, on the courtyard's south side" },
+    { "rect": [26, 9, 28, 10], "note": "courtyard door into A, west" },
+    { "rect": [35, 9, 37, 10], "note": "courtyard door into A, east" },
+    { "rect": [26, 25, 28, 26], "note": "courtyard door into B, west" },
+    { "rect": [35, 25, 37, 26], "note": "courtyard door into B, east" },
+    { "rect": [3, 6, 5, 12], "note": "north flank out of the west base" },
+    { "rect": [3, 3, 23, 5], "note": "north flank to A" },
+    { "rect": [3, 23, 5, 29], "note": "south flank out of the west base" },
+    { "rect": [3, 30, 23, 32], "note": "south flank to B" },
+    { "rect": [48, 4, 50, 12], "note": "east base up to A" },
+    { "rect": [41, 4, 50, 6], "note": "east base up to A" },
+    { "rect": [48, 23, 50, 31], "note": "east base down to B" },
+    { "rect": [41, 29, 50, 31], "note": "east base down to B" }
+  ],
+  "crates": [[19, 13], [19, 22], [23, 17], [23, 18], [30, 14], [30, 21], [34, 17], [27, 15], [27, 20], [33, 12], [33, 23],
+    [27, 4], [34, 7], [38, 3], [27, 31], [34, 28], [38, 32], [13, 4], [13, 31], [45, 5], [45, 30]],
+  "spawns": { "att": [[3, 17], [3, 18], [2, 16], [2, 19]], "def": [[50, 17], [50, 18], [51, 16], [51, 19]] },
+  "sites": { "A": [32, 5], "B": [32, 30] },
+  "routes": {
+    "A": { "lane": [[4, 10], [4, 4], [14, 4], [22, 4]], "mid": [[10, 17], [21, 15], [25, 12], [27, 9]] },
+    "B": { "lane": [[4, 25], [4, 31], [14, 31], [22, 31]], "mid": [[10, 18], [21, 20], [25, 23], [27, 26]] }
+  },
+  "anchors": { "conn": [[31, 12], [31, 23]], "mid": [42, 17] },
+  "attack_hold": [9, 17]
+}

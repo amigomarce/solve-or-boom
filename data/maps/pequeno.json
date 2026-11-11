@@ -1,0 +1,33 @@
+{
+  "name": "Pequeño",
+  "width": 36,
+  "height": 24,
+  "round_time": 105,
+  "view": { "fog": [70, 170], "flyover": [62, 48, 46] },
+  "floor": [
+    { "rect": [1, 8, 5, 15], "zone": "att_base", "note": "west base: attackers spawn here" },
+    { "rect": [30, 8, 34, 15], "zone": "def_base", "note": "east base: defenders spawn here" },
+    { "rect": [6, 2, 7, 9], "note": "north lane" },
+    { "rect": [6, 2, 21, 4], "note": "north lane" },
+    { "rect": [22, 2, 28, 8], "zone": "A", "note": "site A" },
+    { "rect": [29, 5, 31, 7], "note": "A to east base" },
+    { "rect": [6, 11, 29, 12], "note": "middle lane" },
+    { "rect": [19, 5, 20, 10], "note": "mid connector up to A" },
+    { "rect": [21, 6, 21, 7], "note": "side door into A" },
+    { "rect": [6, 14, 7, 21], "note": "south lane" },
+    { "rect": [6, 19, 21, 21], "note": "south lane" },
+    { "rect": [22, 15, 28, 21], "zone": "B", "note": "site B" },
+    { "rect": [29, 16, 31, 18], "note": "B to east base" },
+    { "rect": [19, 13, 20, 18], "note": "mid connector down to B" },
+    { "rect": [21, 16, 21, 17], "note": "side door into B" }
+  ],
+  "crates": [[24, 4], [26, 6], [23, 19], [26, 16], [11, 11], [17, 12], [25, 11], [14, 3], [14, 20], [27, 3], [27, 20]],
+  "spawns": { "att": [[3, 11], [3, 12], [2, 10], [2, 13]], "def": [[32, 11], [32, 12], [33, 10], [33, 13]] },
+  "sites": { "A": [25, 5], "B": [25, 18] },
+  "routes": {
+    "A": { "lane": [[7, 5], [7, 3], [15, 3], [21, 3]], "mid": [[12, 12], [18, 11], [20, 8], [21, 6]] },
+    "B": { "lane": [[7, 18], [7, 20], [15, 20], [21, 20]], "mid": [[12, 11], [18, 12], [20, 15], [21, 16]] }
+  },
+  "anchors": { "conn": [[20, 8], [20, 15]], "mid": [28, 11] },
+  "attack_hold": [8, 11]
+}

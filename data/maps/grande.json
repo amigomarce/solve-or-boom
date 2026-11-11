@@ -1,0 +1,34 @@
+{
+  "name": "Grande",
+  "width": 54,
+  "height": 36,
+  "round_time": 150,
+  "view": { "fog": [100, 250], "flyover": [93, 72, 62] },
+  "floor": [
+    { "rect": [1, 12, 8, 23], "zone": "att_base", "note": "west base: attackers spawn here" },
+    { "rect": [45, 12, 52, 23], "zone": "def_base", "note": "east base: defenders spawn here" },
+    { "rect": [9, 3, 11, 14], "note": "north lane" },
+    { "rect": [9, 3, 32, 7], "note": "north lane" },
+    { "rect": [33, 3, 43, 13], "zone": "A", "note": "site A" },
+    { "rect": [43, 7, 47, 11], "note": "A to east base" },
+    { "rect": [9, 16, 44, 19], "note": "middle lane" },
+    { "rect": [28, 7, 31, 16], "note": "mid connector up to A" },
+    { "rect": [31, 9, 32, 11], "note": "side door into A" },
+    { "rect": [9, 21, 11, 32], "note": "south lane" },
+    { "rect": [9, 28, 32, 32], "note": "south lane" },
+    { "rect": [33, 22, 43, 32], "zone": "B", "note": "site B" },
+    { "rect": [43, 24, 47, 28], "note": "B to east base" },
+    { "rect": [28, 19, 31, 28], "note": "mid connector down to B" },
+    { "rect": [31, 24, 32, 26], "note": "side door into B" }
+  ],
+  "crates": [[36, 6], [39, 9], [35, 29], [39, 24], [17, 17], [26, 18], [38, 17], [21, 5], [21, 30], [41, 5], [41, 30],
+    [35, 11], [42, 12], [35, 24], [42, 23], [15, 6], [27, 4], [15, 29], [27, 31], [33, 19], [22, 16], [10, 10], [10, 25]],
+  "spawns": { "att": [[5, 17], [5, 18], [3, 15], [3, 20]], "def": [[48, 17], [48, 18], [50, 15], [50, 20]] },
+  "sites": { "A": [38, 8], "B": [38, 27] },
+  "routes": {
+    "A": { "lane": [[11, 8], [11, 5], [23, 5], [32, 5]], "mid": [[18, 18], [27, 17], [30, 12], [32, 9]] },
+    "B": { "lane": [[11, 27], [11, 30], [23, 30], [32, 30]], "mid": [[18, 17], [27, 18], [30, 23], [32, 24]] }
+  },
+  "anchors": { "conn": [[30, 12], [30, 23]], "mid": [42, 17] },
+  "attack_hold": [12, 17]
+}

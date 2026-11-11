@@ -4,6 +4,7 @@ What `prototypes/solve-or-boom/config.js` said beside its values, kept here beca
 holds no comments. The values themselves are in `data/config.json`.
 
 - `seed`: every gameplay random call reads rng(), seeded from this (or ?seed= in the address)
+- `default_map`: the map the session screen starts on (pequeno, grande, patio, pasillos: data/maps/<id>.json); C or a click changes it there
 
 ---- Player -------------------------------------------------------------------------
 - `mouse_sens`: multiplier; [ and ] on the pause screen
@@ -15,7 +16,7 @@ holds no comments. The values themselves are in `data/config.json`.
 
 ---- Rounds -------------------------------------------------------------------------
 - `buy_time`: s; gates closed, buying open
-- `round_time`: s until defenders win by time
+- round time: s until defenders win by time; each map has its own, `round_time` in data/maps/<map>.json (Pequeño 105, Grande 150, Patio 140, Pasillos 180)
 - `bomb_time`: s from plant to boom
 - `plant_time`: s holding E on a site
 - `defuse_answers`: right answers to cut the bomb
