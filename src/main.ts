@@ -387,7 +387,7 @@ const ROSTER = [
   { name: 'Kira', role: 'rusher', squad: 0 }, { name: 'Tomas', role: 'rifleman', squad: 0 }, { name: 'Ana', role: 'sniper', squad: 0 },
   { name: 'Rex', role: 'rusher', squad: 1 }, { name: 'Mila', role: 'rifleman', squad: 1 }, { name: 'Iker', role: 'rifleman', squad: 1 }, { name: 'Sol', role: 'sniper', squad: 1 },
 ];
-const ROLE_NAME: Record<string, string> = { rusher: 'Rusher', rifleman: 'Rifleman', sniper: 'Sniper' };
+const ROLE_NAME: Record<string, string> = { rusher: 'Asaltante', rifleman: 'Fusilero', sniper: 'Francotirador' };
 const models = ROSTER.map(r => { const s = makeSoldier(r.role); world.add(s.group); if (r.human) s.group.visible = false; return s; });
 const bombModel = makeBomb(); bombModel.group.visible = false; bombModel.group.scale.setScalar(1.7); world.add(bombModel.group);
 const beacon = makeBeacon(); world.add(beacon.group);
@@ -400,17 +400,17 @@ const backBombs = models.map(m => {
 const viewBomb = makeBomb(); viewBomb.group.visible = false; viewBomb.group.scale.setScalar(0.55); viewBomb.group.position.set(0.02, -0.3, -0.55);
 viewBomb.group.rotation.set(0.5, 0.3, 0); gunScene.add(viewBomb.group);
 const WEAPON: Record<string, { name: string; auto: boolean; range: number; botAcc: number }> = {
-  pistol: { name: 'Pistol', auto: false, range: 35, botAcc: 0.8 },
-  smg: { name: 'SMG', auto: true, range: 30, botAcc: 0.85 },
+  pistol: { name: 'Pistola', auto: false, range: 35, botAcc: 0.8 },
+  smg: { name: 'Subfusil', auto: true, range: 30, botAcc: 0.85 },
   rifle: { name: 'Rifle', auto: true, range: 60, botAcc: 1 },
-  sniper: { name: 'Sniper', auto: false, range: 120, botAcc: 1.5 },
+  sniper: { name: 'Francotirador', auto: false, range: 120, botAcc: 1.5 },
 };
 const SHOP: { id: string; name: string; price: string; desc: string }[] = [
-  { id: 'smg', name: 'SMG', price: 'price_smg', desc: 'Fast fire, best up close' },
-  { id: 'rifle', name: 'Rifle', price: 'price_rifle', desc: 'Strong at every range' },
-  { id: 'sniper', name: 'Sniper', price: 'price_sniper', desc: 'One-hit, slow. Right-click zooms' },
-  { id: 'armor', name: 'Armour', price: 'price_armor', desc: 'Takes half of every hit' },
-  { id: 'ammo', name: 'Ammo pack', price: 'price_ammo', desc: 'Refills your spare ammo' },
+  { id: 'smg', name: 'Subfusil', price: 'price_smg', desc: 'Dispara rápido, mejor de cerca' },
+  { id: 'rifle', name: 'Rifle', price: 'price_rifle', desc: 'Fuerte a cualquier distancia' },
+  { id: 'sniper', name: 'Francotirador', price: 'price_sniper', desc: 'Mata de un tiro, lento. Clic derecho: mira' },
+  { id: 'armor', name: 'Blindaje', price: 'price_armor', desc: 'Absorbe la mitad de cada impacto' },
+  { id: 'ammo', name: 'Munición', price: 'price_ammo', desc: 'Rellena tu munición de reserva' },
 ];
 
 // ---- Session: what the person creating the match picked (kept between matches) ------------
@@ -438,7 +438,7 @@ interface MatchState { players: Loose[]; feed: Loose[]; hurt: Loose[]; [k: strin
 let scene: string, state: MatchState;
 function newPlayer(r: Loose, i: number): Loose {
   return {
-    id: i, name: r.human ? 'You' : 'Bot ' + r.name, role: r.role, squad: r.squad, human: !!r.human,
+    id: i, name: r.human ? 'Tú' : 'Bot ' + r.name, role: r.role, squad: r.squad, human: !!r.human,
     x: 0, z: 0, px: 0, pz: 0, yaw: 0, pitch: 0, recoil: 0, hp: 100, armor: 0, alive: true,
     money: tune.start_money, primary: null, cur: 'pistol', ammo: {}, cool: 0, reloadT: 0, scoped: false,
     kills: 0, deaths: 0, right: 0, wrong: 0, moving: false, spotT: -99,
@@ -464,7 +464,7 @@ function reset() {
   state.players.forEach(resetGuns);
 }
 const sideOf = (p: Loose): string => (p.squad === state.attSquad ? 'att' : 'def');
-const squadName = (s: number): string => (s === 0 ? 'Your squad' : 'Rivals');
+const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
 const uiOpen = () => !!(state && (state.menu || state.card));
 const level = (): number => levelFor(state.round, tune.ramp_rounds);
 function say(m: string, t = 3.5): void { state.msg = m; state.msgT = t; }
@@ -513,8 +513,8 @@ function startRound() {
   for (const p of state.players) if (!p.human) botBuy(p);
   planRound();
   const side = sideOf(human);
-  say(side === 'att' ? `Round ${state.round}: ATTACK. Buy, then plant the bomb on A or B` :
-    `Round ${state.round}: DEFEND. Stop the plant, or answer to defuse`, 5);
+  say(side === 'att' ? `Ronda ${state.round}: ATAQUE. Compra y planta la bomba en A o B` :
+    `Ronda ${state.round}: DEFENSA. Evita que planten o responde para desactivar`, 5);
   events.push({ type: 'round', round: state.round, side });
 }
 function botBuy(b: Loose): void {
@@ -590,12 +590,12 @@ function applyDamage(t: Loose, dmg: number, from: Loose): void {
 function kill(t: Loose, from: Loose): void {
   t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
   if (from && from !== t) { from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money); }
-  feed(`${from ? from.name : 'The bomb'} took out ${t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
+  feed(`${from ? from.name : 'La bomba'} ${from && from.human ? 'eliminaste a' : 'eliminó a'} ${t.human ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
     (from && from.human) || t.human);
   if (from && from.human && from !== t) { state.killT = 0.4; SFX.kill(); }
   if (state.bomb.state === 'carried' && state.bomb.carrier === t) {
     state.bomb.state = 'dropped'; state.bomb.x = t.x; state.bomb.z = t.z; state.bomb.carrier = null;
-    if (sideOf(state.human) === 'att') say(t.human ? 'You dropped the bomb!' : 'The bomb was dropped!');
+    if (sideOf(state.human) === 'att') say(t.human ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
   }
   if (state.bomb.defuser === t) state.bomb.defuser = null;
   if (t.human) { state.menu = false; closeCard(true); state.spec = 0; t.scoped = false; nextSpec(); }
@@ -847,14 +847,14 @@ function plantBomb(p: Loose): void {
   p.plantT = 0; state.plantT = 0;
   bombModel.group.position.set(p.x, 0, p.z); bombModel.group.rotation.y = p.yaw; bombModel.group.visible = true;
   SFX.plant();
-  say(`Bomb planted at ${b.site}! ${tune.bomb_time} seconds`, 4);
+  say(`¡Bomba plantada en ${b.site}! ${tune.bomb_time} segundos`, 4);
   for (const q of state.players) { q.guarding = false; q.fetching = false; }
   events.push({ type: 'plant', site: b.site });
 }
 function defuseBomb(p: Loose): void {
   state.bomb.state = 'defused'; state.bomb.defuser = null; SFX.defused();
-  feed(`${p.name} defused the bomb`, p.human);
-  endRound('def', 'The bomb was defused');
+  feed(p.human ? 'Desactivaste la bomba' : `${p.name} desactivó la bomba`, p.human);
+  endRound('def', 'La bomba fue desactivada');
 }
 function updateBomb(dt: number): void {
   const b = state.bomb;
@@ -866,7 +866,7 @@ function updateBomb(dt: number): void {
       if (p.alive && sideOf(p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3) {
         b.state = 'carried'; b.carrier = p; bombModel.group.visible = false; p.fetching = false;
         if (!p.human) routeTo(p, 'site');
-        if (p.human) say('You picked up the bomb'); break;
+        if (p.human) say('Recogiste la bomba'); break;
       }
     }
   }
@@ -880,7 +880,7 @@ function updateBomb(dt: number): void {
       b.state = 'exploded'; state.boomT = 1.2; SFX.boom();
       boomMesh.position.set(b.x, 1, b.z); boomMesh.visible = true; bombModel.group.visible = false;
       for (const p of state.players) if (p.alive && Math.hypot(p.x - b.x, p.z - b.z) < 14) kill(p, null);
-      endRound('att', 'The bomb exploded');
+      endRound('att', 'La bomba explotó');
     }
   }
 }
@@ -896,7 +896,7 @@ function endRound(winSide: string, reason: string): void {
     p.money = Math.min(tune.max_money, p.money + pay);
   }
   state.phase = 'post'; state.phaseT = tune.round_end_delay;
-  state.banner = { text: `${squadName(win)} win the round`, reason, mine: win === state.human.squad };
+  state.banner = { text: `${win === 0 ? 'Tu equipo gana' : 'Los rivales ganan'} la ronda`, reason, mine: win === state.human.squad };
   state.menu = false; closeCard(true);
   (win === state.human.squad ? SFX.win : SFX.lose)();
   events.push({ type: 'roundEnd', win, reason, score: state.score.slice() });
@@ -905,17 +905,17 @@ function checkRound() {
   if (state.phase !== 'live') return;
   const alive = (side: string): number => state.players.filter(p => p.alive && sideOf(p) === side).length;
   const b = state.bomb;
-  if (b.state === 'planted') { if (!alive('def')) endRound('att', 'All defenders are down'); return; }
-  if (!alive('att')) endRound('def', 'All attackers are down');
-  else if (!alive('def')) endRound('att', 'All defenders are down');
-  else if (state.roundT <= 0) endRound('def', 'Time ran out before a plant');
+  if (b.state === 'planted') { if (!alive('def')) endRound('att', 'Todos los defensores han caído'); return; }
+  if (!alive('att')) endRound('def', 'Todos los atacantes han caído');
+  else if (!alive('def')) endRound('att', 'Todos los defensores han caído');
+  else if (state.roundT <= 0) endRound('def', 'Se acabó el tiempo sin plantar la bomba');
 }
 function afterRound() {
   if (state.score[0] >= tune.rounds_to_win || state.score[1] >= tune.rounds_to_win) {
     const p = state.human, total = p.right + p.wrong;
     const won = state.score[0] > state.score[1];
-    state.gained = `${won ? 'Your squad wins' : 'The Rivals win'} ${state.score[0]} - ${state.score[1]}`;
-    state.answered = total ? `You answered ${p.right} of ${total} questions right (${Math.round(100 * p.right / total)}%)` : 'You answered no questions this match';
+    state.gained = `${won ? 'Tu equipo gana' : 'Los rivales ganan'} ${state.score[0]} - ${state.score[1]}`;
+    state.answered = total ? `Respondiste bien ${p.right} de ${total} preguntas (${Math.round(100 * p.right / total)} %)` : 'No respondiste ninguna pregunta en esta partida';
     scene = 'results'; events.push({ type: 'matchEnd', won });
     if (locked) document.exitPointerLock();
     return;
@@ -923,7 +923,7 @@ function afterRound() {
   if (state.round === tune.halftime_after) {
     state.attSquad = 1 - state.attSquad; state.lossStreak = [0, 0];
     for (const p of state.players) { resetGuns(p); p.money = tune.start_money; p.alive = false; }
-    say('Halftime: the sides swap!', 4);
+    say('¡Descanso: se cambian los lados!', 4);
   }
   startRound();
 }
@@ -943,7 +943,7 @@ function grant(p: Loose, id: string): void {
   if (id === 'armor') p.armor = 100;
   else if (id === 'ammo') for (const [w, a] of Object.entries(p.ammo as Record<string, Loose>)) a.res = tune[w + '_reserve'];
   else { p.primary = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
-  SFX.buy(); feed(`You bought: ${it.name}`, true);
+  SFX.buy(); feed(`Compraste: ${it.name}`, true);
   events.push({ type: 'buy', item: id });
 }
 /**
@@ -1025,7 +1025,7 @@ function humanUpdate(p: Loose, dt: number): void {
     if (state.card && state.card.kind === 'buy') closeCard();
     else if (state.menu) state.menu = false;
     else if (buy && inOwnBase(p)) { state.menu = true; if (locked) document.exitPointerLock(); }
-    else say(buy ? 'Buy in your own base' : 'Buying is only open during buy time');
+    else say(buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
   }
   if (state.card && state.card.kind === 'defuse') {
     if (state.bomb.state !== 'planted') closeCard(true);
@@ -1033,7 +1033,7 @@ function humanUpdate(p: Loose, dt: number): void {
   }
   if (state.card) { updateCard(dt); p.moving = false; return; }
   if (state.menu) {
-    if (!buy) { state.menu = false; say('Buy time is over'); }
+    if (!buy) { state.menu = false; say('Se acabó el tiempo de compra'); }
     for (let k = 0; k < SHOP.length; k++) if (pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1))) tryBuy(SHOP[k].id);
     p.moving = false; return;
   }
@@ -1066,7 +1066,7 @@ function humanUpdate(p: Loose, dt: number): void {
     const auto = WEAPON[p.cur].auto;
     const trig = auto ? (down.has('Mouse0') || down.has(bind.shoot)) : (pressed('Mouse0') || pressed(bind.shoot));
     if (trig && !me.sprint && me.proneT === 0) humanShoot(p);
-  } else if (pressed('Mouse0') || pressed(bind.shoot)) say('Shooting opens when the gates open');
+  } else if (pressed('Mouse0') || pressed(bind.shoot)) say('Se puede disparar cuando se abran las puertas');
   // The bomb.
   const b = state.bomb;
   if (live && b.carrier === p) {
@@ -1151,7 +1151,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
             closeCard(true);
           }
           state.phase = 'live'; mapState.gatesClosed = false; state.gateT = 0.01; SFX.gate();
-          say(sideOf(state.human) === 'att' ? 'Gates open: go!' : 'Gates open: hold the sites!', 2.5);
+          say(sideOf(state.human) === 'att' ? '¡Puertas abiertas: adelante!' : '¡Puertas abiertas: defiende los sitios!', 2.5);
         }
       } else if (state.phase === 'live') {
         if (state.bomb.state !== 'planted') state.roundT -= dt;
@@ -1188,15 +1188,15 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
     draw() {
       drawWorld(); drawHUD(true);
       ctx.fillStyle = 'rgba(10,14,24,0.72)'; ctx.fillRect(0, 0, W, H);
-      text('Paused', W / 2, 200, 56, '#fff');
-      text(`Mouse sensitivity: ${tune.mouse_sens.toFixed(1)}`, W / 2, 290, 28, '#fff');
-      button(W / 2 - 230, 270, 60, 44, '-', 'sens:-', { size: 30 });
-      button(W / 2 + 170, 270, 60, 44, '+', 'sens:+', { size: 30 });
-      text('[ and ] also change it', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
-      button(W / 2 - 160, 380, 320, 52, `Resume (${keyName(bind.pause)} or click)`, 'resume', { size: 22 });
+      text('Pausa', W / 2, 200, 56, '#fff');
+      text(`Sensibilidad del ratón: ${tune.mouse_sens.toFixed(1)}`, W / 2, 290, 28, '#fff');
+      button(W / 2 - 275, 270, 60, 44, '-', 'sens:-', { size: 30 });
+      button(W / 2 + 215, 270, 60, 44, '+', 'sens:+', { size: 30 });
+      text('También con [ y ]', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
+      button(W / 2 - 160, 380, 320, 52, `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
       button(W / 2 - 160, 444, 320, 52, 'Controles', 'controls', { size: 22 });
-      button(W / 2 - 160, 508, 320, 52, 'Quit to session screen', 'quit', { size: 20 });
-      text(`Subject: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
+      button(W / 2 - 160, 508, 320, 52, 'Salir a la pantalla de sesión', 'quit', { size: 20 });
+      text(`Asignatura: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
     },
   },
   controls: {
@@ -1446,7 +1446,7 @@ function drawHUD(paused?: boolean): void {
       const k = d.defuseRight / tune.defuse_answers;
       rr(s.x - 70, s.y - 12, 140, 22, 6, 'rgba(10,14,24,0.8)', null);
       rr(s.x - 66, s.y - 8, 132 * k, 14, 4, SIDE_CSS.def, null);
-      text(`${d.name}: thinking...`, s.x, s.y - 26, 15, '#fff');
+      text(`${d.name}: pensando…`, s.x, s.y - 26, 15, '#fff');
     }
   }
   drawBombMarker(b, mySide);
@@ -1456,11 +1456,11 @@ function drawHUD(paused?: boolean): void {
   rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
   text(`${state.score[p.squad]}`, W / 2 - 90, 44, 38, SIDE_CSS[mySide]);
   text(`${state.score[1 - p.squad]}`, W / 2 + 90, 44, 38, SIDE_CSS[theirSide]);
-  text(mySide === 'att' ? 'You: ATTACK' : 'You: DEFEND', W / 2 - 165, 44, 16, SIDE_CSS[mySide]);
-  text('Rivals', W / 2 + 165, 44, 16, SIDE_CSS[theirSide]);
+  text(mySide === 'att' ? 'Tú: ATAQUE' : 'Tú: DEFENSA', W / 2 - 175, 44, 16, SIDE_CSS[mySide]);
+  text('Rivales', W / 2 + 175, 44, 16, SIDE_CSS[theirSide]);
   if (b.state === 'planted') { drawBombIcon(W / 2 - 34, 36, 24); text(fmtTime(b.timer), W / 2 + 14, 36, 28, b.panicT > 0 ? '#ff5a4a' : '#ff9a7a'); }
   else text(state.phase === 'buy' ? fmtTime(state.phaseT) : fmtTime(state.roundT), W / 2, 36, 28, state.phase === 'buy' ? '#ffe28a' : '#ffffff');
-  text(state.phase === 'buy' ? 'BUY TIME' : `Round ${state.round}  |  First to ${tune.rounds_to_win}`, W / 2, 62, 14, '#c8d2e6');
+  text(state.phase === 'buy' ? 'TIEMPO DE COMPRA' : `Ronda ${state.round}  |  Primero a ${tune.rounds_to_win}`, W / 2, 62, 14, '#c8d2e6');
   // kill feed
   state.feed.forEach((f, i) => {
     ctx.font = `bold 16px ${FONT}`; const w = ctx.measureText(f.s).width + 24;
@@ -1496,7 +1496,7 @@ function drawHUD(paused?: boolean): void {
     const a = p.ammo[p.cur];
     rr(W - 290, H - 82, 272, 64, 12, 'rgba(15,20,32,0.78)', null);
     text(WEAPON[p.cur].name, W - 270, H - 50, 20, '#c8d2e6', 'left');
-    text(p.reloadT > 0 ? 'Reloading' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
+    text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
     // stance: a drawn figure and its word, above the health box, only when not just standing
     const word = me.proneT > 0 || me.stance === 'prone' ? 'tumbado' : me.stance === 'crouch' ? 'agachado' : me.sprint ? 'corriendo' : '';
     if (word) {
@@ -1510,24 +1510,24 @@ function drawHUD(paused?: boolean): void {
       text(word, 74, H - 114, 18, '#ffe7a8', 'left');
       if (me.proneT > 0) rr(74, H - 101, 104 * (1 - me.proneT / tune.prone_time), 4, 2, '#ffd06a', null);
     }
-    if (b.carrier === p) { rr(W - 290, H - 142, 160, 48, 10, 'rgba(15,20,32,0.78)', null); drawBombIcon(W - 256, H - 118, 30); text('Bomb', W - 182, H - 118, 18, '#ffd06a'); }
+    if (b.carrier === p) { rr(W - 290, H - 142, 160, 48, 10, 'rgba(15,20,32,0.78)', null); drawBombIcon(W - 256, H - 118, 30); text('Bomba', W - 182, H - 118, 18, '#ffd06a'); }
   } else {
     const sp = state.specP;
     rr(W / 2 - 280, H - 92, 560, 64, 12, 'rgba(15,20,32,0.78)', null);
-    text('You are down', W / 2, H - 74, 20, '#ff8a7a');
-    text(sp ? `Watching ${sp.name} (${ROLE_NAME[sp.role]}). Click or Space for the next` : 'Wait for the next round', W / 2, H - 46, 16, '#fff');
+    text('Has caído', W / 2, H - 74, 20, '#ff8a7a');
+    text(sp ? `Viendo a ${sp.name} (${ROLE_NAME[sp.role]}). Clic o Espacio para el siguiente` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
   }
   // the one hint that matters now
   let hint = '';
   if (p.alive && !uiOpen()) {
     const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if (state.phase === 'buy') hint = inOwnBase(p) ? `Press ${keyName(bind.buy)} to buy. Gates open in ${Math.ceil(state.phaseT)}s` : '';
-    else if (b.carrier === p && (z === 3 || z === 4)) hint = `Hold ${keyName(bind.use)} to plant the bomb`;
-    else if (b.carrier === p) hint = 'You carry the bomb: plant it on the big A or B';
-    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Press ${keyName(bind.use)} to defuse: answer the question!`;
-    else if (b.state === 'planted' && mySide === 'def') hint = `Defuse the bomb at ${b.site}!`;
-    else if (b.state === 'dropped' && mySide === 'att') hint = 'Pick up the dropped bomb (see the map)';
-    if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Click to aim' : 'Click to aim with the mouse';
+    if (state.phase === 'buy') hint = inOwnBase(p) ? `Pulsa ${keyName(bind.buy)} para comprar. Las puertas se abren en ${Math.ceil(state.phaseT)} s` : '';
+    else if (b.carrier === p && (z === 3 || z === 4)) hint = `Mantén ${keyName(bind.use)} para plantar la bomba`;
+    else if (b.carrier === p) hint = 'Llevas la bomba: plántala en la A o la B grandes';
+    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Pulsa ${keyName(bind.use)} para desactivar: ¡responde la pregunta!`;
+    else if (b.state === 'planted' && mySide === 'def') hint = `¡Desactiva la bomba en ${b.site}!`;
+    else if (b.state === 'dropped' && mySide === 'att') hint = 'Recoge la bomba del suelo (mira el mapa)';
+    if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Clic para apuntar' : 'Haz clic para apuntar con el ratón';
   }
   if (hint) {
     const pulse = state.round === 1 && state.phase === 'buy' ? 0.75 + 0.25 * Math.sin(state.t * 6) : 1;
@@ -1540,7 +1540,7 @@ function drawHUD(paused?: boolean): void {
     const k = state.plantT / tune.plant_time;
     rr(W / 2 - 160, H / 2 + 60, 320, 26, 8, 'rgba(15,20,32,0.85)', null);
     rr(W / 2 - 156, H / 2 + 64, 312 * k, 18, 6, SIDE_CSS.att, null);
-    text('Planting...', W / 2, H / 2 + 104, 18, '#fff');
+    text('Plantando…', W / 2, H / 2 + 104, 18, '#fff');
   }
   if (state.msgT > 0 && !state.banner) {
     ctx.globalAlpha = Math.min(1, state.msgT);
@@ -1744,7 +1744,7 @@ function drawResults() {
   text(state.gained, W / 2, 80, 48, won ? '#9ff08a' : '#ff9a8a');
   text(state.answered || '', W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
-  const cols: [string, number, CanvasTextAlign][] = [['Player', 300, 'left'], ['Squad', 560, 'center'], ['Kills', 680, 'center'], ['Deaths', 780, 'center'], ['Right', 880, 'center'], ['Wrong', 980, 'center']];
+  const cols: [string, number, CanvasTextAlign][] = [['Jugador', 300, 'left'], ['Equipo', 560, 'center'], ['Bajas', 680, 'center'], ['Muertes', 780, 'center'], ['Bien', 880, 'center'], ['Mal', 980, 'center']];
   rr(260, 196, 760, 380, 14, 'rgba(14,19,30,0.92)', null);
   cols.forEach(([n, x, a]) => text(n, x, 224, 18, '#ffd06a', a));
   [...state.players].sort((a, b) => a.squad - b.squad || b.kills - a.kills).forEach((p, i) => {
@@ -1753,7 +1753,7 @@ function drawResults() {
     const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad), p.kills, p.deaths, p.right, p.wrong];
     vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && p.human ? 'bold' : 'normal'));
   });
-  button(W / 2 - 220, 600, 440, 62, 'Back to the session screen (Enter)', 'menu', { size: 22 });
+  button(W / 2 - 220, 600, 440, 62, 'Volver a la pantalla de sesión (Enter)', 'menu', { size: 22 });
 }
 let figScene: THREE.Scene | null = null, figCam: THREE.PerspectiveCamera | null = null;
 const FIG_LINE = [['rusher', 'att'], ['rifleman', 'att'], ['sniper', 'att'], ['rusher', 'def'], ['rifleman', 'def'], ['sniper', 'def'], ['bomb', '']];
@@ -1772,12 +1772,12 @@ function drawFigures() {
   }
   renderer.clear(); renderer.render(figScene, figCam!);
   ctx.clearRect(0, 0, W, H);
-  text('Figures', W / 2, 50, 36, '#fff');
+  text('Figuras', W / 2, 50, 36, '#fff');
   FIG_LINE.forEach(([role, side], i) => {
     _v.set(-5.4 + i * 1.8, -0.25, 0).project(figCam!);
     const x = (_v.x + 1) / 2 * W, y = (1 - _v.y) / 2 * H;
-    text(role === 'bomb' ? 'Bomb' : ROLE_NAME[role], x, y + 6, 18, '#fff');
-    if (side) text(side === 'att' ? 'Attack' : 'Defend', x, y + 30, 15, SIDE_CSS[side]);
+    text(role === 'bomb' ? 'Bomba' : ROLE_NAME[role], x, y + 6, 18, '#fff');
+    if (side) text(side === 'att' ? 'Ataque' : 'Defensa', x, y + 30, 15, SIDE_CSS[side]);
   });
 }
 
