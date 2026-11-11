@@ -55,6 +55,24 @@ holds no comments. The values themselves are in `data/config.json`.
 - `bot_defuse_right`: chance a bot's defuse answer is right
 - `bot_think_min`: s a bot thinks per defuse question
 - `sniper_hold_time`: s an attacking sniper watches mid first
+- `bot_cover_hp`: a bot below this health that sees an enemy goes to cover (being hit, or reloading with an enemy about, always does)
+- `bot_cover_time`: s a bot stays in cover (peeking and hiding) before it takes up its plan again; it never leaves mid-reload
+- `bot_cover_search`: cells (walking steps) a bot looks around itself for a cover cell: floor beside a wall or crate with no line of sight to the threat
+- `bot_cover_retry`: s before a bot that found no cover looks again
+- `bot_peek_show`, `bot_peek_hide`: s out at the peek cell (where it can shoot) and s back behind cover, in turn
+- `bot_threat_memory`: s an enemy last seen still counts as "about" for cover while reloading
+- `bot_group_wait`: s attackers wait at the staging point for the rest, and rotating defenders wait for the ones behind, before going anyway
+- `bot_group_gap`: m a rotating defender lets the farthest teammate fall behind before it waits for them
+- `bot_buddy_range`: m: a bot that loses sight of its target goes to where it was last seen, and the nearest free teammate this close goes too
+- `bot_site_alert`: m from a site an enemy seen or heard by a defender calls the defenders to rotate there
+- `bot_hear_shot`: m a gunshot is heard (was a fixed 24)
+- `bot_hear_sprint`, `bot_hear_run`: m your footsteps are heard sprinting (Shift) or running; walking (X), crouched or prone is silent
+- `bot_hear_land`: m the landing of your jump is heard
+- `bot_step_interval`: s between your footstep noises
+- `bot_corner_look`: s an attacker looks at each entry of a site on arriving there
+- `bot_corner_merge_deg`: entries closer than this angle, seen from the bot, count as one look
+- `bot_sep_dist`: m bots keep from any other body (they spread out instead of walking in single file)
+- `bot_repath_strict`: s a bot that got stuck walks its new path cell centre by cell centre; stuck again within it, it snaps to the cell centre
 
 ---- Question bank ------------------------------------------------------------------
 - `wrong_delay_growth`: factor the lockout grows by for each wrong answer in a row (2 doubles it, 1 keeps it flat)
@@ -73,3 +91,12 @@ holds no comments. The values themselves are in `data/config.json`.
 - `math_eq_x_max_<level>`: the answer x is 1 to this
 - `math_eq_a_max_<level>`: the multiplier a is 2 to this
 - `math_eq_b_max_<level>`: the added number b is 1 to this; difícil adds a(x + b) = c and ax + b = cx + d
+
+- `sfx_limit_db`: the limiter's threshold in dB on everything heard; lower squeezes overlapping fire harder (no clipping either way)
+- `sfx_<gun>_level`: each gun's shot loudness (pistol, smg, rifle, sniper), before the volume and a bot's distance
+- `sfx_<gun>_tail`: seconds of each gun's room tail; the number of echoes is tail / sfx_echo_delay, at most 4 (sniper longest)
+- `sfx_click_mix`, `sfx_thump_mix`: the sharp crack and the low thump in every shot, against the noise body (1 = as designed)
+- `sfx_echo_delay`, `sfx_echo_gain`: seconds between echoes, and how much quieter each echo is than the one before
+- `sfx_pan_strength`: how far left or right a bot's shot sits from its direction to the camera (0 = centred, 1 = full)
+- `sfx_near_cutoff`, `sfx_far_cutoff`, `sfx_far_dist`: a bot's shot is low-passed from near_cutoff Hz (beside you) to far_cutoff Hz at far_dist metres and beyond; your own gun is never dulled
+- `sfx_reload_level`, `sfx_empty_level`: the reload (mag out, mag in, slide or bolt, spread over reload_time) and the dry trigger click

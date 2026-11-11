@@ -57,6 +57,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Map selector on the session screen: Pequeño (the original, 108×72 m), Grande (1.5×), Patio and Pasillos (162×108 m), each with its own round time; maps are data in data/maps/
 - [x] Controls menu (pause and session screen) to rebind every action, saved in the browser; sprint (Shift, no shooting), walk (X), crouch (hold C), prone (toggle Z) and jump (Space), each with its costs and benefits in data/config.json and a HUD stance indicator
 - [x] The whole interface in Spanish: HUD, hints, messages, kill feed, round ends, pause, results, roles, weapons and shop (the game keeps its name, Solve or Boom)
+- [x] Layered gun sounds per weapon (bots positional by direction and distance, reload in steps, a limiter) and smarter bots: they take cover and peek, flank in two groups and enter together, hear your footsteps and shots and investigate, vary routes, check corners and keep apart
 - [x] Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong
 
 ## Your systems

@@ -106,6 +106,11 @@ function heard(x: number, z: number): number {
   const d = Math.hypot(x - camera.position.x, z - camera.position.z);
   return Math.max(0, 1 - d / 70);
 }
+/** Where a sound at (x, z) sits for the camera: pan -1 (left) to 1 (right), and its distance. Reads only. */
+function heardFrom(x: number, z: number): { pan: number; dist: number } {
+  const dx = x - camera.position.x, dz = z - camera.position.z, d = Math.hypot(dx, dz), y = camera.rotation.y;
+  return { pan: d < 0.01 ? 0 : (dx * Math.cos(y) - dz * Math.sin(y)) / d, dist: d }; // camera right = (cos y, -sin y)
+}
 
 // ---- Three.js world -----------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: !CHEAP });
@@ -436,6 +441,15 @@ const SUBJECT_LIST = ['matematicas', 'ciencias', 'geografia', 'lengua', QUESTION
 /** The match state: built field by field in reset(); typing still to do. */
 interface MatchState { players: Loose[]; feed: Loose[]; hurt: Loose[]; [k: string]: Loose }
 let scene: string, state: MatchState;
+/** The bot-only AI fields, fresh for a round (never on the human): cover and peeking, the staging wait,
+ *  the pack rotation, a heard noise, the corner check and the stuck re-path. */
+function botFresh(): Loose {
+  return {
+    coverT: 0, cover: null, peek: null, peekT: 0, peekOut: false, plan: [], threatX: 0, threatZ: 0, wantCover: false, coverTry: -99,
+    after: [], waitT: 0, rotating: false, rotT: 0, noiseX: 0, noiseZ: 0, noiseNew: false, investigating: false,
+    cleared: false, looks: [], lookT: 0, strictT: -99,
+  };
+}
 function newPlayer(r: Loose, i: number): Loose {
   return {
     id: i, name: r.human ? 'Tú' : 'Bot ' + r.name, role: r.role, squad: r.squad, human: !!r.human,
@@ -445,6 +459,7 @@ function newPlayer(r: Loose, i: number): Loose {
     target: null, reactT: 0, scanT: 0, path: [], pathI: 0, wps: [], arrived: false, holdYaw: 0, holdT: 0,
     routeKind: '', anchor: '', strafe: 1, strafeT: 0, alertT: 0, alertYaw: 0, lastX: 0, lastZ: 0, lastSeenT: -99,
     defusing: false, thinkT: 0, defuseRight: 0, plantT: 0, deadT: 0, walkPh: 0, flashT: 0, stuckT: 0, rotated: false,
+    ...(r.human ? {} : botFresh()),
   };
 }
 function resetGuns(p: Loose): void {
@@ -499,6 +514,7 @@ function startRound() {
     p.target = null; p.path = []; p.wps = []; p.arrived = false; p.defusing = false; p.plantT = 0;
     p.deadT = 0; p.alertT = 0; p.rotated = false; p.guarding = false; p.fetching = false; p.chasing = false; p.reloadT = 0; p.cool = 0; p.lastSeenT = -99;
     if (!p.human && !p.cur) p.cur = 'pistol';
+    if (!p.human) Object.assign(p, botFresh());
     models[p.id].team.color.setHex(SIDE_HEX[side]);
     models[p.id].group.rotation.set(0, p.yaw, 0);
   }
@@ -541,7 +557,7 @@ function routeTo(b: Loose, kind: string): void {
   const S = state.attackSite;
   const copy = (c: Cell): Cell => [c[0], c[1]];
   const r = S === 'A' ? MAP.routes.A : MAP.routes.B, lane = r.lane.map(copy), mid = r.mid.map(copy);
-  b.routeKind = kind; b.arrived = false; b.path = [];
+  b.routeKind = kind; b.arrived = false; b.path = []; b.after = []; b.coverT = 0; b.plan = [];
   if (kind === 'lane') b.wps = [...lane, siteSpot(S)];
   else if (kind === 'mid') b.wps = [...mid, siteSpot(S)];
   else if (kind === 'hold') { b.wps = [[MAP.attack_hold[0], MAP.attack_hold[1]]]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
@@ -551,27 +567,33 @@ function routeTo(b: Loose, kind: string): void {
 }
 function anchorTo(b: Loose, a: string): void {
   b.anchor = a; b.arrived = false; b.path = []; b.holdYaw = Math.PI / 2;
-  const conn = MAP.anchors.conn[state.round % MAP.anchors.conn.length];
   if (a === 'mid') b.wps = [[MAP.anchors.mid[0], MAP.anchors.mid[1]]];
-  else if (a === 'conn') b.wps = [[conn[0], conn[1]]];
+  else if (a === 'conn') { const conn = MAP.anchors.conn[Math.floor(rng() * MAP.anchors.conn.length)]; b.wps = [[conn[0], conn[1]]]; }
   else b.wps = [siteSpot(a)];
 }
+/** A copy of the list in an order drawn with the seeded rng (Fisher-Yates). */
+function shuffled<T>(a: T[]): T[] {
+  const r = a.slice();
+  for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; }
+  return r;
+}
+/** Each round's bot plans, drawn with the seeded rng. Attackers: the sniper holds first; the others split into
+ *  two groups, lane and mid, and each stops at its route's last waypoint before the site (its staging point,
+ *  the site spot kept in `after`) until the group is there. Defenders: the sniper holds mid; the others draw
+ *  the anchors A, B and the connector (a site anchor is a random cell of the site). */
 function planRound() {
   state.attackSite = rng() < 0.5 ? 'A' : 'B';
-  let rif = 0, k = 0;
-  const order = ['A', 'B', 'conn'];
-  for (const b of state.players) {
-    if (b.human) continue;
-    if (sideOf(b) === 'att') {
-      if (b.role === 'sniper') routeTo(b, 'hold');
-      else if (b.role === 'rusher') routeTo(b, 'lane');
-      else routeTo(b, rif++ === 0 ? 'mid' : 'lane');
-    } else if (b.role === 'sniper') anchorTo(b, 'mid');
-    else {
-      const ordered = state.players.filter(p => !p.human && sideOf(p) === 'def' && p.role !== 'sniper')
-        .sort((p, q) => Number(p.role === 'rusher') - Number(q.role === 'rusher'));
-      anchorTo(b, order[ordered.indexOf(b)] || order[k++ % 3]);
-    }
+  const bots = state.players.filter(p => !p.human);
+  const first = rng() < 0.5 ? 'lane' : 'mid', second = first === 'lane' ? 'mid' : 'lane';
+  shuffled(bots.filter(b => sideOf(b) === 'att' && b.role !== 'sniper')).forEach((b, i) => {
+    routeTo(b, i % 2 === 0 ? first : second);
+    b.after = [b.wps.pop()];
+  });
+  const anchors = shuffled(['A', 'B', 'conn']);
+  bots.filter(b => sideOf(b) === 'def' && b.role !== 'sniper').forEach((b, i) => anchorTo(b, anchors[i % anchors.length]));
+  for (const b of bots) {
+    if (b.role !== 'sniper') continue;
+    if (sideOf(b) === 'att') routeTo(b, 'hold'); else anchorTo(b, 'mid');
   }
 }
 
@@ -584,7 +606,10 @@ function applyDamage(t: Loose, dmg: number, from: Loose): void {
     state.flashT = 0.35; SFX.hurt();
     state.hurt.push({ yaw: yawTo(from.x - t.x, from.z - t.z), t: 1.0 });
     if (state.card && state.card.kind === 'defuse') { /* you keep answering: the clock does not stop */ }
-  } else { t.alertT = 1.5; t.alertYaw = yawTo(from.x - t.x, from.z - t.z); if (t.defusing) t.defusing = false; }
+  } else {
+    t.alertT = 1.5; t.alertYaw = yawTo(from.x - t.x, from.z - t.z); if (t.defusing) t.defusing = false;
+    t.wantCover = true; t.threatX = from.x; t.threatZ = from.z;
+  }
   if (t.hp <= 0) kill(t, from);
 }
 function kill(t: Loose, from: Loose): void {
@@ -639,7 +664,7 @@ function humanShoot(p: Loose): void {
   tracer(gx, eye - 0.18, gz, ex, ey, ez);
   SFX.shot(w);
   viewGuns[w].flash.visible = true; p.flashT = 0.05;
-  alertBots(p);
+  makeNoise(p.x, p.z, tune.bot_hear_shot, p.squad);
   if (best) {
     state.hitT = 0.15; SFX.hit();
     applyDamage(best, tune[w + '_dmg'] * (head ? tune.headshot_mult : 1), p);
@@ -655,17 +680,30 @@ function humanSpread(p: Loose): number {
 function startReload(p: Loose): void {
   const a = p.ammo[p.cur];
   if (p.reloadT > 0 || a.res <= 0 || a.mag >= tune[p.cur + '_mag']) return;
-  p.reloadT = tune.reload_time; p.scoped = false; if (p.human) SFX.reload();
+  p.reloadT = tune.reload_time; p.scoped = false; if (p.human) SFX.reload(p.cur);
 }
 function finishReload(p: Loose): void {
   const a = p.ammo[p.cur], need = tune[p.cur + '_mag'] - a.mag;
   if (p.human) { const n = Math.min(need, a.res); a.mag += n; a.res -= n; } else a.mag = tune[p.cur + '_mag'];
 }
-function alertBots(shooter: Loose): void { // gunfire nearby turns enemy bots toward it
+/** A noise at (x, z) made by a body of `squad`: every living enemy bot within r metres hears it (walls do not stop
+ *  sound). A defender who hears it near a site raises the site alert; a bot not already fighting turns toward it
+ *  and remembers where it was, to go and look when it has nothing better to do. With sight, the only way a bot
+ *  learns where an enemy is. */
+function makeNoise(x: number, z: number, r: number, squad: number): void {
   for (const b of state.players) {
-    if (b.human || !b.alive || b.squad === shooter.squad || b.target) continue;
-    if (Math.hypot(b.x - shooter.x, b.z - shooter.z) < 24) { b.alertT = 1.2; b.alertYaw = yawTo(shooter.x - b.x, shooter.z - b.z); }
+    if (b.human || !b.alive || b.squad === squad || Math.hypot(b.x - x, b.z - z) >= r) continue;
+    siteAlert(b, x, z);
+    if (b.target) continue;
+    b.alertT = 1.2; b.alertYaw = yawTo(x - b.x, z - b.z); b.noiseX = x; b.noiseZ = z; b.noiseNew = true;
   }
+}
+/** A defender bot that saw or heard an enemy at (x, z) within bot_site_alert metres of a site calls that site:
+ *  the squad's other defenders (not the sniper) rotate there together. */
+function siteAlert(b: Loose, x: number, z: number): void {
+  if (sideOf(b) !== 'def') return;
+  const toA = Math.hypot(x - center(SITE.A.cx), z - center(SITE.A.cy)), toB = Math.hypot(x - center(SITE.B.cx), z - center(SITE.B.cy));
+  if (Math.min(toA, toB) < tune.bot_site_alert) state.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: state.t };
 }
 function botShoot(b: Loose, t: Loose): void {
   const w = b.cur;
@@ -684,8 +722,8 @@ function botShoot(b: Loose, t: Loose): void {
   const body = t.human ? me.eye / EYE : 1, lift = t.human ? me.jumpY : 0; // the human's body: lower when down, higher in a jump
   tracer(gx, 1.3, gz, t.x - fz * miss, (hitIt ? 1.2 : 1.0 + rng() * 1.2) * body + lift, t.z + fx * miss);
   b.flashT = 0.06;
-  const v = heard(b.x, b.z); SFX.shot(w, v * 0.8);
-  alertBots(b);
+  const v = heard(b.x, b.z), at = heardFrom(b.x, b.z); SFX.shot(w, v * 0.8, at.pan, at.dist);
+  makeNoise(b.x, b.z, tune.bot_hear_shot, b.squad);
   if (hitIt) applyDamage(t, tune[w + '_dmg'], b);
 }
 
@@ -695,18 +733,21 @@ function turnTo(b: Loose, yaw: number, rate: number, dt: number): void {
   const d = angDiff(yaw, b.yaw), m = rate * dt;
   b.yaw += Math.abs(d) < m ? d : Math.sign(d) * m;
 }
-function followPath(b: Loose, dt: number, speed: number): boolean {
+/** Walks a bot along its waypoints (bfs between them, cutting corners where the straight line is clear), turning
+ *  it to face the way it walks unless `look` is false. Stuck: it re-paths from its own cell, cell centre by cell
+ *  centre, for bot_repath_strict s; stuck again in that time, it snaps to its cell centre. False once arrived. */
+function followPath(b: Loose, dt: number, speed: number, look = true): boolean {
   if (b.pathI >= b.path.length) {
     if (!b.wps.length) { b.arrived = true; return false; }
     const w = b.wps[0];
     b.path = bfs(cellOf(b.x), cellOf(b.z), w[0], w[1]); b.pathI = 0;
     if (!b.path.length) {
       const tx = center(w[0]), tz = center(w[1]), dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
-      if (d > 0.3) { moveBody(b, dx / d * speed * dt, dz / d * speed * dt); b.yaw = yawTo(dx, dz); return true; }
+      if (d > 0.3) { moveBody(b, dx / d * speed * dt, dz / d * speed * dt); if (look) b.yaw = yawTo(dx, dz); return true; }
       b.wps.shift(); return true;
     }
   }
-  if (b.pathI < b.path.length - 1) {
+  if (b.pathI < b.path.length - 1 && state.t >= b.strictT) {
     const n = b.path[b.pathI + 1];
     if (walkClear(b.x, b.z, center(n[0]), center(n[1]))) b.pathI++;
   }
@@ -719,10 +760,15 @@ function followPath(b: Loose, dt: number, speed: number): boolean {
   }
   const ox = b.x, oz = b.z;
   moveBody(b, dx / d * speed * dt, dz / d * speed * dt);
-  turnTo(b, yawTo(dx, dz), 8, dt);
+  if (look) turnTo(b, yawTo(dx, dz), 8, dt);
   if (Math.hypot(b.x - ox, b.z - oz) < speed * dt * 0.2) {
     b.stuckT += dt;
-    if (b.stuckT > 0.8) { b.stuckT = 0; b.path = []; b.pathI = 0; b.x = center(cellOf(b.x)); b.z = center(cellOf(b.z)); }
+    if (b.stuckT > 0.8) {
+      b.stuckT = 0;
+      if (state.t < b.strictT) { b.path = []; b.pathI = 0; b.x = center(cellOf(b.x)); b.z = center(cellOf(b.z)); }
+      else { const cx = cellOf(b.x), cy = cellOf(b.z), w = b.wps[0]; b.path = [[cx, cy], ...bfs(cx, cy, w[0], w[1])]; b.pathI = 0; }
+      b.strictT = state.t + tune.bot_repath_strict;
+    }
   } else b.stuckT = 0;
   return true;
 }
@@ -733,10 +779,25 @@ function canSee(b: Loose, e: Loose): boolean {
   if (Math.abs(angDiff(yawTo(dx, dz), b.yaw)) > fov / 2) return false;
   return losClear(b.x, b.z, e.x, e.z);
 }
+/** One step of a bot in cover: it walks to its cover cell, then hides there for bot_peek_hide s and steps out to its
+ *  peek cell (where it can shoot) for bot_peek_show s, in turn, never peeking while it reloads. When bot_cover_time
+ *  is up and the gun is loaded it takes up the plan it left. `look`: false so walking never turns it from the threat. */
+function coverStep(b: Loose, dt: number, speed: number, look: boolean): void {
+  b.coverT -= dt;
+  if (b.coverT <= 0 && b.reloadT <= 0) { b.coverT = 0; b.wps = b.plan; b.plan = []; b.path = []; b.pathI = 0; b.arrived = false; return; }
+  if (b.wps.length) { if (followPath(b, dt, speed, look)) b.moving = true; return; }
+  b.peekT -= dt;
+  if (b.peekT <= 0) { b.peekOut = !b.peekOut; b.peekT = b.peekOut ? tune.bot_peek_show : tune.bot_peek_hide; }
+  const c = b.peekOut && b.peek && b.reloadT <= 0 ? b.peek : b.cover;
+  const dx = center(c[0]) - b.x, dz = center(c[1]) - b.z, d = Math.hypot(dx, dz);
+  if (d > 0.2) { const k = Math.min(d, speed * dt) / d; moveBody(b, dx * k, dz * k); b.moving = true; }
+}
+const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** One bot's step: look, take cover, fight, then the plan (staging, rotation, noises, corner checks, the route). */
 function botUpdate(b: Loose, dt: number): void {
   b.cool = Math.max(0, b.cool - dt); b.alertT = Math.max(0, b.alertT - dt); b.flashT = Math.max(0, b.flashT - dt);
   if (b.reloadT > 0) { b.reloadT -= dt; if (b.reloadT <= 0) finishReload(b); }
-  const side = sideOf(b), live = state.phase === 'live';
+  const side = sideOf(b), live = state.phase === 'live', bomb = state.bomb;
   b.moving = false;
   // Look for enemies a few times a second.
   b.scanT -= dt;
@@ -752,22 +813,78 @@ function botUpdate(b: Loose, dt: number): void {
       if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level()) * (0.8 + rng() * 0.4); }
       b.target = best; b.lastX = best.x; b.lastZ = best.z; b.lastSeenT = state.t;
       if (best.squad !== state.human.squad || true) best.spotT = state.t;
-      if (side === 'def') {
-        const toA = Math.hypot(best.x - center(SITE.A.cx), best.z - center(SITE.A.cy));
-        const toB = Math.hypot(best.x - center(SITE.B.cx), best.z - center(SITE.B.cy));
-        if (Math.min(toA, toB) < 30) state.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: state.t };
-      }
+      siteAlert(b, best.x, best.z);
       if (b.defusing) { b.defusing = false; state.bomb.defuser = null; }
-    } else b.target = null;
+    } else {
+      // Lost sight of a living target: go to where it was last seen (and back), with the nearest free teammate.
+      const lost = b.target && b.target.alive && b.coverT <= 0;
+      b.target = null;
+      const free = (q: Loose): boolean => q.role !== 'sniper' && bomb.carrier !== q && !q.defusing && !q.chasing && q.coverT <= 0
+        && !(sideOf(q) === 'def' && bomb.state === 'planted');
+      const go = (q: Loose): void => {
+        q.chasing = true; q.wps = [[cellOf(b.lastX), cellOf(b.lastZ)], ...(q.wps.length ? q.wps : [[cellOf(q.x), cellOf(q.z)]])];
+        q.path = []; q.arrived = false;
+      };
+      if (lost && free(b)) {
+        go(b);
+        let buddy = null, bd = tune.bot_buddy_range;
+        for (const q of state.players) {
+          const d = Math.hypot(q.x - b.x, q.z - b.z);
+          if (q !== b && !q.human && q.alive && q.squad === b.squad && !q.target && free(q) && d < bd) { buddy = q; bd = d; }
+        }
+        if (buddy) go(buddy);
+      }
+    }
   }
   const t = b.target && b.target.alive ? b.target : null;
   if (!t) b.target = null;
   const speed = botSpeed(b);
+  // Cover: when hit, reloading with an enemy about, or low on health facing one, find the nearest cell (within
+  // bot_cover_search steps) beside a wall or crate with no line of sight to the threat, best one with a peek cell
+  // beside it that has the line of sight back; not while planting or defusing, nor defending a planted bomb.
+  if (t) { b.threatX = t.x; b.threatZ = t.z; }
+  const about = !!t || state.t - b.lastSeenT < tune.bot_threat_memory;
+  if (live && (b.wantCover || (b.coverT <= 0 && about && (b.reloadT > 0 || (!!t && b.hp < tune.bot_cover_hp))))
+    && state.t >= b.coverTry && !b.defusing && !b.plantT && !(side === 'def' && bomb.state === 'planted')) {
+    const sx = cellOf(b.x), sy = cellOf(b.z), steps = new Map<number, number>([[idx(sx, sy), 0]]), q: Cell[] = [[sx, sy]];
+    let hide: Cell | null = null, best: Cell | null = null, peek: Cell | null = null;
+    for (let h = 0; h < q.length && !best; h++) {
+      const [x, y] = q[h], n = steps.get(idx(x, y))!;
+      if (N4.some(([dx, dy]) => grid[idx(x + dx, y + dy)] !== 1) && !losClear(center(x), center(y), b.threatX, b.threatZ)) {
+        hide ??= [x, y];
+        const pk = N4.find(([dx, dy]) => walkable(x + dx, y + dy) && losClear(center(x + dx), center(y + dy), b.threatX, b.threatZ));
+        if (pk) { best = [x, y]; peek = [x + pk[0], y + pk[1]]; }
+      }
+      if (n < tune.bot_cover_search) for (const [dx, dy] of N4) {
+        if (walkable(x + dx, y + dy) && !steps.has(idx(x + dx, y + dy))) { steps.set(idx(x + dx, y + dy), n + 1); q.push([x + dx, y + dy]); }
+      }
+    }
+    const c = best ?? hide;
+    if (c) {
+      if (b.coverT <= 0) b.plan = b.wps;
+      Object.assign(b, { coverT: tune.bot_cover_time, cover: c, peek, wps: [c], path: [], pathI: 0, arrived: false, peekOut: false, peekT: tune.bot_peek_hide });
+    } else b.coverTry = state.t + tune.bot_cover_retry;
+  }
+  b.wantCover = false;
+  // Keep apart: every body closer than bot_sep_dist pushes the bot away, harder the closer it is.
+  if (live && !b.defusing && !b.plantT) {
+    let px = 0, pz = 0;
+    for (const o of state.players) {
+      if (o === b || !o.alive) continue;
+      const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
+      if (d >= tune.bot_sep_dist) continue;
+      const k = (tune.bot_sep_dist - d) / tune.bot_sep_dist;
+      if (d > 1e-3) { px += dx / d * k; pz += dz / d * k; } else { px += Math.cos(b.id) * k; pz += Math.sin(b.id) * k; }
+    }
+    const m = Math.hypot(px, pz);
+    if (m > 0) { const k = Math.min(1, m) / m * speed * dt; moveBody(b, px * k, pz * k); }
+  }
   if (t && live) { // fight
     const dx = t.x - b.x, dz = t.z - b.z, d = Math.hypot(dx, dz);
     turnTo(b, yawTo(dx, dz), 7, dt);
     b.reactT -= dt;
     if (b.reactT <= 0 && Math.abs(angDiff(yawTo(dx, dz), b.yaw)) < 0.2) botShoot(b, t);
+    if (b.coverT > 0) { coverStep(b, dt, speed, false); return; }
     b.strafeT -= dt;
     if (b.strafeT <= 0) { b.strafeT = 0.5 + rng() * 0.8; b.strafe = rng() < 0.5 ? -1 : 1; }
     const sk = b.role === 'rusher' ? 0.65 : b.role === 'rifleman' ? 0.3 : 0;
@@ -781,14 +898,25 @@ function botUpdate(b: Loose, dt: number): void {
   }
   if (b.alertT > 0) turnTo(b, b.alertYaw, 6, dt);
   if (!live) return;
+  if (b.coverT > 0) { turnTo(b, yawTo(b.threatX - b.x, b.threatZ - b.z), 5, dt); coverStep(b, dt, speed, false); return; }
   // No enemy in sight: follow the plan.
-  const bomb = state.bomb;
   if (side === 'att') {
     if (bomb.state === 'dropped' && !b.fetching && !state.players.some(p => p.fetching && p.alive && sideOf(p) === 'att')) {
-      b.fetching = true; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false;
+      b.fetching = true; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false; b.after = [];
     }
     if (bomb.state === 'planted' && !b.guarding) {
-      b.guarding = true; const c = nearCell(bomb.x, bomb.z, 2); b.wps = [c]; b.path = []; b.arrived = false;
+      b.guarding = true; const c = nearCell(bomb.x, bomb.z, 2); b.wps = [c]; b.path = []; b.arrived = false; b.after = [];
+    }
+    // Staging: wait facing the site until every attacker bot still to go in is at its staging point (and out of
+    // cover), or bot_group_wait passes; then all of them that are there go in together.
+    if (b.after.length && b.arrived && !b.wps.length) {
+      const mates = state.players.filter(q => !q.human && q.alive && q.squad === b.squad && q.after.length);
+      const ready = (q: Loose): boolean => q.arrived && !q.wps.length && q.coverT <= 0;
+      b.waitT += dt; turnTo(b, yawTo(center(b.after[0][0]) - b.x, center(b.after[0][1]) - b.z), 4, dt);
+      if (b.waitT >= tune.bot_group_wait || mates.every(ready)) {
+        for (const q of mates) if (ready(q)) { q.wps = q.after; q.after = []; q.arrived = false; q.path = []; q.waitT = 0; }
+      }
+      return;
     }
     if (bomb.carrier === b && b.arrived) {
       const z = zone[idx(cellOf(b.x), cellOf(b.z))];
@@ -801,13 +929,13 @@ function botUpdate(b: Loose, dt: number): void {
     }
     if (b.routeKind === 'hold' && b.arrived) {
       b.holdT -= dt; turnTo(b, b.holdYaw, 4, dt);
-      if (b.holdT <= 0) routeTo(b, 'mid');
+      if (b.holdT <= 0) routeTo(b, rng() < 0.5 ? 'mid' : 'lane');
       return;
     }
   } else {
     if (bomb.state === 'planted') {
       const d = Math.hypot(bomb.x - b.x, bomb.z - b.z);
-      if (!b.guarding) { b.guarding = true; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false; }
+      if (!b.guarding) { b.guarding = true; b.rotating = false; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false; }
       if (d < 1.7 && (!bomb.defuser || bomb.defuser === b)) {
         if (!b.defusing) { b.defusing = true; bomb.defuser = b; b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, rng()); b.defuseRight = 0; }
         b.thinkT -= dt;
@@ -820,14 +948,47 @@ function botUpdate(b: Loose, dt: number): void {
       }
     } else if (state.alert && state.alert.squad === b.squad && !b.rotated && b.role !== 'sniper' && b.anchor !== state.alert.site
       && state.t - state.alert.t < 8) {
-      b.rotated = true; anchorTo(b, state.alert.site);
+      b.rotated = true; anchorTo(b, state.alert.site); b.rotating = true; b.rotT = 0;
     }
   }
-  if (b.role === 'rusher' && state.t - b.lastSeenT < 3 && !b.chasing) {
-    b.chasing = true; b.wps = [[cellOf(b.lastX), cellOf(b.lastZ)], ...b.wps]; b.path = [];
+  // Rotating defenders go as a pack: one more than bot_group_gap m ahead of a rotating teammate waits for them
+  // (at most bot_group_wait s in all), facing the site.
+  if (b.rotating) {
+    if (!b.wps.length) b.rotating = false;
+    else {
+      const gx = center(SITE[b.anchor].cx), gz = center(SITE[b.anchor].cy), mine = Math.hypot(gx - b.x, gz - b.z);
+      if (b.rotT < tune.bot_group_wait && state.players.some(q => q !== b && q.alive && q.rotating && q.squad === b.squad
+        && Math.hypot(gx - q.x, gz - q.z) - mine > tune.bot_group_gap)) {
+        b.rotT += dt; turnTo(b, yawTo(gx - b.x, gz - b.z), 4, dt); return;
+      }
+    }
+  }
+  // A noise heard with nothing better to do (holding its spot, not the sniper, the carrier or a guard): go and look, then come back.
+  if (b.noiseNew) {
+    b.noiseNew = false;
+    if (b.arrived && !b.wps.length && !b.after.length && !b.looks.length && !b.investigating && !b.rotating && !b.guarding
+      && b.role !== 'sniper' && bomb.carrier !== b) {
+      b.investigating = true; b.wps = [[cellOf(b.noiseX), cellOf(b.noiseZ)], [cellOf(b.x), cellOf(b.z)]]; b.path = []; b.arrived = false;
+    }
+  }
+  // Corner check: an attacker that arrives in a site (not the carrier) looks at each way into it, bot_corner_look s
+  // apiece (entries closer than bot_corner_merge_deg count as one), before it settles.
+  const here = zone[idx(cellOf(b.x), cellOf(b.z))];
+  if (side === 'att' && b.arrived && !b.cleared && bomb.carrier !== b && (here === 3 || here === 4)) {
+    b.cleared = true; b.lookT = 0; b.looks = [];
+    for (const [x, y] of here === SITE.A.z ? siteCells.A : siteCells.B) {
+      if (!N4.some(([dx, dy]) => grid[idx(x + dx, y + dy)] === 1 && zone[idx(x + dx, y + dy)] !== here)) continue;
+      const yw = yawTo(center(x) - b.x, center(y) - b.z);
+      if (b.looks.every((l: number) => Math.abs(angDiff(l, yw)) > tune.bot_corner_merge_deg * Math.PI / 180)) b.looks.push(yw);
+    }
+  }
+  if (b.looks.length) {
+    turnTo(b, b.looks[0], 6, dt); b.lookT += dt;
+    if (b.lookT >= tune.bot_corner_look) { b.looks.shift(); b.lookT = 0; }
+    return;
   }
   if (followPath(b, dt, speed)) b.moving = true;
-  else { b.chasing = false; turnTo(b, b.holdYaw, 3, dt); }
+  else { b.chasing = false; b.investigating = false; turnTo(b, b.holdYaw, 3, dt); }
   if (b.arrived && b.fetching) b.fetching = false;
 }
 function nearCell(x: number, z: number, r: number): number[] {
@@ -1013,7 +1174,10 @@ function humanUpdate(p: Loose, dt: number): void {
   const planting = live && state.bomb.carrier === p && down.has(bind.use);
   const walk = down.has(bind.walk), sprintKey = down.has(bind.sprint) && !walk && (f !== 0 || s !== 0);
   if (me.proneT > 0) { me.proneT -= dt; if (me.proneT <= 0) { me.proneT = 0; me.prone = !me.prone; } }
-  if (me.jumpY > 0 || me.vy !== 0) { me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt; if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; } }
+  if (me.jumpY > 0 || me.vy !== 0) {
+    me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt;
+    if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live) makeNoise(p.x, p.z, tune.bot_hear_land, p.squad); } // the landing is heard
+  }
   me.sprint = sprintKey && !uiOpen() && !planting && !me.prone && me.proneT === 0;
   const crouch = !me.prone && !me.sprint && down.has(bind.crouch);
   me.stance = me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
@@ -1056,6 +1220,9 @@ function humanUpdate(p: Loose, dt: number): void {
     const mx = (fx * f + -fz * s) / n, mz = (fz * f + fx * s) / n;
     moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp > tune.walk_speed + 0.1;
   } else p.moving = false;
+  // Footsteps the enemy bots hear: sprinting carries far, running less; walking, crouched or prone is silent.
+  const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
+  if (stepR > 0 && Math.floor(state.t / tune.bot_step_interval) !== Math.floor((state.t - dt) / tune.bot_step_interval)) makeNoise(p.x, p.z, stepR, p.squad);
   // Weapons.
   if (pressed(bind.primary) && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
   if (pressed(bind.pistol) && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
