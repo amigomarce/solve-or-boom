@@ -1,0 +1,161 @@
+# The one-shot's small check (check-run/1).
+# Written by one-shot-check.sh --record: the results are /prototype's reading of
+# evidence/self-check.tsv; never edited by hand.
+kind: check-run/1
+engine: web
+browser: "HeadlessChrome/157.0.0.0"
+time: "2026-11-11 09:04:18"
+checks:
+  - id: boots
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: shot
+    result: pass
+    evidence:
+      - "evidence/play.png"
+  - id: outlines
+    result: pass
+    evidence:
+      - "evidence/figures.png"
+  - id: brief-words
+    result: pass
+    why: "missed; homework bolted onto: not a look word, it is the brief's question; the game answers it by putting each question inside a buy or a defuse moment, never on a separate quiz screen"
+    evidence:
+      - "evidence/brief-words.tsv"
+  - id: emoji
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: nearest-game
+    result: pass
+    evidence:
+      - "evidence/nearest-game.txt"
+brief_checklist:
+  - id: L1
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Look: bright, chunky low-poly arena — clean blocky shapes, soft sunlight, orange attackers and teal defenders, big painted **A** and **B** floor letters at the bomb sites; flat-coloured crates, walls and doorways with darker edges; the question card is a large high-contrast panel that slides up over the view; signature detail: the bomb's lights flash red and the timer ticks louder on a wrong defuse answer. Every figure drawn, no emoji, no plain circles. *(provisional)*"
+  - id: L2
+    result: pass
+    evidence: "index.html:634"
+    item: "References: Counter-Strike (attack/defend rounds, buy phase, two bomb sites, economy — not its name, maps, art or UI)."
+  - id: L3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "View: 3D · Camera: first-person, gun visible lower right *(provisional)*"
+  - id: F1
+    result: pass
+    evidence: "index.html:1592"
+    item: "Session screen: pick subject and contents, or upload a CSV of questions (question, 4 choices, correct answer)"
+  - id: F2
+    result: pass
+    evidence: "questions.js:178"
+    item: "Built-in question bank: Math (arithmetic, multiplication tables, fractions, simple equations) generated so it never runs out, plus Science, Geography and English vocabulary banks for ages 10–14 *(provisional)*"
+  - id: F3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Buy menu in each base: every item asks a multiple-choice question; a wrong answer swaps in a new question"
+  - id: F4
+    result: pass
+    evidence: "index.html:1187"
+    item: "Defuse = a multiple-choice question under the bomb timer; a wrong answer swaps in a new question while the timer runs"
+  - id: F5
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "Team of 4 vs 4 (you + 3 bot teammates vs 4 bots, named as bots) with 3 bot roles: rusher (SMG), rifleman (holds middle distance), sniper (holds long lanes); bots buy on their own"
+  - id: F6
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Ammo and reload: magazine and reserve beside health and armour; an empty gun clicks"
+  - id: F7
+    result: pass
+    evidence: "index.html:137"
+    item: "Mouse-look with sensitivity setting, hit markers, distinct guns (pistol, SMG, rifle, sniper), hurt direction marker"
+  - id: F8
+    result: pass
+    evidence: "evidence/play.png"
+    item: "One original map with two bomb sites (A and B), two bases, 3 lanes"
+  - id: F9
+    result: pass
+    evidence: "index.html:1028"
+    item: "Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong"
+  - id: S1
+    result: pass
+    evidence: "evidence/play.png"
+    item: "buying weapons and ammo with answers · in the slice"
+  - id: S2
+    result: pass
+    evidence: "index.html:1187"
+    item: "defusing the bomb with a question · in the slice"
+  - id: S3
+    result: pass
+    evidence: "index.html:634"
+    item: "attack and defend teams · in the slice"
+  - id: S4
+    result: pass
+    evidence: "index.html:1592"
+    item: "subjects and contents to pick · in the slice"
+  - id: S5
+    result: pass
+    evidence: "questions.js:34"
+    item: "extensive question bank per subject · thin stand-in *(guessed)*"
+  - id: S6
+    result: pass
+    evidence: "questions.js:307"
+    item: "upload custom questions (CSV files) · in the slice"
+  - id: M1
+    result: pass
+    evidence: "index.html:1592"
+    item: "The menu opens on a session screen: pick a subject (Math preselected) and its contents (e.g. multiplication + fractions), or upload a CSV."
+  - id: M2
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Press Start."
+  - id: M3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "You spawn in the attacker base with 3 bot teammates; a 20-second buy phase; a hint says \"Press B to buy\"."
+  - id: M4
+    result: pass
+    evidence: "evidence/play.png"
+    item: "You click the SMG — a question card with 4 choices appears; right answer, chime, the SMG is in your hands."
+  - id: M5
+    result: pass
+    evidence: "index.html:1118"
+    item: "A wrong pick on ammo: the card shakes and a new question replaces it."
+  - id: M6
+    result: not_run
+    mark: not assessed
+    why: "gates open, teammates follow you to the site you head for, plant by holding E (index.html:981), a bot defuser's bar stalls while it thinks; the push and the shots need a person playing"
+    evidence: "index.html:1181"
+    item: "The doors open; you push toward site A with your team, trade first shots with defender bots, and plant by holding E — if a defender bot reaches the bomb, you watch its defuse bar stall as it \"thinks\"."
+  - id: C1
+    result: pass
+    evidence: "index.html:668"
+    item: "Round 1 is fair: everyone on pistols, bots react slowly."
+  - id: C2
+    result: not_run
+    mark: not assessed
+    why: "accuracy and reaction ramp to full by round 3 and bots buy rifles once they can afford them; whether that makes every question matter needs play"
+    evidence: "index.html:891"
+    item: "By round 3 the bots have bought rifles and the sniper bot holds long lanes, so every buy question matters."
+  - id: C3
+    result: pass
+    evidence: "index.html:1034"
+    item: "A lost round costs money — smaller budget, fewer questions' worth of gear next round — never the match."
+  - id: C4
+    result: pass
+    evidence: "index.html:1063"
+    item: "At halftime sides swap and on defence you must answer the defuse question before the 40-second bomb timer runs out."
+  - id: C5
+    result: not_run
+    mark: not assessed
+    why: "only the brief's provisional mark, not a claim to check"
+    item: "*(provisional)*"
+measures:
+  - id: step-time
+    value: 0.900
+    unit: ms
+    by: browser
+    detail: "mean 0.019 ms, slowest 0.900 ms, 150 steps"

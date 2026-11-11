@@ -1,0 +1,29 @@
+L1	pass	evidence/play.png	bright low-poly blocky arena in sunlight, orange attacker base, teal defender gates, painted A/B on the floor (index.html:336), high-contrast card slides up; bomb light flashes red and beeps louder on a wrong defuse answer (index.html:1099, index.html:1016)
+L2	pass	index.html:634	attack/defend rounds, buy time in each base, two sites A and B, money economy; original map, names, figures and UI (evidence/nearest-game.txt)
+L3	pass	evidence/play.png	3D first-person view with the gun drawn lower right in its own pass (index.html:531)
+F1	pass	index.html:1592	session screen: subject list, contents checkboxes, Upload CSV button and drop target; CSV parser accepts 2-, 5- and 6-column rows (questions.js:307)
+F2	pass	questions.js:178	math generated for 5 contents; Science, Geography, English banks of 12-14 questions per content (questions.js:34)
+F3	pass	evidence/play.png	buy menu (index.html:1533) opens a 4-choice card per item; a wrong answer shakes the card and swaps in a new question (index.html:1118)
+F4	pass	index.html:1187	E at the planted bomb opens a defuse card; the bomb timer keeps running and a wrong answer brings a new question (index.html:1118)
+F5	pass	evidence/figures.png	8 players: you + Bot Kira/Tomas/Ana vs Bot Rex/Mila/Iker/Sol (index.html:555); rusher, rifleman, sniper each drawn and behaving differently; bots buy on their own (index.html:666)
+F6	pass	evidence/play.png	mag / reserve beside health and armour; R reloads; empty click (index.html:758)
+F7	pass	index.html:137	raw mouse-look with sensitivity on the pause screen, hit and kill markers (index.html:790), 4 guns with their own models and sounds, hurt-direction arcs (index.html:730)
+F8	pass	evidence/play.png	one original map: two bases, sites A and B, north, middle and south lanes with connectors (index.html:230)
+F9	pass	index.html:1028	buy time, round timer, plant and defuse, round money with loss bonus, halftime swap (index.html:1063), results table with right and wrong per player (index.html:1656)
+S1	pass	evidence/play.png	every buy is a question
+S2	pass	index.html:1187	the defuse is a question for you; bots think and sometimes answer wrong (index.html:953)
+S3	pass	index.html:634	attack and defend sides, swapped at halftime
+S4	pass	index.html:1592	subject and contents picked on the session screen
+S5	pass	questions.js:34	thin stand-in: 36-42 bank questions per subject, math unlimited
+S6	pass	questions.js:307	CSV upload via button, U key or drop
+M1	pass	index.html:1592	opens on the session screen with Math preselected
+M2	pass	evidence/play.png	Enter or the Start button starts the match
+M3	pass	evidence/play.png	you spawn in the attacker base with 3 bot teammates; the hint says Press B to buy (index.html:1499); buy time is 25 s, not 20 (tuned so several questions fit)
+M4	pass	evidence/play.png	SMG pick opens a 4-choice card; a right answer chimes and puts the SMG in hand (index.html:1092)
+M5	pass	index.html:1118	a wrong pick shakes the card red and a new question replaces it
+M6	not_assessed	index.html:1181	gates open, teammates follow you to the site you head for, plant by holding E (index.html:981), a bot defuser's bar stalls while it thinks; the push and the shots need a person playing
+C1	pass	index.html:668	bots buy nothing in the first round of each half and start with slow reactions and low accuracy (index.html:891)
+C2	not_assessed	index.html:891	accuracy and reaction ramp to full by round 3 and bots buy rifles once they can afford them; whether that makes every question matter needs play
+C3	pass	index.html:1034	a loss pays less money, with a growing loss bonus; the match goes on
+C4	pass	index.html:1063	sides swap at halftime; on defence the 40 s bomb timer runs while you answer
+C5	not_assessed	-	only the brief's provisional mark, not a claim to check

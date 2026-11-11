@@ -1,0 +1,83 @@
+time	2026-11-11 09:04:18
+keep	lines	0	pinned	0
+briefword	first-person	shown	evidence/play.png
+briefword	homework bolted onto	missed	not a look word, it is the brief's question; the game answers it by putting each question inside a buy or a defuse moment, never on a separate quiz screen
+checklist	L1	unlisted	-	Look: bright, chunky low-poly arena — clean blocky shapes, soft sunlight, orange attackers and teal defenders, big painted **A** and **B** floor letters at the bomb sites; flat-coloured crates, walls and doorways with darker edges; the question card is a large high-contrast panel that slides up over the view; signature detail: the bomb's lights flash red and the timer ticks louder on a wrong defuse answer. Every figure drawn, no emoji, no plain circles. *(provisional)*	
+checklist	L2	unlisted	-	References: Counter-Strike (attack/defend rounds, buy phase, two bomb sites, economy — not its name, maps, art or UI).	
+checklist	L3	unlisted	-	View: 3D · Camera: first-person, gun visible lower right *(provisional)*	
+checklist	F1	unlisted	-	Session screen: pick subject and contents, or upload a CSV of questions (question, 4 choices, correct answer)	
+checklist	F2	unlisted	-	Built-in question bank: Math (arithmetic, multiplication tables, fractions, simple equations) generated so it never runs out, plus Science, Geography and English vocabulary banks for ages 10–14 *(provisional)*	
+checklist	F3	unlisted	-	Buy menu in each base: every item asks a multiple-choice question; a wrong answer swaps in a new question	
+checklist	F4	unlisted	-	Defuse = a multiple-choice question under the bomb timer; a wrong answer swaps in a new question while the timer runs	
+checklist	F5	unlisted	-	Team of 4 vs 4 (you + 3 bot teammates vs 4 bots, named as bots) with 3 bot roles: rusher (SMG), rifleman (holds middle distance), sniper (holds long lanes); bots buy on their own	
+checklist	F6	unlisted	-	Ammo and reload: magazine and reserve beside health and armour; an empty gun clicks	
+checklist	F7	unlisted	-	Mouse-look with sensitivity setting, hit markers, distinct guns (pistol, SMG, rifle, sniper), hurt direction marker	
+checklist	F8	unlisted	-	One original map with two bomb sites (A and B), two bases, 3 lanes	
+checklist	F9	unlisted	-	Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong	
+checklist	S1	unlisted	-	buying weapons and ammo with answers · in the slice	
+checklist	S2	unlisted	-	defusing the bomb with a question · in the slice	
+checklist	S3	unlisted	-	attack and defend teams · in the slice	
+checklist	S4	unlisted	-	subjects and contents to pick · in the slice	
+checklist	S5	unlisted	-	extensive question bank per subject · thin stand-in *(guessed)*	
+checklist	S6	unlisted	-	upload custom questions (CSV files) · in the slice	
+checklist	M1	unlisted	-	The menu opens on a session screen: pick a subject (Math preselected) and its contents (e.g. multiplication + fractions), or upload a CSV.	
+checklist	M2	unlisted	-	Press Start.	
+checklist	M3	unlisted	-	You spawn in the attacker base with 3 bot teammates; a 20-second buy phase; a hint says "Press B to buy".	
+checklist	M4	unlisted	-	You click the SMG — a question card with 4 choices appears; right answer, chime, the SMG is in your hands.	
+checklist	M5	unlisted	-	A wrong pick on ammo: the card shakes and a new question replaces it.	
+checklist	M6	unlisted	-	The doors open; you push toward site A with your team, trade first shots with defender bots, and plant by holding E — if a defender bot reaches the bomb, you watch its defuse bar stall as it "thinks".	
+checklist	C1	unlisted	-	Round 1 is fair: everyone on pistols, bots react slowly.	
+checklist	C2	unlisted	-	By round 3 the bots have bought rifles and the sniper bot holds long lanes, so every buy question matters.	
+checklist	C3	unlisted	-	A lost round costs money — smaller budget, fewer questions' worth of gear next round — never the match.	
+checklist	C4	unlisted	-	At halftime sides swap and on defence you must answer the defuse question before the 40-second bomb timer runs out.	
+checklist	C5	unlisted	-	*(provisional)*	
+webgl	ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)
+browser	HeadlessChrome/157.0.0.0
+console	play	2476	[.WebGL-0x124004d4200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+scene	play	0	title
+scene	play	1	play
+digits	log	bold 24px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	15px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 17px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	16px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 38px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 28px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 32px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 22px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 30px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 26px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+measure	step-time	play	0.019	0.900	150
+lane	play	stop	2.5	1230
+console	play	0	[.WebGL-0x124004d4200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	play	0	[.WebGL-0x124004d4200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+uncaught	play	0
+text	play	canvas	144,42,155,54	22.1	2.75	inside	A
+text	play	canvas	146,107,154,119	22.1	2.75	inside	B
+text	play	canvas	540,27,560,55	52.5	8.23	inside	0
+text	play	canvas	720,27,740,55	52.5	8.75	inside	0
+text	play	canvas	428,37,522,49	22.1	8.23	inside	You: ATTACK
+text	play	canvas	785,37,826,49	22.1	8.75	inside	Rivals
+text	play	canvas	611,24,668,45	38.7	14.92	inside	0:23
+text	play	canvas	610,56,670,66	19.3	12.50	inside	BUY TIME
+text	play	canvas	74,656,125,679	44.2	18.99	inside	100
+text	play	canvas	202,656,218,679	44.2	6.10	inside	0
+text	play	canvas	249,658,311,679	30.4	13.84	inside	$1250
+text	play	canvas	1011,661,1061,676	27.6	12.50	inside	Pistol
+text	play	canvas	1150,657,1244,679	41.4	18.99	inside	12 / 36
+text	play	canvas	1076,594,1121,607	24.9	13.10	inside	Bomb
+text	play	canvas	315,107,966,132	35.9	19.02	inside	Round 1: ATTACK. Buy, then plant the bomb on A or B
+text	play	canvas	268,293,460,316	30.4	12.82	inside	BUY SMG     $1200
+text	play	canvas	841,298,1013,313	22.1	10.54	inside	Multiplication & division
+text	play	canvas	582,367,699,389	41.4	15.26	inside	8 × 9 = ?
+text	play	canvas	276,465,282,481	30.4	12.82	inside	1
+text	play	canvas	314,465,337,481	30.4	14.81	inside	72
+text	play	canvas	675,465,686,481	30.4	12.82	inside	2
+text	play	canvas	714,465,737,481	30.4	14.81	inside	74
+text	play	canvas	275,539,285,555	30.4	12.82	inside	3
+text	play	canvas	313,539,337,555	30.4	14.81	inside	62
+text	play	canvas	674,539,686,555	30.4	12.82	inside	4
+text	play	canvas	713,539,737,555	30.4	14.81	inside	64
+text	play	canvas	510,593,771,607	22.1	8.32	inside	1-4 or click to answer     B to cancel
+screen	play	drawn
+shot	play	prototypes/solve-or-boom/evidence/play.png
+responds	changed	34
