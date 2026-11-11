@@ -17,6 +17,7 @@ import {
 import { yawTo, angDiff, lerp, levelFor, roundPay, hitChance, armourHit, fmtTime } from './game/rules';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
+import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 
 // ---- Built to be checked ----------------------------------------------------------------
@@ -32,6 +33,9 @@ function rng(): number {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 const events: Loose[] = []; // window.game.events: anything the game wants a run to see
+/** The human's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
+ *  Kept off the player and off `state` so a run that never uses them plays exactly as before. */
+const me = { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false };
 
 // ---- Input listeners ------------------------------------------------------------------
 let locked = false, lockedBefore = false;
@@ -485,6 +489,7 @@ function startRound() {
   state.phase = 'buy'; state.phaseT = tune.buy_time; state.roundT = MAP.round_time;
   state.menu = false; closeCard(true); state.alert = null; state.banner = null; state.plantT = 0;
   mapState.gatesClosed = true; state.gateT = 0;
+  Object.assign(me, { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false });
   const sides: Record<string, number> = { att: 0, def: 0 };
   for (const p of state.players) {
     if (!p.alive) resetGuns(p);
@@ -608,8 +613,7 @@ function humanShoot(p: Loose): void {
   if (a.mag <= 0) { SFX.empty(); p.cool = 0.25; if (a.res > 0) startReload(p); return; }
   a.mag--; p.cool = tune[w + '_rate'];
   if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) SFX.lowAmmo();
-  let spread = tune[w + '_spread'] + (p.moving ? tune.move_spread : 0);
-  if (w === 'sniper' && p.scoped) spread = 0.002;
+  const spread = humanSpread(p), eye = me.eye + me.jumpY;
   const yaw = p.yaw + (rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (rng() - 0.5) * 2 * spread;
   p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
   if (w === 'sniper') p.scoped = false;
@@ -617,7 +621,7 @@ function humanShoot(p: Loose): void {
   // walls and crates along the flat ray, or the floor when aimed down
   let wallT = 200;
   for (let s = 0.2; s < 200; s += 0.2) if (solidSight(p.x + hx * s, p.z + hz * s)) { wallT = s; break; }
-  if (pitch < -0.01) wallT = Math.min(wallT, EYE / -tp);
+  if (pitch < -0.01) wallT = Math.min(wallT, eye / -tp);
   let best = null, bestT = wallT, head = false;
   for (const e of state.players) {
     if (!e.alive || e.squad === p.squad) continue;
@@ -626,13 +630,13 @@ function humanShoot(p: Loose): void {
     const perp2 = ox * ox + oz * oz - along * along, r = 0.42;
     if (perp2 > r * r) continue;
     const t = along - Math.sqrt(r * r - perp2);
-    const y = EYE + tp * t;
+    const y = eye + tp * t;
     if (y < 0 || y > 1.88 || t >= bestT) continue;
     best = e; bestT = t; head = y > 1.46;
   }
-  const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = EYE + tp * bestT;
+  const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = eye + tp * bestT;
   const gx = p.x + hx * 0.6 - hz * 0.18, gz = p.z + hz * 0.6 + hx * 0.18;
-  tracer(gx, EYE - 0.18, gz, ex, ey, ez);
+  tracer(gx, eye - 0.18, gz, ex, ey, ez);
   SFX.shot(w);
   viewGuns[w].flash.visible = true; p.flashT = 0.05;
   alertBots(p);
@@ -641,6 +645,12 @@ function humanShoot(p: Loose): void {
     applyDamage(best, tune[w + '_dmg'] * (head ? tune.headshot_mult : 1), p);
   } else spark(ex, ey, ez);
   void cp;
+}
+/** The human's shot spread now, in radians: the gun, moving, the scope, then the stance and the air multipliers. */
+function humanSpread(p: Loose): number {
+  const s = p.cur === 'sniper' && p.scoped ? 0.002 : tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0);
+  const stance = me.stance === 'prone' ? tune.prone_spread_mult : me.stance === 'crouch' ? tune.crouch_spread_mult : 1;
+  return s * stance * (me.jumpY > 0 || me.vy !== 0 ? tune.air_spread_mult : 1);
 }
 function startReload(p: Loose): void {
   const a = p.ammo[p.cur];
@@ -665,12 +675,14 @@ function botShoot(b: Loose, t: Loose): void {
   if (a.mag <= 0) { b.reloadT = tune.reload_time; return; }
   a.mag--; b.cool = tune[w + '_rate'] * tune.bot_fire_slow * (0.85 + rng() * 0.3);
   const d = Math.hypot(t.x - b.x, t.z - b.z);
-  const chance = hitChance(level(), tune.bot_acc_start, tune.bot_acc_end, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving);
+  const stanceHit = !t.human ? 1 : me.stance === 'prone' ? tune.prone_hit_mult : me.stance === 'crouch' ? tune.crouch_hit_mult : 1;
+  const chance = hitChance(level(), tune.bot_acc_start, tune.bot_acc_end, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
   const hitIt = rng() < chance;
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;
   const miss = hitIt ? 0 : (rng() - 0.5) * 2.2;
-  tracer(gx, 1.3, gz, t.x - fz * miss, hitIt ? 1.2 : 1.0 + rng() * 1.2, t.z + fx * miss);
+  const body = t.human ? me.eye / EYE : 1, lift = t.human ? me.jumpY : 0; // the human's body: lower when down, higher in a jump
+  tracer(gx, 1.3, gz, t.x - fz * miss, (hitIt ? 1.2 : 1.0 + rng() * 1.2) * body + lift, t.z + fx * miss);
   b.flashT = 0.06;
   const v = heard(b.x, b.z); SFX.shot(w, v * 0.8);
   alertBots(b);
@@ -996,8 +1008,20 @@ function humanUpdate(p: Loose, dt: number): void {
   p.recoil *= Math.exp(-dt * 7);
   if (p.reloadT > 0) { p.reloadT -= dt; if (p.reloadT <= 0) finishReload(p); }
   const live = state.phase === 'live', buy = state.phase === 'buy';
+  // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
+  const f = (down.has(bind.forward) ? 1 : 0) - (down.has(bind.back) ? 1 : 0), s = (down.has(bind.right) ? 1 : 0) - (down.has(bind.left) ? 1 : 0);
+  const planting = live && state.bomb.carrier === p && down.has(bind.use);
+  const walk = down.has(bind.walk), sprintKey = down.has(bind.sprint) && !walk && (f !== 0 || s !== 0);
+  if (me.proneT > 0) { me.proneT -= dt; if (me.proneT <= 0) { me.proneT = 0; me.prone = !me.prone; } }
+  if (me.jumpY > 0 || me.vy !== 0) { me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt; if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; } }
+  me.sprint = sprintKey && !uiOpen() && !planting && !me.prone && me.proneT === 0;
+  const crouch = !me.prone && !me.sprint && down.has(bind.crouch);
+  me.stance = me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
+  const eyeTo = (me.proneT > 0 ? !me.prone : me.prone) ? tune.prone_eye : crouch ? tune.crouch_eye : EYE;
+  me.eye += (eyeTo - me.eye) * Math.min(1, tune.eye_rate * dt);
+  if (Math.abs(eyeTo - me.eye) < 0.002) me.eye = eyeTo;
   // Menus and cards first.
-  if (pressed('KeyB')) {
+  if (pressed(bind.buy)) {
     if (state.card && state.card.kind === 'buy') closeCard();
     else if (state.menu) state.menu = false;
     else if (buy && inOwnBase(p)) { state.menu = true; if (locked) document.exitPointerLock(); }
@@ -1005,7 +1029,7 @@ function humanUpdate(p: Loose, dt: number): void {
   }
   if (state.card && state.card.kind === 'defuse') {
     if (state.bomb.state !== 'planted') closeCard(true);
-    else if (pressed('KeyE')) closeCard();
+    else if (pressed(bind.use)) closeCard();
   }
   if (state.card) { updateCard(dt); p.moving = false; return; }
   if (state.menu) {
@@ -1018,35 +1042,36 @@ function humanUpdate(p: Loose, dt: number): void {
   if (down.has('ArrowRight')) p.yaw -= tune.key_turn_speed * dt;
   if (down.has('ArrowUp')) p.pitch = Math.min(1.4, p.pitch + tune.key_turn_speed * 0.6 * dt);
   if (down.has('ArrowDown')) p.pitch = Math.max(-1.4, p.pitch - tune.key_turn_speed * 0.6 * dt);
+  // Stance keys: prone toggles (and takes prone_time), sprinting stands you up, a jump needs standing on the ground.
+  const ground = me.jumpY === 0 && me.vy === 0, changing = me.proneT > 0;
+  if (!changing && ground && (pressed(bind.prone) || (me.prone && sprintKey))) me.proneT = tune.prone_time;
+  if (pressed(bind.jump) && ground && !changing && me.stance === 'stand') me.vy = tune.jump_velocity;
   // Move.
-  let f = 0, s = 0;
-  if (down.has('KeyW')) f += 1; if (down.has('KeyS')) f -= 1;
-  if (down.has('KeyD')) s += 1; if (down.has('KeyA')) s -= 1;
-  const planting = live && state.bomb.carrier === p && down.has('KeyE');
-  let sp = (down.has('ShiftLeft') || down.has('ShiftRight')) ? tune.walk_speed : tune.run_speed;
+  let sp = walk ? tune.walk_speed : me.sprint ? tune.sprint_speed : tune.run_speed;
   if (p.cur === 'sniper') sp *= tune.sniper_speed_mult;
   if (p.scoped) sp *= 0.5;
-  if ((f || s) && !planting) {
+  if (me.stance === 'prone') sp *= tune.prone_speed_mult; else if (me.stance === 'crouch') sp *= tune.crouch_speed_mult;
+  if ((f || s) && !planting && me.proneT === 0) {
     const n = Math.hypot(f, s), fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     const mx = (fx * f + -fz * s) / n, mz = (fz * f + fx * s) / n;
     moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp > tune.walk_speed + 0.1;
   } else p.moving = false;
   // Weapons.
-  if (pressed('Digit1') && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
-  if (pressed('Digit2') && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
-  if (pressed('KeyQ') && p.primary) { p.cur = p.cur === 'pistol' ? p.primary : 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
-  if (pressed('KeyR')) startReload(p);
+  if (pressed(bind.primary) && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
+  if (pressed(bind.pistol) && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
+  if (pressed(bind.swap) && p.primary) { p.cur = p.cur === 'pistol' ? p.primary : 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
+  if (pressed(bind.reload)) startReload(p);
   if (pressed('Mouse2') && p.cur === 'sniper' && p.reloadT <= 0) p.scoped = !p.scoped;
   if (live) {
     const auto = WEAPON[p.cur].auto;
-    const trig = auto ? (down.has('Mouse0') || down.has('KeyF')) : (pressed('Mouse0') || pressed('KeyF'));
-    if (trig) humanShoot(p);
-  } else if (pressed('Mouse0') || pressed('KeyF')) say('Shooting opens when the gates open');
+    const trig = auto ? (down.has('Mouse0') || down.has(bind.shoot)) : (pressed('Mouse0') || pressed(bind.shoot));
+    if (trig && !me.sprint && me.proneT === 0) humanShoot(p);
+  } else if (pressed('Mouse0') || pressed(bind.shoot)) say('Shooting opens when the gates open');
   // The bomb.
   const b = state.bomb;
   if (live && b.carrier === p) {
     const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if ((z === 3 || z === 4) && down.has('KeyE')) {
+    if ((z === 3 || z === 4) && down.has(bind.use)) {
       state.plantT += dt;
       if (state.plantT >= tune.plant_time) plantBomb(p);
     } else state.plantT = 0;
@@ -1058,7 +1083,7 @@ function humanUpdate(p: Loose, dt: number): void {
       }
     }
   }
-  if (live && b.state === 'planted' && sideOf(p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && pressed('KeyE')) {
+  if (live && b.state === 'planted' && sideOf(p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && pressed(bind.use)) {
     if (b.defuser && !b.defuser.human) { b.defuser.defusing = false; }
     b.defuser = p; openCard('defuse');
   }
@@ -1097,6 +1122,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       // The map: C steps through them, a click picks one; the flyover behind shows it.
       if (pressed('KeyC')) pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
       if (act && act.startsWith('map:')) pickMap(act.slice(4));
+      if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (pressed('Enter') || pressed('Space') || act === 'start') {
         if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
         if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
@@ -1107,7 +1133,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   },
   play: {
     update(dt) {
-      if (pressed('KeyP') || pressed('Escape')) { scene = 'pause'; if (locked) document.exitPointerLock(); return; }
+      if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; if (locked) document.exitPointerLock(); return; }
       const act = clicks.shift();
       if (act && act.startsWith('buy:')) tryBuy(act.slice(4));
       if (act && act.startsWith('ans:')) answer(Number(act.slice(4)));
@@ -1153,7 +1179,8 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   pause: {
     update() {
       const act = clicks.shift();
-      if (pressed('KeyP') || pressed('Escape') || act === 'resume') scene = 'play';
+      if (pressed(bind.pause) || pressed('Escape') || act === 'resume') scene = 'play';
+      if (act === 'controls') { Object.assign(ctl, { from: 'pause', sel: 0, capture: false, note: '' }); scene = 'controls'; }
       if (pressed('BracketLeft') || act === 'sens:-') CONFIG.mouse_sens.value = Math.max(CONFIG.mouse_sens.min, +(tune.mouse_sens - 0.1).toFixed(2));
       if (pressed('BracketRight') || act === 'sens:+') CONFIG.mouse_sens.value = Math.min(CONFIG.mouse_sens.max, +(tune.mouse_sens + 0.1).toFixed(2));
       if (pressed('Backspace') || act === 'quit') scene = 'title';
@@ -1166,9 +1193,62 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       button(W / 2 - 230, 270, 60, 44, '-', 'sens:-', { size: 30 });
       button(W / 2 + 170, 270, 60, 44, '+', 'sens:+', { size: 30 });
       text('[ and ] also change it', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
-      button(W / 2 - 160, 390, 320, 56, 'Resume (P or click)', 'resume', { size: 22 });
-      button(W / 2 - 160, 460, 320, 56, 'Quit to session screen', 'quit', { size: 20 });
-      text(`Subject: ${state.subjectLabel || ''}`, W / 2, 560, 18, '#c8d2e6', 'center', 'normal');
+      button(W / 2 - 160, 380, 320, 52, `Resume (${keyName(bind.pause)} or click)`, 'resume', { size: 22 });
+      button(W / 2 - 160, 444, 320, 52, 'Controles', 'controls', { size: 22 });
+      button(W / 2 - 160, 508, 320, 52, 'Quit to session screen', 'quit', { size: 20 });
+      text(`Subject: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
+    },
+  },
+  controls: {
+    update() {
+      const act = clicks.shift(), n = ACTIONS.length; // rows 0..n-1 are the actions, n is Restablecer, n + 1 is Volver
+      if (act && act.startsWith('key:')) Object.assign(ctl, { sel: Number(act.slice(4)), capture: true, note: '' });
+      else if (act === 'keysreset') { resetKeys(); Object.assign(ctl, { capture: false, note: 'Teclas por defecto restablecidas' }); }
+      else if (act === 'back') { scene = ctl.from; return; }
+      else if (ctl.capture) {
+        const code = [...hit].find(c => !c.startsWith('Mouse'));
+        if (code === 'Escape') Object.assign(ctl, { capture: false, note: 'Cambio cancelado' });
+        else if (code && code.startsWith('Arrow')) ctl.note = 'Las flechas giran la vista: elige otra tecla';
+        else if (code) {
+          const a = ACTIONS[ctl.sel], other = setKey(a.id, code);
+          ctl.capture = false;
+          ctl.note = other ? `${other.label} pasa a ${keyName(bind[other.id])}` : `${a.label}: ${keyName(code)}`;
+        }
+      } else {
+        const half = Math.ceil(n / 2);
+        if (pressed('Escape')) { scene = ctl.from; return; }
+        if (pressed('ArrowDown')) ctl.sel = Math.min(n + 1, ctl.sel + 1);
+        if (pressed('ArrowUp')) ctl.sel = Math.max(0, ctl.sel - 1);
+        if (pressed('ArrowRight') && ctl.sel < half) ctl.sel = Math.min(n - 1, ctl.sel + half);
+        if (pressed('ArrowLeft') && ctl.sel >= half && ctl.sel < n) ctl.sel -= half;
+        if (pressed('Enter')) {
+          if (ctl.sel === n) { resetKeys(); ctl.note = 'Teclas por defecto restablecidas'; }
+          else if (ctl.sel === n + 1) { scene = ctl.from; return; }
+          else Object.assign(ctl, { capture: true, note: '' });
+        }
+      }
+    },
+    draw() {
+      if (ctl.from === 'pause') { drawWorld(); drawHUD(true); } else flyover();
+      buttons.length = 0;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(10,14,24,0.88)'; ctx.fillRect(0, 0, W, H);
+      text('Controles', W / 2, 50, 40, '#ffd06a');
+      text('Clic en una acción (o flechas y Intro) y pulsa la tecla nueva. Esc cancela.', W / 2, 94, 17, '#e4e9f4', 'center', 'normal');
+      const n = ACTIONS.length, half = Math.ceil(n / 2);
+      ACTIONS.forEach((a, i) => {
+        const x = i < half ? 80 : 660, y = 120 + (i % half) * 54, on = ctl.sel === i, cap = on && ctl.capture;
+        button(x, y, 540, 46, '', 'key:' + i, { fill: cap ? '#ffd06a' : on ? '#33415c' : undefined, stroke: on ? '#fff3c4' : undefined });
+        text(a.label, x + 20, y + 23, 19, cap ? '#1b2232' : '#fff', 'left');
+        const k = cap ? 'Pulsa una tecla…' : keyName(bind[a.id]);
+        ctx.font = `bold 18px ${FONT}`; const kw = Math.max(64, ctx.measureText(k).width + 28);
+        rr(x + 520 - kw, y + 7, kw, 32, 8, cap ? '#1b2232' : '#0d1220', '#ffd06a', 2);
+        text(k, x + 520 - kw / 2, y + 23, 18, '#ffe7a8');
+      });
+      if (ctl.note) text(ctl.note, W / 2, 618, 18, '#9ff08a');
+      const sel = (i: number) => ctl.sel === i ? { stroke: '#fff3c4', fill: '#33415c' } : {};
+      button(W / 2 - 340, 644, 320, 52, 'Restablecer', 'keysreset', { size: 22, ...sel(n) });
+      button(W / 2 + 20, 644, 320, 52, 'Volver', 'back', { size: 22, ...sel(n + 1) });
     },
   },
   results: {
@@ -1179,6 +1259,8 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
     draw() { drawWorld(); drawResults(); },
   },
 };
+/** The Controles screen: the selected row, whether it waits for a key, the last change, and the scene to go back to. */
+const ctl = { sel: 0, capture: false, note: '', from: 'title' };
 /** Picks the session's map and shows it behind the session screen. */
 function pickMap(id: string): void {
   session.map = id; useMap(id);
@@ -1215,7 +1297,7 @@ function drawWorld() {
   const p = state.human, view = p.alive ? p : (state.specP || p);
   placeModels();
   if (view === p) {
-    camera.position.set(p.x, EYE, p.z);
+    camera.position.set(p.x, me.eye + me.jumpY, p.z);
     camera.rotation.set(p.pitch + p.recoil, p.yaw, 0, 'YXZ');
   } else {
     camera.position.set(lerp(view.px, view.x, ALPHA), EYE, lerp(view.pz, view.z, ALPHA));
@@ -1394,7 +1476,7 @@ function drawHUD(paused?: boolean): void {
   if (p.alive) {
     // crosshair and hit marker
     if (!p.scoped && !uiOpen()) {
-      const gap = 6 + (tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0)) * 300;
+      const gap = 6 + humanSpread(p) * 300;
       ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
       for (const [dx, dy, w, h] of [[-gap - 12, -1.5, 12, 3], [gap, -1.5, 12, 3], [-1.5, -gap - 12, 3, 12], [-1.5, gap, 3, 12]]) {
         ctx.fillRect(W / 2 + dx, H / 2 + dy, w, h); ctx.strokeRect(W / 2 + dx, H / 2 + dy, w, h);
@@ -1415,6 +1497,19 @@ function drawHUD(paused?: boolean): void {
     rr(W - 290, H - 82, 272, 64, 12, 'rgba(15,20,32,0.78)', null);
     text(WEAPON[p.cur].name, W - 270, H - 50, 20, '#c8d2e6', 'left');
     text(p.reloadT > 0 ? 'Reloading' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
+    // stance: a drawn figure and its word, above the health box, only when not just standing
+    const word = me.proneT > 0 || me.stance === 'prone' ? 'tumbado' : me.stance === 'crouch' ? 'agachado' : me.sprint ? 'corriendo' : '';
+    if (word) {
+      rr(18, H - 136, 176, 44, 10, 'rgba(15,20,32,0.78)', null);
+      const fx = 46, fy = H - 114;
+      ctx.strokeStyle = '#ffe7a8'; ctx.fillStyle = '#ffe7a8'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath();
+      if (word === 'tumbado') { ctx.arc(fx - 16, fy + 6, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(fx - 11, fy + 7); ctx.lineTo(fx + 18, fy + 9); ctx.moveTo(fx - 4, fy + 8); ctx.lineTo(fx + 4, fy + 2); }
+      else if (word === 'agachado') { ctx.arc(fx, fy - 10, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(fx, fy - 5); ctx.lineTo(fx - 3, fy + 4); ctx.lineTo(fx + 6, fy + 8); ctx.lineTo(fx + 2, fy + 14); ctx.moveTo(fx - 3, fy + 4); ctx.lineTo(fx - 8, fy + 14); }
+      else { ctx.arc(fx + 4, fy - 14, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(fx + 2, fy - 9); ctx.lineTo(fx - 2, fy + 3); ctx.lineTo(fx - 10, fy + 14); ctx.moveTo(fx - 2, fy + 3); ctx.lineTo(fx + 8, fy + 8); ctx.lineTo(fx + 6, fy + 14); ctx.moveTo(fx, fy - 4); ctx.lineTo(fx + 10, fy - 2); }
+      ctx.stroke(); ctx.lineCap = 'butt';
+      text(word, 74, H - 114, 18, '#ffe7a8', 'left');
+      if (me.proneT > 0) rr(74, H - 101, 104 * (1 - me.proneT / tune.prone_time), 4, 2, '#ffd06a', null);
+    }
     if (b.carrier === p) { rr(W - 290, H - 142, 160, 48, 10, 'rgba(15,20,32,0.78)', null); drawBombIcon(W - 256, H - 118, 30); text('Bomb', W - 182, H - 118, 18, '#ffd06a'); }
   } else {
     const sp = state.specP;
@@ -1426,10 +1521,10 @@ function drawHUD(paused?: boolean): void {
   let hint = '';
   if (p.alive && !uiOpen()) {
     const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if (state.phase === 'buy') hint = inOwnBase(p) ? `Press B to buy. Gates open in ${Math.ceil(state.phaseT)}s` : '';
-    else if (b.carrier === p && (z === 3 || z === 4)) hint = 'Hold E to plant the bomb';
+    if (state.phase === 'buy') hint = inOwnBase(p) ? `Press ${keyName(bind.buy)} to buy. Gates open in ${Math.ceil(state.phaseT)}s` : '';
+    else if (b.carrier === p && (z === 3 || z === 4)) hint = `Hold ${keyName(bind.use)} to plant the bomb`;
     else if (b.carrier === p) hint = 'You carry the bomb: plant it on the big A or B';
-    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = 'Press E to defuse: answer the question!';
+    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Press ${keyName(bind.use)} to defuse: answer the question!`;
     else if (b.state === 'planted' && mySide === 'def') hint = `Defuse the bomb at ${b.site}!`;
     else if (b.state === 'dropped' && mySide === 'att') hint = 'Pick up the dropped bomb (see the map)';
     if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Click to aim' : 'Click to aim with the mouse';
@@ -1476,7 +1571,7 @@ function drawShop() {
     const ql = questionLevel(it.id); // the level of the item's question (none for a custom CSV)
     if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
-  text('1-5 o clic para elegir  |  B para cerrar', x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
+  text(`1-5 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
 }
 /** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
 function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {
@@ -1530,8 +1625,8 @@ function drawCard() {
     drawVerdict(ok, sx + 10, fy, 20, col);
     text(msg, sx + 30, fy, 18, col, 'left');
   } else {
-    const hint = defuse ? `1-4 o clic para responder  |  E para alejarte${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`
-      : '1-4 o clic para responder  |  B para cancelar';
+    const hint = defuse ? `1-4 o clic para responder  |  ${keyName(bind.use)} para alejarte${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`
+      : `1-4 o clic para responder  |  ${keyName(bind.buy)} para cancelar`;
     text(hint, W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal');
   }
   // The lockout bar under the card: it empties over the lockout, so the player sees why presses are ignored.
@@ -1562,6 +1657,7 @@ function drawTitle() {
   text('OR', tx, 74, 76, '#ffffff', 'left'); tx += tw2;
   text('BOOM', tx, 74, 76, SIDE_CSS.att, 'left');
   text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
+  button(1060, 24, 180, 48, 'Controles', 'controls', { size: 22 });
   const custom = session.subject === QUESTIONS.CUSTOM;
   // 1. subject
   rr(40, 170, 330, 400, 16, 'rgba(14,19,30,0.9)', null);
@@ -1633,8 +1729,11 @@ function drawTitle() {
   });
   // start
   button(820, 592, 420, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
-  text('WASD mover  |  Ratón apuntar  |  Clic disparar  |  R recargar  |  B comprar  |  1-4 responder  |  E plantar o desactivar  |  P pausa  |  M silencio',
-    W / 2, 684, 16, '#e4e9f4', 'center', 'normal');
+  const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
+  const line = `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón apuntar  |  Clic disparar  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
+  let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
+  while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
+  text(clip(line, W - 40, ls, 'normal'), W / 2, 684, ls, '#e4e9f4', 'center', 'normal');
   text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 708, 15, '#aab4c8', 'center', 'normal');
 }
 function drawResults() {
@@ -1684,7 +1783,7 @@ function drawFigures() {
 
 // ---- Loop: fixed step, frame time clamped ---------------------------------------------
 function step() {
-  if (pressed('KeyM')) { setMuted(!isMuted()); hit.delete('KeyM'); }
+  if (scene !== 'controls' && pressed(bind.mute)) { setMuted(!isMuted()); hit.delete(bind.mute); }
   scenes[scene].update(STEP); hit.clear();
   if (clicks.length > 4) clicks.length = 0;
 }

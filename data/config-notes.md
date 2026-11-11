@@ -9,8 +9,22 @@ holds no comments. The values themselves are in `data/config.json`.
 ---- Player -------------------------------------------------------------------------
 - `mouse_sens`: multiplier; [ and ] on the pause screen
 - `key_turn_speed`: radians/s when turning with the arrow keys
-- `run_speed`: m/s
-- `walk_speed`: m/s with Shift
+- `run_speed`: m/s, the normal pace (no key held)
+- `walk_speed`: m/s holding the walk key (X by default; keys in data/keybinds.json)
+- `sprint_speed`: m/s holding the sprint key (Left Shift) while moving; no shooting while sprinting; it stands you up from prone
+- `crouch_eye`: m, eye height while holding crouch (C); standing is EYE, 1.6 m, in src/game/map.ts
+- `crouch_speed_mult`: speed multiplier while crouched
+- `crouch_spread_mult`: your shot spread multiplier while crouched
+- `crouch_hit_mult`: bots' hit chance against you, multiplied, while crouched
+- `prone_eye`: m, eye height while prone (Z toggles)
+- `prone_speed_mult`: speed multiplier while prone
+- `prone_spread_mult`: your shot spread multiplier while prone
+- `prone_hit_mult`: bots' hit chance against you, multiplied, while prone
+- `prone_time`: s to get down or up; no moving or shooting meanwhile; the stance counts from the end of it
+- `jump_velocity`: m/s upward at take-off (Space); only standing, on the ground
+- `gravity`: m/s² pulling a jump back down
+- `air_spread_mult`: your shot spread multiplier in the air
+- `eye_rate`: how fast the eye moves to a new stance's height (share of the gap closed per second; higher is snappier)
 - `armor_absorb`: share of damage armour takes
 - `headshot_mult`: the player's shots only
 

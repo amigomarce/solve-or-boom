@@ -1,0 +1,32 @@
+{
+  "actions": [
+    { "id": "forward", "label": "Avanzar", "key": "KeyW" },
+    { "id": "back", "label": "Retroceder", "key": "KeyS" },
+    { "id": "left", "label": "Izquierda", "key": "KeyA" },
+    { "id": "right", "label": "Derecha", "key": "KeyD" },
+    { "id": "shoot", "label": "Disparar", "key": "KeyF" },
+    { "id": "reload", "label": "Recargar", "key": "KeyR" },
+    { "id": "buy", "label": "Comprar", "key": "KeyB" },
+    { "id": "use", "label": "Plantar / desactivar", "key": "KeyE" },
+    { "id": "swap", "label": "Cambiar arma", "key": "KeyQ" },
+    { "id": "primary", "label": "Arma principal", "key": "Digit1" },
+    { "id": "pistol", "label": "Pistola", "key": "Digit2" },
+    { "id": "jump", "label": "Saltar", "key": "Space" },
+    { "id": "sprint", "label": "Correr", "key": "ShiftLeft" },
+    { "id": "walk", "label": "Caminar", "key": "KeyX" },
+    { "id": "crouch", "label": "Agacharse (mantener)", "key": "KeyC" },
+    { "id": "prone", "label": "Tumbarse (pulsar)", "key": "KeyZ" },
+    { "id": "pause", "label": "Pausa", "key": "KeyP" },
+    { "id": "mute", "label": "Silencio", "key": "KeyM" }
+  ],
+  "names": {
+    "Space": "Espacio", "ShiftLeft": "Mayús izq.", "ShiftRight": "Mayús der.",
+    "ControlLeft": "Ctrl izq.", "ControlRight": "Ctrl der.", "AltLeft": "Alt", "AltRight": "Alt Gr",
+    "MetaLeft": "Cmd izq.", "MetaRight": "Cmd der.", "Enter": "Intro", "NumpadEnter": "Intro num.",
+    "Backspace": "Retroceso", "Tab": "Tabulador", "CapsLock": "Bloq Mayús", "Delete": "Supr",
+    "Insert": "Insertar", "Home": "Inicio", "End": "Fin", "PageUp": "Re Pág", "PageDown": "Av Pág",
+    "Minus": "-", "Equal": "=", "BracketLeft": "[", "BracketRight": "]", "Backslash": "\\",
+    "Semicolon": ";", "Quote": "'", "Backquote": "º", "Comma": ",", "Period": ".", "Slash": "/",
+    "IntlBackslash": "<"
+  }
+}

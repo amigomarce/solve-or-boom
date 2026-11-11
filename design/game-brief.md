@@ -17,7 +17,7 @@ After play: the bomb does not appear in the game
 
 **Genre:** first-person team shooter (attack / defend the bomb) + educational quiz
 
-**Controls:** WASD move, mouse aim, click shoot, R reload, Shift walk quietly, B buy menu in your base, 1–4 or click to answer, E hold to plant / E to open the defuse question when defending. *(guessed)*
+**Controls:** WASD move, mouse aim, click shoot, R reload, Shift sprint, X walk, C crouch, Z prone, Space jump (all rebindable in Controles), B buy menu in your base, 1–4 or click to answer, E hold to plant / E to open the defuse question when defending. *(guessed)*
 
 **Question:** Do quiz questions under pressure (buy timer, ticking bomb) make you *want* to answer fast and right — instead of feeling like homework bolted onto a shooter?
 
@@ -55,6 +55,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Mouse-look with sensitivity setting, hit markers, distinct guns (pistol, SMG, rifle, sniper), hurt direction marker
 - [x] One original map with two bomb sites (A and B), two bases, 3 lanes
 - [x] Map selector on the session screen: Pequeño (the original, 108×72 m), Grande (1.5×), Patio and Pasillos (162×108 m), each with its own round time; maps are data in data/maps/
+- [x] Controls menu (pause and session screen) to rebind every action, saved in the browser; sprint (Shift, no shooting), walk (X), crouch (hold C), prone (toggle Z) and jump (Space), each with its costs and benefits in data/config.json and a HUD stance indicator
 - [x] Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong
 
 ## Your systems
