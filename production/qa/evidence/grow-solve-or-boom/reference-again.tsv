@@ -1,0 +1,175 @@
+browser	/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+time	2026-11-11 12:57:53
+render	cheap
+webgl	ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)
+console	2532	[.WebGL-0x11400534200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+ua	HeadlessChrome/157.0.0.0
+scene	0	title
+state	0	title	{"t":0,"score":[0,0],"gained":"","round":0,"attSquad":0,"phase":"buy","phaseT":0,"roundT":0,"players":"[8 items]","human":{"id":0,"name":"You","role":"rifleman","squad":0,"human":true,"x":0,"z":0,"px"
+scene	1	play
+state	1	play	{"t":0,"score":[0,0],"gained":"","round":1,"attSquad":0,"phase":"buy","phaseT":25,"roundT":105,"players":"[8 items]","human":{"id":0,"name":"You","role":"rifleman","squad":0,"human":true,"x":10.5,"z":
+playinput	64	KeyB
+frame	3481	6d7ce3c5
+frame	3482	aeea405
+frame	3483	bcab8fac
+frame	3484	f8cf60a6
+frame	3485	a5e188f6
+frame	3486	c0d01f4b
+frame	3487	4e14fa6b
+frame	3488	3bbdd856
+frame	3489	f2345e3c
+frame	3490	98d37e4c
+frame	3491	a3d472fc
+frame	3492	ed5a94a
+frame	3493	73f59320
+frame	3494	4e493f72
+frame	3495	d91d2587
+frame	3496	957d9495
+frame	3497	33905696
+frame	3498	e1f9a2f3
+frame	3499	7a818b82
+frame	3500	2d9afd82
+frame	3501	67314388
+frame	3502	f4e903f6
+frame	3503	7ae4a6e8
+frame	3504	e4416e27
+frame	3505	1a668a0b
+frame	3506	662c1ed1
+frame	3507	c35ab231
+frame	3508	c2811597
+frame	3509	3d36afa0
+frame	3510	d841f5a0
+frame	3511	7cc7fdd1
+frame	3512	bc852cb7
+frame	3513	4ac3daf2
+frame	3514	98dfa36f
+frame	3515	5a29756b
+frame	3516	6f057b01
+frame	3517	2ede12a6
+frame	3518	eecf5800
+frame	3519	cbdfe0e1
+frame	3520	d5dbfab8
+frame	3521	ee5d688b
+frame	3522	ec1af09
+frame	3523	3251d39d
+frame	3524	9b7de502
+frame	3525	da104f8e
+frame	3526	51ceb08f
+frame	3527	e0c8da9a
+frame	3528	e552b37b
+frame	3529	efd6ceee
+frame	3530	21cd33bf
+frame	3531	d4985cdc
+frame	3532	b72c1797
+frame	3533	9e203e44
+frame	3534	f7f76ac8
+frame	3535	5b69ae5
+frame	3536	62a0274e
+frame	3537	6ca2fc31
+frame	3538	ffbf61bc
+frame	3539	c2cf6bc1
+frame	3540	b3120380
+frame	3541	21cd7a27
+frame	3542	6d1746dd
+frame	3543	1856d775
+frame	3544	2ed30de0
+frame	3545	4547cc6e
+frame	3546	a9bf9488
+frame	3547	144379a0
+frame	3548	b9e374ad
+frame	3549	e3b05fed
+frame	3550	9312e117
+frame	3551	ee9aa2bc
+frame	3552	7c976b7b
+frame	3553	264a48e2
+frame	3554	ae3ffbf5
+frame	3555	25cffe0d
+frame	3556	ae74c370
+frame	3557	beb58087
+frame	3558	3e7aac86
+frame	3559	6f24da08
+frame	3560	ba164c90
+frame	3561	e42d90b1
+frame	3562	b0aa8a26
+frame	3563	f2f5df3d
+frame	3564	d59a4976
+frame	3565	143e01ee
+frame	3566	b1f069bf
+frame	3567	7e57508c
+frame	3568	e9252e7d
+frame	3569	e5583fc3
+frame	3570	b3bbf602
+frame	3571	36943f86
+frame	3572	e0514566
+frame	3573	45c8f6eb
+frame	3574	7a2d046e
+frame	3575	154094ea
+frame	3576	98fedb25
+frame	3577	c57da0d0
+frame	3578	9fc85fe
+frame	3579	1615c661
+frame	3580	6927c910
+frame	3581	19a6f0af
+frame	3582	1a06cc55
+frame	3583	f96b2455
+frame	3584	c5037f1b
+frame	3585	3392b229
+frame	3586	b0889678
+frame	3587	38a0f74c
+frame	3588	303567a5
+frame	3589	ac7a3efe
+frame	3590	98c795b8
+frame	3591	6356da4e
+frame	3592	cde849db
+frame	3593	8ed287e6
+frame	3594	e2a290e3
+frame	3595	c2239075
+frame	3596	74661e64
+frame	3597	e6bca660
+frame	3598	789242b2
+frame	3599	8899b518
+frame	3600	e406abee
+state	3600	play	{"t":59.98,"score":[0,0],"gained":"","round":1,"attSquad":0,"phase":"live","phaseT":-0.02,"roundT":84.82,"players":"[8 items]","human":{"id":0,"name":"You","role":"rifleman","squad":0,"human":true,"x"
+digits	log	bold 24px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	15px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 17px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	16px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 38px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 28px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 32px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 22px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 30px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 26px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 20px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	bold 14px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+digits	log	14px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
+loop	log	none	no loop() step was marked
+first	log	none	no state.beat
+pressure	none	the game set no number state.margin in play
+steptime	3600	0.012	1.400
+frametime	60	28.8	365.2	3180	17	5
+done	3600	play	stop	60.0	7243
+console	0	[.WebGL-0x11400534200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	0	[.WebGL-0x11400534200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	0	[.WebGL-0x11400534200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+measured	1280x720
+text	play	canvas	95,230,232,244	19.3	8.30	inside	Bot Tomas (Rifleman)
+text	play	canvas	614,339,667,350	20.7	6.69	inside	BOMB A
+text	play	canvas	629,353,651,363	19.3	18.96	inside	6 m
+text	play	canvas	144,42,155,54	22.1	2.75	inside	A
+text	play	canvas	146,107,154,119	22.1	2.75	inside	B
+text	play	canvas	540,27,560,55	52.5	8.23	inside	0
+text	play	canvas	720,27,740,55	52.5	8.75	inside	0
+text	play	canvas	428,37,522,49	22.1	8.23	inside	You: ATTACK
+text	play	canvas	785,37,826,49	22.1	8.75	inside	Rivals
+text	play	canvas	625,23,682,45	38.7	9.18	inside	0:26
+text	play	canvas	572,55,709,69	19.3	12.50	inside	Round 1     First to 4
+text	play	canvas	1002,24,1249,39	22.1	19.31	inside	Bot Mila took out Bot Kira (Pistol)
+text	play	canvas	74,656,125,679	44.2	18.99	inside	100
+text	play	canvas	202,656,218,679	44.2	6.10	inside	0
+text	play	canvas	256,658,305,679	30.4	13.84	inside	$350
+text	play	canvas	1011,661,1048,676	27.6	12.50	inside	SMG
+text	play	canvas	1148,657,1244,679	41.4	18.99	inside	25 / 75
+screen	3600	play	8ec78e7	drawn
+uncaught	0
+shot	/var/folders/8s/m8sr2mb1409_mdg4dzfc82y00000gn/T/tmp.evVZVtizcl/again.png	135305

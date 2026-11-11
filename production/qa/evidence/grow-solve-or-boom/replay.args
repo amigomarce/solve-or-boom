@@ -1,0 +1,2 @@
+stop	3600
+log	Enter wait:1 KeyB wait:0.3 Digit1 wait:1.5 Digit1 wait:1.5 KeyB wait:21 KeyD:0.55 KeyW:5.5 KeyA:0.55 KeyW:3.4 ArrowLeft:0.65 KeyW:2.8 ArrowRight:0.65 KeyW:2.2 KeyE:3.5 KeyS:1.1 wait:1
