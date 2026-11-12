@@ -3,6 +3,7 @@
 // The scenes, the 3D world, the bots and the loop live here; the pure rules, the map, sound,
 // input, drawing and the questions are modules beside it.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG, tune } from './config';
 import AULA from '../data/aula.json';
 import * as QUESTIONS from './questions';
@@ -401,67 +402,180 @@ function makeFlash(size: number): THREE.Group {
   const c = a.clone(); c.rotation.x = Math.PI / 2; g.add(c);
   g.visible = false; return g;
 }
+/** Colours of the four guns' accents and tracers: the look, not tuning (sizes and lifetimes are `fx_*` in data/config.json). */
+const GUN_FX: Record<string, { accent: number; tracer: number }> = {
+  pistol: { accent: 0x2fb3a8, tracer: 0xffe08a }, smg: { accent: 0xf08a2a, tracer: 0xffb84a },
+  rifle: { accent: 0x7bb83a, tracer: 0xfff3c0 }, sniper: { accent: 0xd8483c, tracer: 0xffffff },
+};
+// ---- The figures (story 009): polished blocks -------------------------------------------
+// Boxes and their outlines are shared between all characters; a character owns only its team material (hit tint) and its pose.
+const boxGeos: Record<string, THREE.BoxGeometry> = {}, edgeGeos: Record<string, THREE.EdgesGeometry> = {};
+const outline = new THREE.LineBasicMaterial({ color: 0x0b0d10 });
+/** A block that reuses its geometry (and, with `edge`, its dark outline) from one of the same size; the parent may be a pivot. */
+function blk(parent: THREE.Object3D, w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, edge = false): THREE.Mesh {
+  const key = w + ',' + h + ',' + d, geo = boxGeos[key] ?? (boxGeos[key] = new THREE.BoxGeometry(w, h, d));
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m);
+  if (edge) m.add(new THREE.LineSegments(edgeGeos[key] ?? (edgeGeos[key] = new THREE.EdgesGeometry(geo)), outline));
+  return m;
+}
+const CM = { // shared colours of the figures (the look, not tuning)
+  dark: lam(0x2b3038), skin: lam(0xd9a273), pants: lam(0x3b475a), boot: lam(0x2a2420), metal: lam(0x2a2d33), olive: lam(0x66753a),
+  vest: lam(0x4a573a), wood: lam(0x7a5233), cloth: lam(0xc23b2b), visor: lam(0x8fe3ff), white: lam(0xf4f4f4),
+  acc: { pistol: lam(GUN_FX.pistol.accent), smg: lam(GUN_FX.smg.accent), rifle: lam(GUN_FX.rifle.accent), sniper: lam(GUN_FX.sniper.accent) } as Record<string, THREE.MeshLambertMaterial>,
+};
+/** Marks every block (mesh or outline) under `root` as fixed to its parent: its matrix is made once, not every frame. */
+function freeze(root: THREE.Object3D): void {
+  root.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) { o.matrixAutoUpdate = false; o.updateMatrix(); } });
+}
+const mergedGeos: Record<string, THREE.BufferGeometry> = {};
+/**
+ * Joins the plain blocks (no outline) that hang from the same pivot and share a material into one mesh, so a figure is
+ * fewer draw calls. The joined geometry is cached under `key` (the role, or the gun), so figures of one kind share it.
+ */
+function mergeBlocks(root: THREE.Object3D, key: string): void {
+  const pivots: THREE.Object3D[] = [];
+  root.traverse(o => { if (!(o instanceof THREE.Mesh) && o.children.length) pivots.push(o); });
+  pivots.forEach((pv, i) => {
+    const byMat = new Map<THREE.Material, THREE.Mesh[]>();
+    for (const c of pv.children) if (c instanceof THREE.Mesh && !c.children.length && !Array.isArray(c.material)) { const l = byMat.get(c.material); if (l) l.push(c); else byMat.set(c.material, [c]); }
+    let j = 0;
+    for (const [mat, list] of byMat) {
+      const k = key + '/' + i + '/' + j++;
+      if (list.length < 2) continue;
+      const geo = mergedGeos[k] ?? (mergedGeos[k] = mergeGeometries(list.map(c => { c.updateMatrix(); return c.geometry.clone().applyMatrix4(c.matrix); })));
+      for (const c of list) pv.remove(c);
+      pv.add(new THREE.Mesh(geo, mat));
+    }
+  });
+}
+/** Hands-held guns, built once: the four first-person silhouettes of story 008, simplified. Muzzle toward -z; `muzzle` is how far. */
+const holdGuns: Record<string, { tpl: THREE.Group; muzzle: number }> = {};
+for (const kind of ['pistol', 'smg', 'rifle', 'sniper']) {
+  const g = new THREE.Group(), a = CM.acc[kind], b = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): void => { blk(g, w, h, d, mat, x, y, z).rotation.x = rx; };
+  let muzzle: number;
+  if (kind === 'pistol') { b(0.055, 0.06, 0.22, CM.metal, 0, 0.02, -0.08); b(0.058, 0.014, 0.2, a, 0, 0.056, -0.08); b(0.045, 0.13, 0.06, CM.wood, 0, -0.07, 0, 0.25); muzzle = -0.2; }
+  else if (kind === 'smg') { b(0.08, 0.1, 0.34, CM.metal, 0, 0, -0.1); b(0.084, 0.03, 0.3, a, 0, 0.065, -0.1); b(0.045, 0.22, 0.07, a, 0, -0.16, -0.14, 0.08); b(0.03, 0.03, 0.12, CM.metal, 0, 0.01, -0.32); muzzle = -0.38; }
+  else if (kind === 'rifle') { b(0.07, 0.1, 0.4, CM.metal, 0, 0, -0.1); b(0.075, 0.08, 0.24, a, 0, -0.005, -0.4); b(0.022, 0.022, 0.2, CM.metal, 0, 0.02, -0.65); b(0.05, 0.17, 0.06, CM.metal, 0, -0.14, -0.1, -0.35); b(0.06, 0.15, 0.24, CM.wood, 0, -0.03, 0.24, -0.12); muzzle = -0.77; }
+  else {
+    b(0.06, 0.08, 0.62, CM.metal, 0, 0, -0.1); b(0.03, 0.03, 0.5, CM.metal, 0, 0.015, -0.66); b(0.05, 0.05, 0.08, a, 0, 0.015, -0.93); b(0.065, 0.13, 0.3, CM.wood, 0, -0.03, 0.3, -0.08);
+    blk(g, 0.07, 0.07, 0.34, CM.dark, 0, 0.1, -0.15); blk(g, 0.09, 0.09, 0.05, a, 0, 0.1, -0.33); // a boxy scope with an accent lens ring
+    for (const sx of [-1, 1]) blk(g, 0.014, 0.16, 0.014, CM.metal, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
+    muzzle = -0.98;
+  }
+  mergeBlocks(g, kind); freeze(g); holdGuns[kind] = { tpl: g, muzzle };
+}
+const LEG = { thigh: 0.4, shin: 0.46 }; // leg segment lengths of the figure (the hip height follows the bend)
+/**
+ * One character built from blocks (Brief MVP feature 22, story 009): a cap and bare brow for attackers or a visored helmet for
+ * defenders (both exist, `setSide` shows one); gear by role (rusher: bandana and pouch; rifleman: chest vest and shoulder pads;
+ * sniper: wide brim, big pack and ghillie strips); jointed legs and arms; all four hand guns (the held one shows). `team` is the
+ * one material of this character that carries the side colour (and the red hit tint). Posed each frame by `poseSoldier`.
+ */
 function makeSoldier(role: string) {
-  const g = new THREE.Group();
-  const team = lam(0xf08a24), dark = lam(0x2b3038), skin = lam(0xd9a273), pants = lam(0x3b475a);
-  const boot = lam(0x2a2420), metal = lam(0x24272c), olive = lam(0x66753a), vest = lam(0x4a573a);
-  const legs: THREE.Group[] = [];
+  const g = new THREE.Group(), team = lam(0xf08a24), M = CM;
+  const body = new THREE.Group(); g.add(body);
+  const legs: THREE.Group[] = [], knees: THREE.Group[] = [];
   for (const sx of [-0.12, 0.12]) {
-    const leg = new THREE.Group(); leg.position.set(sx, 0.86, 0);
-    box(0.17, 0.78, 0.2, pants, 0, -0.4, 0, leg); box(0.19, 0.12, 0.3, boot, 0, -0.8, -0.04, leg);
-    g.add(leg); legs.push(leg);
+    const hip = new THREE.Group(); hip.position.set(sx, LEG.thigh + LEG.shin, 0); body.add(hip);
+    blk(hip, 0.17, LEG.thigh, 0.2, M.pants, 0, -LEG.thigh / 2, 0);
+    const knee = new THREE.Group(); knee.position.set(0, -LEG.thigh, 0); hip.add(knee);
+    blk(knee, 0.15, LEG.shin - 0.1, 0.18, M.pants, 0, -(LEG.shin - 0.1) / 2, 0);
+    blk(knee, 0.19, 0.12, 0.3, M.boot, 0, -LEG.shin + 0.06, -0.05);
+    legs.push(hip); knees.push(knee);
   }
-  const gun = new THREE.Group(); gun.position.set(0.14, 1.24, -0.18); g.add(gun);
-  let muzzleZ = 0;
-  const arms = (bulk: number): void => {
-    for (const sx of [-1, 1]) {
-      const a = box(0.12 * bulk, 0.48, 0.12 * bulk, team, sx * 0.25 * bulk, 1.25, -0.2, g);
-      a.rotation.x = -1.25; a.rotation.z = sx * -0.25;
-      box(0.11, 0.1, 0.11, skin, sx * 0.13, 1.2, -0.42, g);
-    }
-  };
-  if (role === 'rusher') { // slim, hooded, masked, short SMG
-    box(0.42, 0.58, 0.24, team, 0, 1.15, 0, g);
-    box(0.3, 0.14, 0.03, dark, 0, 1.0, -0.13, g);
-    box(0.25, 0.27, 0.25, skin, 0, 1.58, 0, g);
-    box(0.27, 0.11, 0.27, dark, 0, 1.53, 0, g);
-    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.48, 4), team); hood.position.set(0, 1.78, 0.04); hood.rotation.y = Math.PI / 4; g.add(hood);
-    box(0.3, 0.32, 0.12, team, 0, 1.6, 0.13, g);
-    arms(1);
-    box(0.08, 0.13, 0.36, metal, 0, 0, -0.2, gun); box(0.06, 0.2, 0.07, metal, 0, -0.14, -0.16, gun);
-    muzzleZ = -0.4;
-  } else if (role === 'rifleman') { // broad, helmet, armoured vest, long rifle
-    box(0.52, 0.62, 0.3, team, 0, 1.16, 0, g);
-    box(0.56, 0.42, 0.36, vest, 0, 1.18, 0, g);
-    for (const px of [-0.15, 0, 0.15]) box(0.11, 0.13, 0.08, olive, px, 1.08, -0.21, g);
-    for (const sx of [-1, 1]) box(0.18, 0.13, 0.32, team, sx * 0.34, 1.43, 0, g);
-    box(0.24, 0.26, 0.24, skin, 0, 1.6, 0, g);
-    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), team);
-    helm.position.set(0, 1.69, 0); helm.scale.set(1.05, 0.9, 1.15); g.add(helm);
-    box(0.25, 0.06, 0.05, dark, 0, 1.63, -0.13, g);
-    arms(1.2);
-    box(0.07, 0.11, 0.86, metal, 0, 0, -0.38, gun); box(0.06, 0.18, 0.07, metal, 0, -0.13, -0.3, gun);
-    box(0.06, 0.14, 0.2, metal, 0, -0.03, 0.12, gun);
-    muzzleZ = -0.82;
-  } else { // sniper: wide-brim hat, backpack, ghillie strips, very long scoped rifle
-    box(0.44, 0.58, 0.26, team, 0, 1.14, 0, g);
-    box(0.36, 0.46, 0.2, olive, 0, 1.2, 0.23, g);
-    for (let k = 0; k < 7; k++) {
-      const sx = -0.24 + k * 0.08, len = 0.32 + ((k * 37) % 5) * 0.05;
-      box(0.05, len, 0.05, olive, sx, 1.42 - len / 2, 0.16 + (k % 2) * 0.12, g);
-    }
-    box(0.24, 0.26, 0.24, skin, 0, 1.58, 0, g);
-    cyl(0.38, 0.38, 0.03, 8, olive, 0, 1.73, 0, g);
-    cyl(0.17, 0.2, 0.17, 8, olive, 0, 1.81, 0, g);
-    cyl(0.205, 0.205, 0.05, 8, team, 0, 1.76, 0, g);
-    arms(1);
-    box(0.06, 0.09, 1.25, metal, 0, 0, -0.5, gun);
-    const sc = cyl(0.045, 0.045, 0.34, 6, dark, 0, 0.1, -0.25, gun); sc.rotation.x = Math.PI / 2;
-    for (const sx of [-1, 1]) { const b = box(0.02, 0.32, 0.02, metal, sx * 0.05, -0.14, -0.95, gun); b.rotation.z = sx * 0.4; }
-    muzzleZ = -1.14;
+  const torso = new THREE.Group(); body.add(torso); // pivot at the hips
+  const rf = role === 'rifleman', sn = role === 'sniper', ru = role === 'rusher', bw = rf ? 1.2 : 1;
+  blk(torso, 0.42 * bw, 0.58, rf ? 0.3 : 0.24, team, 0, 0.29, 0, true);
+  blk(torso, 0.46 * bw, 0.08, rf ? 0.34 : 0.28, M.dark, 0, 0.04, 0); blk(torso, 0.1, 0.08, 0.03, M.white, 0, 0.04, -0.15); // belt and buckle
+  for (const sx of [-1, 1]) blk(torso, 0.1, 0.12, 0.1, M.olive, sx * 0.25 * bw, 0.1, 0.02); // pouches at the hips
+  blk(torso, 0.3, 0.38, 0.12, M.olive, 0, 0.32, 0.18 * (sn ? 1.6 : 1) + 0.0, true); // backpack
+  if (sn) { blk(torso, 0.4, 0.2, 0.16, M.olive, 0, 0.22, 0.34); for (let k = 0; k < 6; k++) blk(torso, 0.05, 0.3 + (k * 37 % 5) * 0.05, 0.05, M.olive, -0.2 + k * 0.08, 0.5 - 0.15, 0.1 + (k % 2) * 0.1); } // big pack and ghillie strips
+  if (rf) { blk(torso, 0.5, 0.4, 0.34, M.vest, 0, 0.36, 0, true); for (const px of [-0.14, 0, 0.14]) blk(torso, 0.1, 0.13, 0.08, M.olive, px, 0.2, -0.2); for (const sx of [-1, 1]) blk(torso, 0.18, 0.12, 0.3, team, sx * 0.32, 0.56, 0); } // vest, magazines and shoulder pads
+  const head = new THREE.Group(); head.position.set(0, 0.74, 0); torso.add(head);
+  blk(head, 0.25, 0.27, 0.25, M.skin, 0, 0, 0, true); blk(head, 0.23, 0.04, 0.02, M.dark, 0, 0.03, -0.131); // face and eye band
+  for (const sx of [-1, 1]) blk(head, 0.035, 0.035, 0.02, M.white, sx * 0.055, 0.03, -0.134);
+  const cap = new THREE.Group(); head.add(cap); // attackers: a cap with a short peak
+  blk(cap, 0.28, 0.12, 0.28, team, 0, 0.15, 0, true); blk(cap, 0.26, 0.04, 0.12, team, 0, 0.1, -0.2);
+  const helm = new THREE.Group(); head.add(helm); // defenders: a taller helmet with a dark visor band
+  blk(helm, 0.3, 0.2, 0.3, team, 0, 0.14, 0, true); blk(helm, 0.3, 0.07, 0.04, M.visor, 0, 0.07, -0.152); blk(helm, 0.32, 0.04, 0.32, M.dark, 0, 0.25, 0);
+  if (ru) { blk(head, 0.27, 0.11, 0.27, M.cloth, 0, -0.08, -0.005); blk(head, 0.07, 0.1, 0.06, M.cloth, 0.13, -0.14, 0.12); } // bandana over the nose and mouth, with a knot
+  const brim = new THREE.Group(); head.add(brim); // the sniper's wide brim hangs from its own pivot at the head, which poseSoldier keeps level
+  if (sn) blk(brim, 0.62, 0.03, 0.62, M.olive, 0, 0.15, 0, true); // wide brim
+  const aim = new THREE.Group(); aim.position.set(0, 0.55, 0); torso.add(aim); // pivot at the shoulders: the arms and the gun
+  const uppers: THREE.Group[] = [], fores: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const up = new THREE.Group(); up.position.set(sx * 0.27 * bw, 0, 0); aim.add(up);
+    blk(up, 0.12, 0.3, 0.12, team, 0, -0.15, 0, true);
+    const fo = new THREE.Group(); fo.position.set(0, -0.3, 0); up.add(fo);
+    blk(fo, 0.1, 0.3, 0.1, team, 0, -0.15, 0, true); blk(fo, 0.11, 0.1, 0.11, M.skin, 0, -0.33, 0);
+    uppers.push(up); fores.push(fo);
   }
-  const flash = makeFlash(0.45); flash.position.set(0, 0, muzzleZ - 0.1); gun.add(flash);
-  return { group: g, legs, team, flash, muzzleZ };
+  const hold = new THREE.Group(); hold.position.set(0.05, -0.2, -0.3); hold.scale.setScalar(1.2); aim.add(hold);
+  const guns: Record<string, THREE.Object3D> = {};
+  const flash = makeFlash(0.45); aim.add(flash);
+  const own = role === 'rusher' ? 'smg' : role === 'sniper' ? 'sniper' : 'rifle';
+  const m = { group: g, legs, knees, body, torso, head, aim, uppers, fores, hold, guns, cap, helm, team, flash, gun: '', ph: 0, amp: 0, lx: 0, lz: 0, cr: 0, pr: 0, dn: 0, wk: 0, ready: false, back: 0, front: 0, brim };
+  mergeBlocks(g, role); freeze(g);
+  // How far the blocks reach behind (back) and in front (front, head left out: it is raised when prone) of the body line,
+  // so a fall on the back or a prone lies on the floor and not under it. The arms and the gun are not counted (held up).
+  torso.remove(aim); g.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(body); m.back = box.max.z;
+  torso.remove(head); g.updateMatrixWorld(true); box.setFromObject(body); m.front = -box.min.z;
+  torso.add(head, aim);
+  setHeld(m, own); setSide(m, 'att');
+  return m;
+}
+type Soldier = ReturnType<typeof makeSoldier>;
+/** Shows the hand gun `kind` (and puts the muzzle flash at its muzzle); the same kind again does nothing. */
+function setHeld(m: Soldier, kind: string): void {
+  if (m.gun === kind || !holdGuns[kind]) return;
+  if (!m.guns[kind]) { m.guns[kind] = holdGuns[kind].tpl.clone(); m.hold.add(m.guns[kind]); } // a gun is built the first time this character holds it
+  if (m.gun) m.guns[m.gun].visible = false;
+  m.gun = kind; m.guns[kind].visible = true; m.flash.position.set(m.hold.position.x, m.hold.position.y, m.hold.position.z + holdGuns[kind].muzzle * 1.2 - 0.1);
+}
+/** Shows the attackers' cap or the defenders' helmet. */
+function setSide(m: Soldier, side: string): void { m.cap.visible = side === 'att'; m.helm.visible = side !== 'att'; }
+/**
+ * Poses one character for a frame from what the client already knows (no new network field). `dist` is how far it moved since
+ * the last frame (the walk phase follows distance, so the swing speed follows the speed), `dt` the frame time in s, `clock`
+ * seconds for the idle breath, `p` the player (alive, deadT, stance, jump, moving, planting, defusing).
+ */
+function poseSoldier(m: Soldier, p: Loose, dist: number, dt: number, clock: number): void {
+  const bl = 1 - Math.exp(-tune.chr_blend * dt), st = p.st?.stance;
+  const planting = p.alive && (p.plantT > 0 || (state.plantT > 0 && state.bomb.carrier === p)), work = planting || (p.alive && p.defusing);
+  const air = p.alive && p.st?.jumpY > 0.02 ? 1 : 0;
+  if (dist < 3) m.ph += dist * tune.chr_stride;
+  m.amp += ((p.alive && (p.moving || dist > 0.01) ? 1 : 0) * (st === 'prone' ? 0.25 : 1) - m.amp) * bl;
+  m.cr += (((p.alive && st === 'crouch') || work ? 1 : 0) - m.cr) * bl;
+  m.pr += ((p.alive && st === 'prone' ? 1 : 0) - m.pr) * bl;
+  m.wk += ((work ? 1 : 0) - m.wk) * bl;
+  const fall = p.alive ? 0 : Math.min(1, p.deadT / tune.chr_death_time); // 0 standing .. 1 on the floor
+  m.dn = fall;
+  const kneel = Math.max(m.cr, Math.sin(Math.min(1, fall * 2.5) * Math.PI) * 0.9), sw = Math.sin(m.ph) * m.amp * (1 - m.pr);
+  const th = (1.0 * kneel + 0.55 * air) , kn = (1.7 * kneel + 0.9 * air); // thigh and knee bend
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1, ph = m.ph + (i === 0 ? 0 : Math.PI);
+    m.legs[i].rotation.x = th + s * sw * tune.chr_leg_swing * (1 - kneel);
+    m.knees[i].rotation.x = -kn - Math.max(0, -Math.sin(ph - 0.6)) * 0.9 * m.amp * (1 - kneel);
+  }
+  const hip = LEG.thigh * Math.cos(th) + LEG.shin * Math.cos(th - kn);
+  const prone = m.pr, lean = -0.45 * m.wk - 0.06 * m.amp + 0.3 * Math.sin(fall * Math.PI); // + leans back: forward to work on the bomb and a little to walk, back in a fall
+  m.torso.position.y = hip + Math.abs(Math.sin(m.ph)) * tune.chr_bob * m.amp * (1 - kneel);
+  m.torso.rotation.x = lean + 0.12 * prone; // prone: the chest a little off the floor
+  m.head.rotation.x = 1.0 * prone; // prone: the head raised to look ahead
+  m.brim.rotation.x = -(m.body.rotation.x + m.torso.rotation.x + m.head.rotation.x); // the brim stays level whatever the head does: a hat on a lying head lies flat above it, not upright like a board
+  for (let i = 0; i < 2; i++) { m.legs[i].position.y = hip; m.legs[i].rotation.z = (i === 0 ? -0.12 : 0.12) * prone; } // prone: legs a little apart
+  const fe = fall * fall * (3 - 2 * fall); // the fall, eased
+  m.body.rotation.x = -prone * Math.PI / 2 + fe * Math.PI / 2; // face down when prone, backward in a fall
+  m.body.position.set(0, m.front * Math.sin(prone * Math.PI / 2) + m.back * Math.sin(fe * Math.PI / 2) + (air ? p.st.jumpY : 0), prone * 0.85); // lifted by the blocks that turn toward the floor
+  m.aim.rotation.x = prone * (Math.PI / 2 - 0.12) - lean + (fall > 0 ? -0.2 * fall : 0) + Math.sin(clock * 2 + p.id) * 0.015 * (1 - m.amp) + Math.sin(m.ph * 2) * 0.04 * m.amp;
+  const hide = m.wk > 0.5 || fall > 0.6; // the gun is put away to plant or defuse, and dropped in a fall
+  m.hold.visible = !hide;
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? -1 : 1, spread = air * 0.9 + fall * 0.6, arm = tune.chr_arm_swing * sw * s;
+    m.uppers[i].rotation.set(0.5 + arm - m.wk * 0.15 + air * 0.7 - fall * 0.4, 0, -s * (0.3 - spread * 0.7), 'XYZ'); // working: both hands down and forward, at the bomb
+    m.fores[i].rotation.x = 1.25 - m.wk * 1.15 - fall * 1.0 + (i === 0 ? 0.0 : 0.15);
+  }
 }
 function makeBomb() {
   const g = new THREE.Group();
@@ -491,11 +605,6 @@ const gunScene = new THREE.Scene();
 const gunCam = new THREE.PerspectiveCamera(60, W / H, 0.01, 10);
 gunScene.add(new THREE.HemisphereLight(0xfff4e0, 0x6d5c40, 2.3));
 const gunSun = new THREE.DirectionalLight(0xffffff, 1.8); gunSun.position.set(1, 2, 1); gunScene.add(gunSun);
-/** Colours of the four guns' accents and tracers: the look, not tuning (sizes and lifetimes are `fx_*` in data/config.json). */
-const GUN_FX: Record<string, { accent: number; tracer: number }> = {
-  pistol: { accent: 0x2fb3a8, tracer: 0xffe08a }, smg: { accent: 0xf08a2a, tracer: 0xffb84a },
-  rifle: { accent: 0x7bb83a, tracer: 0xfff3c0 }, sniper: { accent: 0xd8483c, tracer: 0xffffff },
-};
 /**
  * One first-person gun with its own silhouette (story 008): a short slim pistol, a boxy SMG with a long magazine, a rifle
  * with a stock, curved magazine and handguard, a long sniper with a big scope, bipod and muzzle brake. Flat colours with
@@ -590,6 +699,7 @@ for (let i = 0; i < 16; i++) {
   m.visible = false; world.add(m); decals.push({ m, t: 0 });
 }
 let decalI = 0;
+let lastPlace = 0; // the clock of the last placeModels call (character animation)
 const hitTint: Record<number, number> = {}; // player id -> the match time its red hit flash ends (set on the hit, cleared at a round's start)
 // The explosion: a white flash ball, a fireball, a flat shockwave ring and a tall column that clears the walls.
 const boomMat = (c: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
@@ -607,7 +717,7 @@ const beacon = makeBeacon(); world.add(beacon.group);
 // The carried bomb rides on the carrier's back, so you can see who has it.
 const backBombs = models.map(m => {
   const bb = makeBomb(); bb.group.scale.setScalar(0.9); bb.group.position.set(0, 0.78, 0.3); bb.group.rotation.set(Math.PI / 2, 0, 0);
-  bb.group.visible = false; m.group.add(bb.group); return bb;
+  bb.group.visible = false; m.body.add(bb.group); return bb;
 });
 // In first person the bomb is in your hands while you plant it.
 const viewBomb = makeBomb(); viewBomb.group.visible = false; viewBomb.group.scale.setScalar(0.55); viewBomb.group.position.set(0.02, -0.3, -0.55);
@@ -913,25 +1023,21 @@ function toggleTopic(t: string): void {
 
 // ---- Drawing: the 3D view ----------------------------------------------------------------
 function placeModels() {
+  const now = performance.now(), dt = Math.min(0.1, Math.max(0.001, (now - lastPlace) / 1000)), clock = now / 1000; lastPlace = now;
   for (const p of state.players) {
     const m = models[p.id];
     if (hitTint[p.id] > 0) { const on = state.t < hitTint[p.id] && state.t > hitTint[p.id] - 1; m.team.color.setHex(on ? 0xff2a1a : SIDE_HEX[sideOf(state, p)]); if (!on) hitTint[p.id] = 0; } // a hit flashes the model red for fx_hit_tint of match time (a new match's clock restarting ends it too)
     if (p === state.human) continue; // other students are drawn like bots
     const x = lerp(p.px, p.x, ALPHA), z = lerp(p.pz, p.z, ALPHA);
-    m.group.position.set(x, 0, z);
-    if (p.alive) {
-      m.group.rotation.set(0, p.yaw, 0);
-      if (p.moving) p.walkPh += 0.18; else p.walkPh *= 0.9;
-      const sw = Math.sin(p.walkPh) * (p.moving ? 0.6 : 0);
-      m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
-      m.group.position.y = p.defusing ? -0.35 : 0;
-    } else {
-      const k = Math.min(1, p.deadT / 0.4);
-      m.group.rotation.set(k * Math.PI / 2, p.yaw, 0, 'YXZ');
-    }
-    m.flash.visible = p.flashT > 0;
+    const dist = m.ready ? Math.hypot(x - m.lx, z - m.lz) : 0; m.lx = x; m.lz = z; m.ready = true; // how far it moved since the last frame drives the walk
+    m.group.position.set(x, 0, z); m.group.rotation.set(0, p.yaw, 0);
+    setSide(m, sideOf(state, p)); setHeld(m, p.cur);
+    poseSoldier(m, p, dist, dt, clock);
+    m.flash.visible = p.alive && p.flashT > 0 && m.hold.visible;
     m.flash.rotation.z = state.t * 40; m.flash.scale.setScalar((tune['fx_' + p.cur + '_flash'] ?? 0.45) / 0.45); // 0.45: the soldier flash's own size (makeSoldier); an unknown gun keeps it
-    backBombs[p.id].group.visible = p.alive && state.bomb.state === 'carried' && state.bomb.carrier === p;
+    const bb = backBombs[p.id].group, planting = p.alive && (p.plantT > 0 || (state.plantT > 0 && state.bomb.carrier === p));
+    bb.visible = p.alive && state.bomb.state === 'carried' && state.bomb.carrier === p;
+    if (planting) { bb.position.set(0, 0.3, -0.5); bb.rotation.set(0, 0, 0); } else { bb.position.set(0, 0.78, 0.3); bb.rotation.set(Math.PI / 2, 0, 0); } // planting: in the hands near the floor; else on the back
   }
 }
 function drawWorld() {
@@ -1615,7 +1721,7 @@ function drawFigures() {
     FIG_LINE.forEach(([role, side], i) => {
       const x = -5.4 + i * 1.8;
       if (role === 'bomb') { const bm = makeBomb(); bm.group.position.set(x, 0, 0); bm.group.scale.setScalar(2.2); bm.group.rotation.y = 0.6; figScene!.add(bm.group); return; }
-      const s = makeSoldier(role); s.team.color.setHex(SIDE_HEX[side]); s.group.position.set(x, 0, 0); s.group.rotation.y = -Math.PI / 2 + 0.25; figScene!.add(s.group);
+      const s = makeSoldier(role); s.team.color.setHex(SIDE_HEX[side]); setSide(s, side); poseSoldier(s, { alive: true, id: 0, st: { stance: 'stand', jumpY: 0 }, moving: false, deadT: 0, plantT: 0, defusing: false }, 0, 0.1, 0); s.group.position.set(x, 0, 0); s.group.rotation.y = -Math.PI / 2 + 0.25; figScene!.add(s.group);
     });
     figCam = new THREE.PerspectiveCamera(42, W / H, 0.1, 100); figCam.position.set(0, 2.2, 10.5); figCam.lookAt(0, 0.95, 0);
   }

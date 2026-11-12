@@ -67,7 +67,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Teacher screen: set up the session (subject, level, contents or CSV, map), split the class into rooms and teams, and start, pause and end each room
 - [x] Results per student: right and wrong answers per student and per topic, exportable to CSV, kept only on the teacher's PC; the main menu offers "Un jugador (contra bots)" and "Clase (multijugador)"
 - [x] Weapons and effects (polished block style): first-person guns with a recognisable shape, muzzle flash, tracers, impact sparks and the bomb's explosion; still offline and smooth on school PCs
-- [ ] Characters (polished block style): more detailed block models, distinct per side, animated when walking, crouching, prone and dying
+- [x] Characters (polished block style): more detailed block models, distinct per side, animated when walking, crouching, prone and dying
 - [ ] Scenery (polished block style): walls and floor with texture and relief, varied crates and props, clearly marked A and B sites, a gradient sky
 - [ ] Two-floor map: at least one new map with a ground floor and a first floor joined by stairs or ramps; shooting between floors, the minimap and the bots handle the height
 

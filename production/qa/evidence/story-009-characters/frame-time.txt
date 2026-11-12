@@ -1,0 +1,35 @@
+GPU frame time (Apple M1, ANGLE Metal, headed Chrome), map Grande, seed 7, 7 bots walking in view, 570 frames each.
+chr-base = repo before story 009; chr = first version of story 009; chr2 = final version (outlines trimmed, guns on demand, frozen and merged blocks).
+
+First version against base (5 alternating pairs):
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.79,"medianMs":2.7,"p95Ms":3.6} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.17,"medianMs":3.1,"p95Ms":3.7} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.83,"medianMs":2.6,"p95Ms":3.7} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.44,"medianMs":3.2,"p95Ms":5.2} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.89,"medianMs":2.7,"p95Ms":4} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.23,"medianMs":3.1,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.88,"medianMs":2.7,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.35,"medianMs":3.2,"p95Ms":4.3} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.98,"medianMs":2.9,"p95Ms":4.2} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.29,"medianMs":3.2,"p95Ms":4.1} nonFile 0 errs 0
+
+Final version against base (6 runs each, plus 3 of the first version):
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.75,"medianMs":2.6,"p95Ms":3.3} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":3.26,"medianMs":3,"p95Ms":5.1} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.78,"medianMs":2.6,"p95Ms":3.7} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":3.24,"medianMs":3.1,"p95Ms":4.9} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.86,"medianMs":2.8,"p95Ms":3.9} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":3.04,"medianMs":3,"p95Ms":3.9} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":3.04,"medianMs":2.9,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.96,"medianMs":2.9,"p95Ms":4} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.18,"medianMs":3.1,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":2.87,"medianMs":2.8,"p95Ms":3.4} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.85,"medianMs":2.8,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.27,"medianMs":3.2,"p95Ms":3.9} nonFile 0 errs 0
+{"dist":"chr2/dist-single","frames":570,"meanMs":2.94,"medianMs":2.9,"p95Ms":3.4} nonFile 0 errs 0
+{"dist":"chr-base/dist-single","frames":570,"meanMs":2.72,"medianMs":2.6,"p95Ms":3.2} nonFile 0 errs 0
+{"dist":"chr/dist-single","frames":570,"meanMs":3.19,"medianMs":3.1,"p95Ms":3.9} nonFile 0 errs 0
+
+Averages of the last set: base 2.82 ms, final 3.07 ms (+8.7 %), first version 3.21 ms (+13.9 %).
+Objects per character (agent's count): about 100 renderables before the trim, about 52 after.
+dist-single/index.html: 733303 bytes before story 009, 740454 after. No request other than the page itself.
