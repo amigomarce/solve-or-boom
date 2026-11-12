@@ -1,0 +1,14 @@
+Frame time, Grande map, seed 7, 570 frames, rifle firing, bot shots and an explosion every 150 frames (scratchpad perf script).
+Real GPU (Apple M1, ANGLE Metal, headed Chrome), before = repo build before story 008, after = with story 008:
+{"dist":"base/dist-single","frames":570,"meanMs":3.01,"medianMs":3,"p95Ms":3.6} nonFile 0 errs 0
+{"dist":"fx/dist-single","frames":570,"meanMs":3.1,"medianMs":3.1,"p95Ms":3.6} nonFile 0 errs 0
+{"dist":"base/dist-single","frames":570,"meanMs":3.02,"medianMs":2.9,"p95Ms":3.8} nonFile 0 errs 0
+{"dist":"fx/dist-single","frames":570,"meanMs":3.19,"medianMs":3.1,"p95Ms":3.8} nonFile 0 errs 0
+
+Software rendering (SwiftShader, no GPU), same script:
+{"dist":"base/dist-single","frames":570,"meanMs":84.9,"medianMs":70.7,"p95Ms":142.6} nonFile 0 errs 0
+{"dist":"fx/dist-single","frames":570,"meanMs":102.12,"medianMs":90.7,"p95Ms":157} nonFile 0 errs 0
+{"dist":"base/dist-single","frames":570,"meanMs":113.59,"medianMs":117.1,"p95Ms":142.1} nonFile 0 errs 0
+{"dist":"fx/dist-single","frames":570,"meanMs":145.14,"medianMs":145.7,"p95Ms":179.2} nonFile 0 errs 0
+
+dist-single/index.html: 724889 bytes before, 733232 after. No request other than the page itself and data: URLs.

@@ -142,3 +142,16 @@ holds no comments. The values themselves are in `data/config.json`.
 - `results_max_students` 1000: names the results store holds at most (memory only, nothing on disk); a new name past it is not counted. A class is 30 to 200 students; this only stops a runaway client opening names forever.
 - `weak_below_pct` 60: the teacher's topic view marks a topic "a reforzar" when fewer than this percent of its answers are right (60 = a bare pass in the usual 0 to 100 marking).
 - `weak_min_answers` 5: ...and only once it has at least this many answers, so one early miss does not mark a topic.
+
+## Weapons and effects (story 008), data/config.json
+- `fx_<gun>_flash` (pistol .14, smg .17, rifle .24, sniper .34): size of the muzzle flash star (metres, in the first-person gun's space; other players' flashes use the same value, scaled to their model).
+- `fx_<gun>_tracer_w` (.04 to .14) and `fx_<gun>_tracer_life` (.06 to .22 s): thickness of the tracer bar and how long it stays; a bigger gun leaves a thicker, longer-lived line. The bar always runs from the gun to the hit point.
+- `fx_spark_*`: the pale burst on a wall, floor or crate: cubes thrown (`count`), their speed (m/s), size (m) and life (s). `fx_hit_*`: the same for the red burst on a player. `fx_gravity`: how fast both fall (m/s per s).
+- `fx_boom_fireball` 7 (see the second pass below) / `fx_boom_ring` 30 / `fx_boom_column` 26: the explosion's fireball radius, the shockwave ring radius and the fire column's height (metres); the column is what makes it readable over walls from across the map. `fx_boom_debris` 28 cubes at `fx_boom_debris_speed` 14 m/s.
+- `fx_shake` .14 (metres of camera shake at the blast) and `fx_shake_range` 45 (m): the shake falls off with distance to the bomb, never below a fifth of it, and fades over the blast's 1.2 s. 0 turns the shake off.
+- Story 008 second pass (the first was not readable on screen): `fx_spark_*` raised to 8 cubes, 4 m/s, 0.13 m, 0.45 s; `fx_hit_*` to 14 cubes, 4.5 m/s, 0.16 m, 0.6 s.
+- `fx_spark_puff` 0.7 m / `fx_spark_puff_life` 0.25 s: a bright pale puff where a shot meets a wall, floor or crate. `fx_hit_puff` 0.45 m / `fx_hit_puff_life` 0.25 s: the red puff on a player, drawn over the model so the body never hides it.
+- `fx_hit_tint` 0.12 s: how long a hit player's team colour flashes red.
+- `fx_mark_size` 0.5 m / `fx_mark_life` 1.5 s: the dark mark a shot leaves on a wall, crate or floor (16 at most, the oldest reused); it fades over the second half of its life.
+- `fx_boom_screen_time` 0.12 s / `fx_boom_screen_alpha` 0.45: the full-screen cream flash of the explosion, short and light so the fireball, ring and column show after it (it used to last the whole 1.2 s). `fx_boom_ball_time` 0.15 s: how long the white flash ball lasts.
+- `fx_boom_fireball` lowered from 12 to 7 m in the second pass, so a viewer 8 m away sees the fireball and the ring from outside it instead of a screen filled with yellow.

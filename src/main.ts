@@ -491,55 +491,113 @@ const gunScene = new THREE.Scene();
 const gunCam = new THREE.PerspectiveCamera(60, W / H, 0.01, 10);
 gunScene.add(new THREE.HemisphereLight(0xfff4e0, 0x6d5c40, 2.3));
 const gunSun = new THREE.DirectionalLight(0xffffff, 1.8); gunSun.position.set(1, 2, 1); gunScene.add(gunSun);
+/** Colours of the four guns' accents and tracers: the look, not tuning (sizes and lifetimes are `fx_*` in data/config.json). */
+const GUN_FX: Record<string, { accent: number; tracer: number }> = {
+  pistol: { accent: 0x2fb3a8, tracer: 0xffe08a }, smg: { accent: 0xf08a2a, tracer: 0xffb84a },
+  rifle: { accent: 0x7bb83a, tracer: 0xfff3c0 }, sniper: { accent: 0xd8483c, tracer: 0xffffff },
+};
+/**
+ * One first-person gun with its own silhouette (story 008): a short slim pistol, a boxy SMG with a long magazine, a rifle
+ * with a stock, curved magazine and handguard, a long sniper with a big scope, bipod and muzzle brake. Flat colours with
+ * a darker outline on every block and one accent colour per gun. The muzzle is toward -z; the flash is sized each frame.
+ */
 function makeViewGun(kind: string) {
-  const g = new THREE.Group(), metal = lam(0x2a2d33), accent = lam(0x4a505a), skin = lam(0xd9a273), sleeve = lam(0x555555);
+  const g = new THREE.Group(), metal = lam(0x2a2d33), accent = lam(GUN_FX[kind].accent), wood = lam(0x7a5233), skin = lam(0xd9a273), sleeve = lam(0x555555);
+  const edge = new THREE.LineBasicMaterial({ color: 0x0b0d10 });
+  const gb = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): THREE.Mesh => { // a block with its dark outline
+    const m = box(w, h, d, mat, x, y, z, g); m.rotation.x = rx; m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edge)); return m;
+  };
   let muzzle = 0;
   if (kind === 'pistol') {
-    box(0.05, 0.06, 0.22, metal, 0, 0.02, -0.08, g); box(0.045, 0.13, 0.06, accent, 0, -0.07, 0.0, g).rotation.x = 0.25;
+    gb(0.055, 0.06, 0.22, metal, 0, 0.02, -0.08); gb(0.058, 0.014, 0.2, accent, 0, 0.056, -0.08);
+    gb(0.045, 0.13, 0.06, wood, 0, -0.07, 0.0, 0.25); gb(0.04, 0.012, 0.07, metal, 0, -0.02, -0.06);
     muzzle = -0.2;
   } else if (kind === 'smg') {
-    box(0.07, 0.09, 0.34, metal, 0, 0.0, -0.1, g); box(0.05, 0.16, 0.05, accent, 0, -0.11, -0.12, g);
-    box(0.03, 0.03, 0.12, metal, 0, 0.01, -0.32, g); box(0.05, 0.06, 0.14, accent, 0, -0.01, 0.12, g);
+    gb(0.08, 0.1, 0.34, metal, 0, 0, -0.1); gb(0.084, 0.03, 0.3, accent, 0, 0.065, -0.1);
+    gb(0.045, 0.22, 0.07, accent, 0, -0.16, -0.14, 0.08); gb(0.03, 0.03, 0.12, metal, 0, 0.01, -0.32);
+    gb(0.04, 0.08, 0.05, metal, 0, -0.08, 0.04, 0.2); gb(0.02, 0.03, 0.14, metal, 0, 0.0, 0.2);
+    gb(0.02, 0.03, 0.03, metal, 0, 0.1, -0.2);
     muzzle = -0.38;
   } else if (kind === 'rifle') {
-    box(0.07, 0.1, 0.5, metal, 0, 0, -0.14, g); box(0.05, 0.16, 0.06, accent, 0, -0.12, -0.12, g).rotation.x = -0.25;
-    box(0.025, 0.025, 0.2, metal, 0, 0.02, -0.48, g); box(0.06, 0.1, 0.2, accent, 0, -0.02, 0.18, g);
-    box(0.02, 0.04, 0.05, metal, 0, 0.07, -0.05, g);
-    muzzle = -0.58;
+    gb(0.07, 0.1, 0.4, metal, 0, 0, -0.1); gb(0.075, 0.08, 0.24, accent, 0, -0.005, -0.4);
+    gb(0.022, 0.022, 0.2, metal, 0, 0.02, -0.65); gb(0.05, 0.17, 0.06, metal, 0, -0.14, -0.1, -0.35);
+    gb(0.06, 0.15, 0.24, wood, 0, -0.03, 0.24, -0.12); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.06, 0.25);
+    gb(0.02, 0.05, 0.03, metal, 0, 0.075, -0.6); gb(0.03, 0.04, 0.04, metal, 0, 0.075, 0.0);
+    muzzle = -0.77;
   } else {
-    box(0.06, 0.08, 0.6, accent, 0, 0, -0.12, g); box(0.025, 0.025, 0.36, metal, 0, 0.02, -0.58, g);
-    const sc = cyl(0.03, 0.03, 0.24, 8, metal, 0, 0.08, -0.12, g); sc.rotation.x = Math.PI / 2;
-    box(0.06, 0.12, 0.22, accent, 0, -0.04, 0.24, g);
-    muzzle = -0.76;
+    gb(0.06, 0.08, 0.62, metal, 0, 0, -0.1); gb(0.03, 0.03, 0.5, metal, 0, 0.015, -0.66); gb(0.05, 0.05, 0.08, accent, 0, 0.015, -0.93);
+    gb(0.065, 0.13, 0.3, wood, 0, -0.03, 0.3, -0.08); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.04, 0.25);
+    const sc = cyl(0.035, 0.035, 0.34, 10, metal, 0, 0.1, -0.15, g); sc.rotation.x = Math.PI / 2;
+    for (const z of [-0.31, 0.01]) { const lens = cyl(0.048, 0.048, 0.07, 10, accent, 0, 0.1, z, g); lens.rotation.x = Math.PI / 2; }
+    gb(0.02, 0.04, 0.03, metal, 0, 0.06, -0.15); gb(0.07, 0.02, 0.05, metal, 0.05, 0.015, 0.1);
+    for (const sx of [-1, 1]) gb(0.014, 0.16, 0.014, metal, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
+    muzzle = -0.98;
   }
   box(0.07, 0.07, 0.11, skin, 0, -0.07, 0.04, g);
   box(0.08, 0.08, 0.16, sleeve, 0.02, -0.1, 0.16, g);
-  const flash = makeFlash(0.18); flash.position.set(0, 0.02, muzzle); g.add(flash);
+  const flash = makeFlash(1); flash.position.set(0, 0.02, muzzle); g.add(flash);
   g.visible = false; gunScene.add(g);
   return { group: g, flash };
 }
 const viewGuns: Record<string, ReturnType<typeof makeViewGun>> = { pistol: makeViewGun('pistol'), smg: makeViewGun('smg'), rifle: makeViewGun('rifle'), sniper: makeViewGun('sniper') };
 
-// Tracers, sparks and the explosion, from small pools.
-const tracers: { line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>; t: number }[] = [];
-for (let i = 0; i < 32; i++) {
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0 }));
-  line.frustumCulled = false; world.add(line); tracers.push({ line, t: 0 });
-}
+// Tracers, impact bursts and the explosion, from pools made once (story 008). Sizes and lifetimes: `fx_*` in data/config.json.
+const tracerGeo = new THREE.BoxGeometry(1, 1, 1); tracerGeo.translate(0, 0, 0.5); // a unit bar from its origin toward +z
+const tracerMats: Record<string, THREE.MeshBasicMaterial> = {};
+for (const k of Object.keys(GUN_FX)) tracerMats[k] = new THREE.MeshBasicMaterial({ color: GUN_FX[k].tracer });
+const tracers: { m: THREE.Mesh; t: number; life: number; w: number }[] = [];
+for (let i = 0; i < 32; i++) { const m = new THREE.Mesh(tracerGeo, tracerMats.pistol); m.visible = false; m.frustumCulled = false; world.add(m); tracers.push({ m, t: 0, life: 1, w: 0 }); }
 let tracerI = 0;
-function tracer(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
-  const tr = tracers[tracerI++ % tracers.length], a = tr.line.geometry.attributes.position.array;
-  a[0] = x0; a[1] = y0; a[2] = z0; a[3] = x1; a[4] = y1; a[5] = z1;
-  tr.line.geometry.attributes.position.needsUpdate = true; tr.t = 0.09;
+/** A bar of light from the gun (x0..z0) to where the shot lands (x1..z1); its thickness and life depend on the gun `w`. */
+function tracer(w: string, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
+  const tr = tracers[tracerI++ % tracers.length];
+  tr.w = tune['fx_' + w + '_tracer_w']; tr.m.material = tracerMats[w]; tr.m.position.set(x0, y0, z0); tr.m.lookAt(x1, y1, z1);
+  tr.m.scale.set(tr.w, tr.w, Math.hypot(x1 - x0, y1 - y0, z1 - z0));
+  tr.life = tr.t = tune['fx_' + w + '_tracer_life']; tr.m.visible = true;
 }
-const sparks: { m: THREE.Mesh; t: number }[] = [];
-const sparkMat = new THREE.MeshBasicMaterial({ color: 0xfff1b8 });
-for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), sparkMat); m.visible = false; world.add(m); sparks.push({ m, t: 0 }); }
-let sparkI = 0;
-function spark(x: number, y: number, z: number): void { const s = sparks[sparkI++ % sparks.length]; s.m.position.set(x, y, z); s.t = 0.25; s.m.visible = true; }
-const boomMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.8 }));
-boomMesh.visible = false; world.add(boomMesh);
+const sparks: { m: THREE.Mesh; t: number; life: number; vx: number; vy: number; vz: number; size: number }[] = [];
+const sparkMats = [new THREE.MeshBasicMaterial({ color: 0xfff1b8 }), new THREE.MeshBasicMaterial({ color: 0xd8281c }), new THREE.MeshBasicMaterial({ color: 0xff9a2a })]; // wall, player, explosion debris
+const sparkGeo = new THREE.BoxGeometry(1, 1, 1);
+for (let i = 0; i < 96; i++) { const m = new THREE.Mesh(sparkGeo, sparkMats[0]); m.visible = false; world.add(m); sparks.push({ m, t: 0, life: 1, vx: 0, vy: 0, vz: 0, size: 0 }); }
+let sparkI = 0, burstN = 0;
+/**
+ * A burst of `count` small cubes thrown from a point: kind 0 a pale spark (wall, floor, crate), 1 a red burst (a player
+ * was hit), 2 orange debris (the bomb). The directions come from a fixed hash, so no random call and no allocation.
+ */
+function burst(x: number, y: number, z: number, kind: number, count: number, speed: number, size: number, life: number): void {
+  burstN++;
+  for (let j = 0; j < count; j++) {
+    const s = sparks[sparkI++ % sparks.length], a = Math.sin(burstN * 12.9898 + j * 78.233) * 43758.5453, b = Math.sin(burstN * 4.1414 + j * 37.719) * 12543.7;
+    const ang = (a - Math.floor(a)) * Math.PI * 2, up = (b - Math.floor(b)) * 0.8 + 0.2, sp = speed * (0.5 + ((a * 7) % 1 + 1) % 1 * 0.5);
+    s.m.material = sparkMats[kind]; s.m.position.set(x, y, z); s.vx = Math.cos(ang) * sp * (1 - up * 0.4); s.vz = Math.sin(ang) * sp * (1 - up * 0.4); s.vy = up * sp;
+    s.size = size; s.life = s.t = life; s.m.scale.setScalar(size); s.m.visible = true;
+  }
+}
+// A bright puff where a shot lands (pale on a surface, red on a player) and a dark mark left on the surface, both pooled.
+const puffMats = [new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+  new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, depthWrite: false })]; // templates: each puff fades its own clones
+const puffGeo = new THREE.IcosahedronGeometry(1, 0);
+const puffs: { m: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>; mats: THREE.MeshBasicMaterial[]; t: number; life: number; size: number }[] = [];
+for (let i = 0; i < 12; i++) {
+  const mats = puffMats.map(pm => pm.clone()), m = new THREE.Mesh(puffGeo, mats[0]);
+  m.visible = false; m.renderOrder = 2; world.add(m); puffs.push({ m, mats, t: 0, life: 1, size: 0 });
+}
+let puffI = 0;
+const decalGeo = new THREE.PlaneGeometry(1, 1);
+const decals: { m: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>; t: number }[] = [];
+for (let i = 0; i < 16; i++) {
+  const m = new THREE.Mesh(decalGeo, new THREE.MeshBasicMaterial({ color: 0x1a1410, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.visible = false; world.add(m); decals.push({ m, t: 0 });
+}
+let decalI = 0;
+const hitTint: Record<number, number> = {}; // player id -> the match time its red hit flash ends (set on the hit, cleared at a round's start)
+// The explosion: a white flash ball, a fireball, a flat shockwave ring and a tall column that clears the walls.
+const boomMat = (c: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+const boomFlash = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), boomMat(0xffffff));
+const boomMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), boomMat(0xffa040));
+const boomRing = new THREE.Mesh(new THREE.RingGeometry(0.88, 1, 40), boomMat(0xffd9a0)); boomRing.rotation.x = -Math.PI / 2;
+const boomColumn = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.5, 1, 12, 1, true), boomMat(0xff7a20)); boomColumn.geometry.translate(0, 0.5, 0);
+for (const m of [boomFlash, boomMesh, boomRing, boomColumn]) { m.visible = false; m.frustumCulled = false; world.add(m); }
 
 
 // ---- The roster's figures ----------------------------------------------------------------
@@ -614,8 +672,27 @@ function playEvents(list: Loose[] = state.events): void {
     if (LOG.has(e.type)) events.push(e);
     switch (e.type) {
       case 'shot':
-        tracer(e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
-        if (e.human) { if (!CLASS_MODE) { SFX.shot(e.w); viewGuns[e.w].flash.visible = true; } if (e.spark) spark(e.to[0], e.to[1], e.to[2]); } // class mode played it on the trigger
+        tracer(e.w, e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
+        { // a red burst when the shot ends on a player, else a pale wall/floor/crate spark. A human's shot says it (spark); a bot's shot has no hit flag, so a player standing at its end point is the hit
+          let hitP = e.human ? !e.spark : false, hitId = -1;
+          for (const q of state.players) { const dx = q.x - e.to[0], dz = q.z - e.to[2]; if (q.alive && q.id !== e.by && dx * dx + dz * dz < 0.36 && e.to[1] < 2) { hitId = q.id; break; } }
+          if (!e.human) hitP = hitId >= 0;
+          const pf = puffs[puffI++ % puffs.length]; pf.m.material = pf.mats[hitP ? 1 : 0]; pf.m.position.set(e.to[0], e.to[1], e.to[2]); pf.m.visible = true;
+          pf.life = pf.t = hitP ? tune.fx_hit_puff_life : tune.fx_spark_puff_life; pf.size = hitP ? tune.fx_hit_puff : tune.fx_spark_puff;
+          if (hitP) {
+            burst(e.to[0], e.to[1], e.to[2], 1, tune.fx_hit_count, tune.fx_hit_speed, tune.fx_hit_size, tune.fx_hit_life);
+            if (hitId >= 0) hitTint[hitId] = state.t + tune.fx_hit_tint;
+          } else {
+            burst(e.to[0], e.to[1], e.to[2], 0, tune.fx_spark_count, tune.fx_spark_speed, tune.fx_spark_size, tune.fx_spark_life);
+            // the mark faces the shooter along the grid's main axis (walls and crates are axis-aligned); at floor height it lies flat
+            const d = decals[decalI++ % decals.length], dx = e.from[0] - e.to[0], dz = e.from[2] - e.to[2];
+            d.m.scale.setScalar(tune.fx_mark_size); d.t = tune.fx_mark_life; d.m.visible = true;
+            if (e.to[1] < 0.05) { d.m.position.set(e.to[0], 0.02, e.to[2]); d.m.rotation.set(-Math.PI / 2, 0, 0); }
+            else if (Math.abs(dx) > Math.abs(dz)) { d.m.position.set(e.to[0] + Math.sign(dx) * 0.02, e.to[1], e.to[2]); d.m.rotation.set(0, Math.sign(dx) * Math.PI / 2, 0); }
+            else { d.m.position.set(e.to[0], e.to[1], e.to[2] + Math.sign(dz) * 0.02); d.m.rotation.set(0, dz > 0 ? 0 : Math.PI, 0); }
+          }
+        }
+        if (e.human) { if (!CLASS_MODE) { SFX.shot(e.w); viewGuns[e.w].flash.visible = true; } } // class mode played it on the trigger
         else { const v = heard(e.x, e.z), at = heardFrom(e.x, e.z); SFX.shot(e.w, v * 0.8, at.pan, at.dist); }
         break;
       case 'hit': SFX.hit(); break;
@@ -630,11 +707,11 @@ function playEvents(list: Loose[] = state.events): void {
       case 'plant': SFX.plant(); break;
       case 'defused': SFX.defused(); break;
       case 'beep': SFX.beep(Math.max(0.25, heard(e.x, e.z)), e.panic); break;
-      case 'boom': SFX.boom(); break;
+      case 'boom': SFX.boom(); burst(e.x, 0.6, e.z, 2, tune.fx_boom_debris, tune.fx_boom_debris_speed, 0.35, 1.1); break;
       case 'gate': SFX.gate(); break;
       case 'roundEnd': (e.win === state.human.squad ? SFX.win : SFX.lose)(); break;
       case 'round':
-        for (const p of state.players) { models[p.id].team.color.setHex(SIDE_HEX[sideOf(state, p)]); models[p.id].group.rotation.set(0, p.yaw, 0); }
+        for (const p of state.players) { models[p.id].team.color.setHex(SIDE_HEX[sideOf(state, p)]); models[p.id].group.rotation.set(0, p.yaw, 0); hitTint[p.id] = 0; }
         for (const gm of gates) { gm.position.y = 1.5; gm.visible = true; }
         break;
       case 'unlock': if (locked) document.exitPointerLock(); break;
@@ -838,6 +915,7 @@ function toggleTopic(t: string): void {
 function placeModels() {
   for (const p of state.players) {
     const m = models[p.id];
+    if (hitTint[p.id] > 0) { const on = state.t < hitTint[p.id] && state.t > hitTint[p.id] - 1; m.team.color.setHex(on ? 0xff2a1a : SIDE_HEX[sideOf(state, p)]); if (!on) hitTint[p.id] = 0; } // a hit flashes the model red for fx_hit_tint of match time (a new match's clock restarting ends it too)
     if (p === state.human) continue; // other students are drawn like bots
     const x = lerp(p.px, p.x, ALPHA), z = lerp(p.pz, p.z, ALPHA);
     m.group.position.set(x, 0, z);
@@ -852,7 +930,7 @@ function placeModels() {
       m.group.rotation.set(k * Math.PI / 2, p.yaw, 0, 'YXZ');
     }
     m.flash.visible = p.flashT > 0;
-    m.flash.rotation.z = state.t * 40;
+    m.flash.rotation.z = state.t * 40; m.flash.scale.setScalar((tune['fx_' + p.cur + '_flash'] ?? 0.45) / 0.45); // 0.45: the soldier flash's own size (makeSoldier); an unknown gun keeps it
     backBombs[p.id].group.visible = p.alive && state.bomb.state === 'carried' && state.bomb.carrier === p;
   }
 }
@@ -888,12 +966,39 @@ function drawWorld() {
     beacon.mat.opacity = 0.22 + 0.12 * Math.sin(state.t * (b.panicT > 0 ? 18 : 5));
     beacon.ring.scale.setScalar(1 + 0.15 * Math.sin(state.t * 4));
   }
-  for (const tr of tracers) { tr.t -= 1 / 60; tr.line.material.opacity = Math.max(0, tr.t / 0.09); }
-  for (const s of sparks) { s.t -= 1 / 60; s.m.visible = s.t > 0; s.m.position.y += 0.01; }
-  if (state.boomT > 0) {
-    const k = 1 - state.boomT / 1.2; boomMesh.position.set(b.x, 1, b.z); boomMesh.scale.setScalar(2 + k * 14); boomMesh.material.opacity = 0.85 * (1 - k); boomMesh.visible = true;
-  } else boomMesh.visible = false;
+  for (const tr of tracers) { // the bar thins out over its life
+    if (tr.t <= 0) continue;
+    tr.t -= 1 / 60; tr.m.scale.x = tr.m.scale.y = tr.w * Math.max(0, tr.t / tr.life); tr.m.visible = tr.t > 0;
+  }
+  for (const s of sparks) { // thrown cubes fall, stop on the floor and shrink away
+    if (s.t <= 0) continue;
+    s.t -= 1 / 60; s.vy -= tune.fx_gravity / 60;
+    s.m.position.x += s.vx / 60; s.m.position.y += s.vy / 60; s.m.position.z += s.vz / 60;
+    if (s.m.position.y < 0.03) { s.m.position.y = 0.03; s.vx = s.vy = s.vz = 0; }
+    s.m.scale.setScalar(s.size * Math.max(0, s.t / s.life)); s.m.visible = s.t > 0;
+  }
+  for (const pf of puffs) { // the puff swells and fades
+    if (pf.t <= 0) continue;
+    pf.t -= 1 / 60; const k = Math.max(0, pf.t / pf.life);
+    pf.m.scale.setScalar(pf.size * (1.4 - 0.6 * k)); pf.m.material.opacity = k; pf.m.visible = pf.t > 0;
+  }
+  for (const d of decals) { if (d.t <= 0) continue; d.t -= 1 / 60; d.m.material.opacity = 0.85 * Math.min(1, d.t / (tune.fx_mark_life * 0.5)); d.m.visible = d.t > 0; }
+  const boom = state.boomT > 0, bk = 1 - state.boomT / 1.2; // bk: 0 at the blast, 1 at its end
+  boomFlash.visible = boom && bk < tune.fx_boom_ball_time / 1.2; boomMesh.visible = boomRing.visible = boomColumn.visible = boom;
+  if (boom) {
+    boomFlash.position.set(b.x, 1.5, b.z); boomFlash.scale.setScalar(3 + bk * 30); boomFlash.material.opacity = Math.max(0, 1 - bk * 1.2 / tune.fx_boom_ball_time);
+    boomMesh.position.set(b.x, 1, b.z); boomMesh.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_fireball); boomMesh.material.opacity = 0.9 * (1 - bk); boomMesh.material.color.setHSL(0.12 - 0.1 * bk, 1, 0.5);
+    boomRing.position.set(b.x, 0.12, b.z); boomRing.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_ring); boomRing.material.opacity = 0.9 * (1 - bk);
+    boomColumn.position.set(b.x, 0, b.z); boomColumn.scale.set(2 + bk * 3, tune.fx_boom_column * Math.min(1, bk * 4), 2 + bk * 3); boomColumn.material.opacity = 0.55 * (1 - bk);
+  }
+  // The screen shake: stronger near the blast, never below a fifth of it, fading with the blast; the camera is put back after the draw
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z, crz = camera.rotation.z;
+  if (boom) {
+    const amp = tune.fx_shake * Math.max(0.2, 1 - Math.hypot(b.x - cx, b.z - cz) / tune.fx_shake_range) * (1 - bk);
+    camera.position.x += Math.sin(state.t * 71) * amp; camera.position.y += Math.sin(state.t * 97 + 1) * amp; camera.rotation.z = Math.sin(state.t * 83) * amp * 0.4;
+  }
   renderer.clear(); renderer.render(world, camera);
+  camera.position.set(cx, cy, cz); camera.rotation.z = crz;
   if (view !== p) models[view.id].group.visible = true;
   // first-person gun
   const planting = p.alive && state.plantT > 0 && b.carrier === p; // plantT is the carrier's: another student's plant is not yours
@@ -911,7 +1016,7 @@ function drawWorld() {
     g.scale.setScalar(0.75);
     g.rotation.set(p.recoil * 2 - rl * 0.6, 0.05, 0);
     viewGuns[p.cur].flash.visible = p.flashT > 0;
-    viewGuns[p.cur].flash.rotation.z = state.t * 50;
+    viewGuns[p.cur].flash.rotation.z = state.t * 50; viewGuns[p.cur].flash.scale.setScalar(tune['fx_' + p.cur + '_flash']);
     renderer.clearDepth(); renderer.render(gunScene, gunCam);
   }
 }
@@ -994,7 +1099,7 @@ function drawHUD(paused?: boolean): void {
     ctx.moveTo(W / 2, H / 2 - 300); ctx.lineTo(W / 2, H / 2 + 300); ctx.stroke();
   }
   if (state.flashT > 0) { ctx.fillStyle = `rgba(200,30,20,${state.flashT * 0.6})`; ctx.fillRect(0, 0, W, H); }
-  if (state.boomT > 0) { ctx.fillStyle = `rgba(255,220,160,${state.boomT * 0.6})`; ctx.fillRect(0, 0, W, H); }
+  if (state.boomT > 0 && 1.2 - state.boomT < tune.fx_boom_screen_time) { ctx.fillStyle = `rgba(255,220,160,${tune.fx_boom_screen_alpha * (1 - (1.2 - state.boomT) / tune.fx_boom_screen_time)})`; ctx.fillRect(0, 0, W, H); } // a short full-screen flash, so the fireball shows after it
   // teammates' names over their heads
   for (const q of state.players) {
     if (q === p || !q.alive || q.squad !== p.squad || q === state.specP && !p.alive) continue;
