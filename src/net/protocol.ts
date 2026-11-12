@@ -7,7 +7,7 @@
 // (ping). It never sends positions, money, health or results: the server owns the match and works
 // those out itself. parseClientMessage() is the only door in; anything it refuses is dropped.
 import type { PlayerInput } from '../game/player';
-import { LEVELS } from '../game/types';
+import { LEVELS, type Level } from '../game/types';
 
 /** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). */
 export const PROTOCOL_VERSION = 2;
@@ -50,7 +50,7 @@ export type ClientMessage = HelloMessage | InputMessage | PingMessage | LeaveMes
 export type SeatKind = 'bot' | 'human' | 'open';
 /** A room as the server shows it to clients and to the teacher screen: no names, only counts. */
 export interface RoomInfo {
-  id: string; status: 'running' | 'ended' | 'failed'; map: string;
+  id: string; status: 'waiting' | 'running' | 'paused' | 'ended' | 'failed'; map: string;
   seats: number; humans: number; bots: number; open: number;
   round: number; score: number[];
 }
@@ -156,7 +156,7 @@ export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongM
 /** Why a message was refused. */
 export type ErrorCode = 'too_big' | 'not_text' | 'not_json' | 'bad_shape' | 'bad_version' | 'bad_type' | 'bad_field' | 'bad_name'
   | 'rate_limited' | 'need_hello' | 'server_full'
-  | 'name_empty' | 'sin_cupo';
+  | 'name_empty' | 'sin_cupo' | 'not_teacher';
 /** The sentence a page shows for each error, in Spanish. */
 export const ERROR_TEXT: Record<ErrorCode, string> = {
   too_big: 'Mensaje demasiado grande.',
@@ -171,6 +171,7 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   need_hello: 'Primero hay que presentarse (hello).',
   server_full: 'El servidor está lleno.',
   name_empty: 'Escribe tu nombre para entrar.',
+  not_teacher: 'Ese mensaje es solo del profesor.',
   sin_cupo: 'No queda ningún sitio libre en las salas. Avisa al profesor.',
 };
 
@@ -213,6 +214,7 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
   if (!isObject(raw)) return { ok: false, code: 'bad_shape' };
   if (raw.v !== PROTOCOL_VERSION) return { ok: false, code: 'bad_version' };
   const t = raw.t;
+  if (typeof t === 'string' && (TEACHER_TYPES as readonly string[]).includes(t)) return { ok: false, code: 'not_teacher' };
   if (t !== 'hello' && t !== 'input' && t !== 'ping' && t !== 'leave') return { ok: false, code: 'bad_type' };
   if (Object.keys(raw).some(k => !KEYS[t].includes(k))) return { ok: false, code: 'bad_shape' };
   if (t === 'ping') return { ok: true, msg: { v: PROTOCOL_VERSION, t } };
@@ -254,7 +256,7 @@ const isCard = (c: unknown): c is CardView =>
   isObject(c) && (c.k === 'buy' || c.k === 'defuse') && isStr(c.i) && isStr(c.lv) && isStr(c.q) && isStr(c.tp)
   && Array.isArray(c.o) && c.o.length >= 2 && c.o.length <= 4 && c.o.every(isStr) && [c.pk, c.w, c.wt, c.ok, c.g].every(isInt);
 const isRoomInfo = (r: unknown): r is RoomInfo =>
-  isObject(r) && isStr(r.id) && (r.status === 'running' || r.status === 'ended' || r.status === 'failed') && isStr(r.map)
+  isObject(r) && isStr(r.id) && (r.status === 'waiting' || r.status === 'running' || r.status === 'paused' || r.status === 'ended' || r.status === 'failed') && isStr(r.map)
   && isInt(r.seats) && isInt(r.humans) && isInt(r.bots) && isInt(r.open) && isInt(r.round)
   && Array.isArray(r.score) && r.score.every(n => typeof n === 'number');
 
@@ -299,5 +301,119 @@ export function parseServerMessage(text: string): ServerMessage | null {
     }
     case 'welcome': return Array.isArray(raw.rooms) && raw.rooms.every(isRoomInfo) ? { v, t: 'welcome', rooms: raw.rooms.map(r => ({ ...r })) } : null;
     default: return null;
+  }
+}
+
+// ---- The teacher screen (story 006) -------------------------------------------------------------------
+// A second door: the teacher's page connects to TEACHER_WS_PATH, which the server accepts only from its own PC
+// (loopback). Same frame format ({ v, t, ... } JSON text) and the same PROTOCOL_VERSION. A student connection
+// that sends one of these types is refused with 'not_teacher' and a strike (parseClientMessage above).
+
+/** The page the teacher opens (served only to loopback; any other address gets a 403 in Spanish). */
+export const TEACHER_PATH = '/profesor';
+/** The teacher's WebSocket path (accepted only from loopback). */
+export const TEACHER_WS_PATH = '/ws-profesor';
+/** Every message type only the teacher may send. */
+export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall'] as const;
+
+/** Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'. */
+export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string }
+/** Teacher to server: a CSV of questions. `data` is the file's bytes in base64 (the server decodes UTF-8, else Windows-1252, like single player). */
+export interface TCsvMessage { v: number; t: 'tcsv'; name: string; data: string }
+/** Teacher to server: "Repartir automáticamente": replace the waiting rooms by rooms of up to 4 v 4 holding the connected students. */
+export interface TSplitMessage { v: number; t: 'tsplit' }
+/** Teacher to server: add one empty waiting room. */
+export interface TAddRoomMessage { v: number; t: 'taddroom' }
+/** Teacher to server: move a student to a room and team; `seat` (0..7, inside that team) picks the seat, else the team's first free one. */
+export interface TMoveMessage { v: number; t: 'tmove'; student: number; room: string; team: 0 | 1; seat?: number }
+/** The things the teacher can do to a room. */
+export type RoomAction = 'start' | 'pause' | 'resume' | 'end';
+/** Teacher to server: start (waiting), pause (running), resume (paused) or end one room. */
+export interface TRoomMessage { v: number; t: 'troom'; room: string; action: RoomAction }
+/** Teacher to server: start every waiting room, or end every room. */
+export interface TAllMessage { v: number; t: 'tall'; action: 'start' | 'end' }
+/** Every message the teacher may send ('ping' is also accepted and answered with 'pong'). */
+export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRoomMessage | TAllMessage | PingMessage;
+
+/** The catalogue the form is built from, sent once on connect. */
+export interface TeacherInfoMessage {
+  v: number; t: 'tinfo';
+  subjects: { id: string; name: string; topics: { id: string; name: string }[] }[];
+  levels: { id: string; name: string }[]; maps: string[];
+  /** Largest CSV (bytes) and most questions the server accepts. */
+  csvMaxBytes: number; csvMaxQuestions: number;
+}
+/** One seat as the teacher sees it: `student` is the id used by tmove (null for a bot). */
+export interface TeacherSeat { index: number; team: number; kind: 'human' | 'bot'; name: string; student: number | null }
+/** One room as the teacher sees it. `managed` is false for demo rooms; ended rooms have no seats filled. */
+export interface TeacherRoom {
+  id: string; status: RoomInfo['status']; managed: boolean; map: string; round: number; score: number[]; matches: number;
+  /** Why the room ended or failed ('' otherwise). */
+  reason: string; seats: TeacherSeat[];
+}
+/** One student on the server. `connected` is false while their seat is held for a rejoin. `room` is '' when unseated. */
+export interface TeacherStudent { id: number; name: string; connected: boolean; room: string; seat: number; team: number }
+/** The session as set (applied to every room's next match). */
+export interface TeacherSession {
+  subject: string; level: Level; topics: string[]; map: string;
+  /** The CSV loaded (null for none): kept when another subject is chosen. */
+  csv: { name: string; count: number; skipped: number } | null;
+}
+/**
+ * Server to teacher: everything on screen. Sent on connect, after every teacher action, when something changed
+ * (checked every teacher_update_ms) and at least every teacher_heartbeat_s. `rooms` lists live rooms by id, then
+ * the last rooms that ended (newest last).
+ */
+export interface TeacherStateMessage { v: number; t: 'tstate'; session: TeacherSession; students: TeacherStudent[]; rooms: TeacherRoom[] }
+/** Server to teacher: the answer to a tcsv. */
+export interface TeacherCsvMessage { v: number; t: 'tcsvok'; ok: boolean; name: string; count: number; skipped: number; text: string }
+/** Server to teacher: a request was refused; `text` is the Spanish sentence to show. */
+export interface TeacherErrorMessage { v: number; t: 'terror'; code: string; text: string }
+/** Every message the server sends the teacher (also 'pong'). */
+export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsvMessage | TeacherErrorMessage | PongMessage;
+
+/** What parseTeacherMessage() returns. */
+export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
+const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const TKEYS: Record<TeacherMessage['t'], string[]> = {
+  tsession: ['v', 't', 'subject', 'level', 'topics', 'map'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
+  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], ping: ['v', 't'],
+};
+/**
+ * Checks one text frame from the teacher's connection: size, JSON, version, type, exact keys and each field's
+ * shape. Whether a subject, topic, map, room or student really exists is checked by the server (teacher.ts).
+ * @example parseTeacherMessage('{"v":2,"t":"tsplit"}', 1000) // { ok: true, msg: { v: 2, t: 'tsplit' } }
+ */
+export function parseTeacherMessage(text: string, maxChars: number): TeacherParsed {
+  if (text.length > maxChars) return { ok: false, code: 'too_big' };
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return { ok: false, code: 'not_json' }; }
+  if (!isObject(raw)) return { ok: false, code: 'bad_shape' };
+  if (raw.v !== PROTOCOL_VERSION) return { ok: false, code: 'bad_version' };
+  const t = raw.t;
+  if (typeof t !== 'string' || !Object.hasOwn(TKEYS, t)) return { ok: false, code: 'bad_type' };
+  if (Object.keys(raw).some(k => !TKEYS[t as TeacherMessage['t']].includes(k))) return { ok: false, code: 'bad_shape' };
+  const bad = { ok: false, code: 'bad_field' } as const, v = PROTOCOL_VERSION;
+  switch (t as TeacherMessage['t']) {
+    case 'ping': return { ok: true, msg: { v, t: 'ping' } };
+    case 'tsplit': return { ok: true, msg: { v, t: 'tsplit' } };
+    case 'taddroom': return { ok: true, msg: { v, t: 'taddroom' } };
+    case 'tsession':
+      if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
+      if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;
+      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map } };
+    case 'tcsv':
+      if (!isStr(raw.name) || raw.name.length < 1 || raw.name.length > 80 || !isStr(raw.data) || !B64.test(raw.data)) return bad;
+      return { ok: true, msg: { v, t: 'tcsv', name: raw.name.replace(/[\u0000-\u001f<>]/g, '').trim() || 'preguntas.csv', data: raw.data } };
+    case 'tmove':
+      if (!isInt(raw.student) || raw.student < 0 || !isStr(raw.room) || !ROOM_ID.test(raw.room) || (raw.team !== 0 && raw.team !== 1)) return bad;
+      if (raw.seat !== undefined && (!isInt(raw.seat) || raw.seat < 0 || raw.seat >= SEATS)) return bad;
+      return { ok: true, msg: raw.seat === undefined ? { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team } : { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team, seat: raw.seat as number } };
+    case 'troom':
+      if (!isStr(raw.room) || !ROOM_ID.test(raw.room) || !(raw.action === 'start' || raw.action === 'pause' || raw.action === 'resume' || raw.action === 'end')) return bad;
+      return { ok: true, msg: { v, t: 'troom', room: raw.room, action: raw.action } };
+    case 'tall':
+      if (raw.action !== 'start' && raw.action !== 'end') return bad;
+      return { ok: true, msg: { v, t: 'tall', action: raw.action } };
   }
 }

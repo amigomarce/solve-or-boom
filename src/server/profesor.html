@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solve or Boom · Pantalla del profesor</title>
+<style>
+  /* The teacher's control table (story 006). No external fonts or files: the classroom has no internet. */
+  :root { --bg:#12172a; --panel:#1b2235; --line:#2e3852; --text:#eef2fa; --soft:#aab4c8; --gold:#ffd06a; --ok:#9ff08a; --warn:#ffe28a; --bad:#ff9a8a; --btn:#2c3754; --btn-on:#3a4870; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  body { min-width: 0; overflow-x: hidden; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: #0d1220; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 20px; margin: 0; color: var(--gold); }
+  #conn { font-size: 15px; padding: 4px 10px; border-radius: 999px; background: #22301f; color: var(--ok); }
+  #conn.off { background: #3d2a12; color: var(--warn); }
+  #msg { flex: 1; min-width: 0; display: none; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 8px; background: #4a2a22; color: #ffd9cf; border: 1px solid #ff9a8a; font-size: 15px; }
+  #msg.ok { background: #233a24; color: #d8f7cf; border-color: var(--ok); }
+  #msg.show { display: flex; }
+  #msg span { flex: 1; min-width: 0; }
+  main { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; padding: 16px 20px; }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  h2 { font-size: 18px; margin: 0 0 10px; color: var(--gold); }
+  h3 { font-size: 15px; margin: 12px 0 6px; color: var(--text); }
+  .hint { color: var(--soft); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; background: var(--btn); border: 1px solid var(--line); cursor: pointer; font-size: 15px; }
+  .chip:has(input:checked) { background: var(--gold); color: #1b2232; border-color: #fff3c4; font-weight: 600; }
+  .chip input { margin: 0; }
+  .chip.off { opacity: .55; cursor: default; }
+  .topics label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 15px; cursor: pointer; }
+  .topics input { width: 18px; height: 18px; }
+  button { font: inherit; font-size: 15px; color: var(--text); background: var(--btn); border: 1px solid #47557a; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--btn-on); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.main { background: #e07a1c; border-color: #7a3a08; color: #fff; font-weight: 600; }
+  button.main:hover:not(:disabled) { background: #f08a2c; }
+  select { font: inherit; font-size: 15px; color: var(--text); background: #0f1424; border: 1px solid #47557a; border-radius: 6px; padding: 4px 6px; max-width: 100%; }
+  .csvline { margin-top: 6px; font-size: 15px; }
+  .csvline .good { color: var(--ok); } .csvline .skip { color: #ffb38a; }
+  ul.students { list-style: none; margin: 0; padding: 0; }
+  ul.students li { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  ul.students li:first-child { border-top: 0; }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .gone { color: var(--soft); font-weight: 400; font-size: 14px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 14px; }
+  .room { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .room.s-running { border-color: #4f8a45; } .room.s-paused { border-color: #a8913f; } .room.s-failed { border-color: #a24d43; }
+  .room-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .room-head b { font-size: 18px; }
+  .badge { font-size: 14px; padding: 2px 8px; border-radius: 999px; background: #2a3247; }
+  .s-waiting .badge { color: var(--text); } .s-running .badge { color: var(--ok); background: #1f3320; }
+  .s-paused .badge { color: var(--warn); background: #3a3218; } .s-ended .badge, .s-failed .badge { color: var(--bad); background: #3a2220; }
+  .meta { color: var(--soft); font-size: 14px; margin: 4px 0 8px; }
+  .meta strong { color: var(--text); font-size: 16px; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .team h4 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
+  .seat { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.04); margin-bottom: 4px; font-size: 15px; min-width: 0; }
+  .seat .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seat.bot { color: #8a93a3; }
+  .tag { font-size: 14px; padding: 0 6px; border-radius: 4px; background: #2a3247; color: var(--soft); flex: none; }
+  .seat.human .tag { background: #3a4a2a; color: var(--ok); }
+  .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .empty { color: var(--soft); font-size: 15px; padding: 6px 0; }
+  .finished { margin-top: 18px; }
+  .finished .room { padding: 8px 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pantalla del profesor</h1>
+  <span id="conn" class="off">Conectando…</span>
+  <div id="msg" role="alert" aria-live="assertive"><span id="msgtext"></span><button id="msgclose" type="button">Cerrar</button></div>
+</header>
+<main>
+  <div>
+    <section class="panel" aria-labelledby="h-session">
+      <h2 id="h-session">Sesión (para todas las salas)</h2>
+      <h3>1. Asignatura</h3>
+      <div id="subjects" class="chips"></div>
+      <h3>2. Contenido</h3>
+      <div class="hint" style="margin-bottom:4px">Nivel</div>
+      <div id="levels" class="chips"></div>
+      <div id="topics" class="topics" style="margin-top:8px"></div>
+      <h3>Tus preguntas</h3>
+      <button id="upload" type="button">Subir CSV</button>
+      <input id="file" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
+      <div id="csv" class="csvline"></div>
+      <h3>Mapa</h3>
+      <div id="maps" class="chips"></div>
+      <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
+    </section>
+    <section class="panel" aria-labelledby="h-students">
+      <h2 id="h-students">Alumnos <span id="count" class="hint"></span></h2>
+      <div id="students"></div>
+    </section>
+  </div>
+  <div>
+    <div class="toolbar">
+      <button id="all-start" type="button" class="main">Iniciar todas</button>
+      <button id="all-end" type="button">Terminar todas</button>
+      <button id="split" type="button">Repartir automáticamente</button>
+      <button id="add" type="button">Añadir sala</button>
+    </div>
+    <div id="rooms" class="rooms"></div>
+    <div id="finished" class="finished"></div>
+  </div>
+</main>
+<script>
+'use strict';
+// The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
+const V = 2;
+const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
+// tinfo sends map ids only; these are the maps' own names (data/maps/*.json). An unknown id shows as it is.
+const MAP_NAME = { pequeno: 'Pequeño', grande: 'Grande', patio: 'Patio', pasillos: 'Pasillos' };
+const CUSTOM = 'custom';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const roomName = id => 'Sala ' + String(id).replace(/^sala-/, '');
+let ws = null, info = null, st = null, retryMs = 1000, timer = 0;
+/** The topics last chosen per subject, so going back to a subject keeps them (like the session screen). */
+const chosen = {};
+/** The HTML last put in each section: unchanged sections are not rebuilt, so focus and open menus survive. */
+const last = {};
+
+function send(t, body) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(Object.assign({ v: V, t }, body || {}))); else say('Sin conexión con el servidor: no se pudo enviar.'); }
+function say(text, ok) { $('msgtext').textContent = text; $('msg').className = 'show' + (ok ? ' ok' : ''); }
+$('msgclose').onclick = () => { $('msg').className = ''; };
+
+function connect() {
+  clearTimeout(timer);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws-profesor');
+  ws.onopen = () => { retryMs = 1000; $('conn').textContent = 'Conectado'; $('conn').className = ''; };
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.t === 'tinfo') { info = m; if (st) render(); }
+    else if (m.t === 'tstate') { st = m; if (info) render(); }
+    else if (m.t === 'tcsvok') say(m.ok ? m.text + (m.skipped ? ` (${m.skipped === 1 ? '1 fila omitida' : m.skipped + ' filas omitidas'})` : '') : m.text, m.ok);
+    else if (m.t === 'terror') say(m.text);
+    // A refused choice leaves the server's session as it was: rebuild the session panel so it shows that again.
+    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps']) delete last[k]; if (st && info) render(); }
+  };
+  ws.onclose = () => {
+    $('conn').textContent = 'Sin conexión · reconectando…'; $('conn').className = 'off';
+    timer = setTimeout(connect, retryMs); retryMs = Math.min(retryMs * 2, 5000);
+  };
+}
+setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ v: V, t: 'ping' })); }, 15000);
+
+/** Puts html in a section unless it is unchanged, or the teacher is using a menu inside it (then on the next state). */
+function put(id, html) {
+  const el = $(id);
+  if (last[id] === html) return;
+  if (el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+  last[id] = html; el.innerHTML = html;
+}
+
+function sendSession(over) {
+  const s = Object.assign({ subject: st.session.subject, level: st.session.level, topics: st.session.topics, map: st.session.map }, over);
+  if (s.subject === CUSTOM) s.topics = [];
+  send('tsession', s);
+}
+
+function render() {
+  const s = st.session, subj = info.subjects.find(x => x.id === s.subject);
+  if (s.subject !== CUSTOM) chosen[s.subject] = s.topics.slice();
+  const custom = s.subject === CUSTOM;
+  put('subjects', info.subjects.map(x => `<label class="chip"><input type="radio" name="subject" value="${esc(x.id)}"${x.id === s.subject ? ' checked' : ''}>${esc(x.id === CUSTOM ? x.name + ' (CSV)' : x.name)}</label>`).join(''));
+  put('levels', info.levels.map(l => `<label class="chip${custom ? ' off' : ''}"><input type="radio" name="level" value="${esc(l.id)}"${l.id === s.level ? ' checked' : ''}${custom ? ' disabled' : ''}>${esc(l.name)}</label>`).join(''));
+  put('topics', custom ? '<div class="hint">Un CSV propio no usa el nivel ni los temas.</div>'
+    : subj.topics.map(t => `<label><input type="checkbox" value="${esc(t.id)}"${s.topics.includes(t.id) ? ' checked' : ''}>${esc(t.name)}</label>`).join(''));
+  put('csv', s.csv ? `Archivo: <b>${esc(s.csv.name)}</b> · <span class="good">${s.csv.count === 1 ? '1 pregunta' : s.csv.count + ' preguntas'}</span>`
+      + (s.csv.skipped ? ` · <span class="skip">${s.csv.skipped === 1 ? '1 fila omitida' : s.csv.skipped + ' filas omitidas'}</span>` : '')
+    : `<span class="hint">Todavía no hay archivo. Máximo ${Math.floor(info.csvMaxBytes / 1024)} KB y ${info.csvMaxQuestions} preguntas.</span>`);
+  put('maps', info.maps.map(id => `<label class="chip"><input type="radio" name="map" value="${esc(id)}"${id === s.map ? ' checked' : ''}>${esc(MAP_NAME[id] || id)}</label>`).join(''));
+
+  const live = st.rooms.filter(r => r.seats.length && (r.status === 'waiting' || r.status === 'running' || r.status === 'paused'));
+  const on = st.students.filter(x => x.connected).length;
+  $('count').textContent = st.students.length ? `(${on} conectados${st.students.length > on ? ', ' + (st.students.length - on) + ' sin conexión' : ''})` : '';
+  put('students', !st.students.length ? '<div class="empty">Todavía no hay alumnos. Los alumnos entran escribiendo su nombre en la página del juego.</div>'
+    : '<ul class="students">' + st.students.map(x => {
+      const opts = live.flatMap(r => [0, 1].map(t => `<option value="${esc(r.id)}|${t}"${x.room === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(r.id))} · Equipo ${t + 1}</option>`));
+      const here = live.some(r => r.id === x.room);
+      return `<li><span class="name" title="${esc(x.name)}">${esc(x.name)}${x.connected ? '' : ' <span class="gone">(sin conexión)</span>'}</span>`
+        + `<select data-student="${x.id}" aria-label="Sala y equipo de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
+    }).join('') + '</ul>');
+
+  put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : live.map(roomCard).join(''));
+  const done = st.rooms.filter(r => !live.includes(r));
+  put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
+    `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span></div>`
+    + `<div class="meta">Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
+
+  $('all-start').disabled = !live.some(r => r.status === 'waiting');
+  $('all-end').disabled = !live.length;
+  $('split').disabled = !on || live.some(r => r.status === 'running' || r.status === 'paused');
+}
+
+function roomCard(r) {
+  const teams = [0, 1].map(t => `<div class="team"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(x => x.kind === 'human'
+    ? `<div class="seat human"><span class="tag">Alumno</span><span class="who" title="${esc(x.name)}">${esc(x.name)}</span></div>`
+    : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`).join('') + '</div>').join('');
+  const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
+  const played = r.status !== 'waiting';
+  return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
+    + `<span class="hint">Mapa ${esc(MAP_NAME[r.map] || r.map)}</span></div>`
+    + `<div class="meta">${played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + `<div class="teams">${teams}</div><div class="actions">`
+    + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
+    + b('end', 'Terminar', true) + '</div></div>';
+}
+
+// ---- the teacher's actions ----
+$('subjects').addEventListener('change', e => {
+  const id = e.target.value;
+  if (id === CUSTOM) { sendSession({ subject: CUSTOM }); return; }
+  const subj = info.subjects.find(x => x.id === id);
+  sendSession({ subject: id, topics: chosen[id] && chosen[id].length ? chosen[id] : subj.topics.map(t => t.id) });
+});
+$('levels').addEventListener('change', e => sendSession({ level: e.target.value }));
+$('maps').addEventListener('change', e => sendSession({ map: e.target.value }));
+$('topics').addEventListener('change', () => sendSession({ topics: [...$('topics').querySelectorAll('input:checked')].map(i => i.value) }));
+$('upload').onclick = () => $('file').click();
+$('file').addEventListener('change', () => {
+  const f = $('file').files[0]; $('file').value = '';
+  if (!f) return;
+  if (info && f.size > info.csvMaxBytes) { say(`El archivo es demasiado grande (máximo ${Math.floor(info.csvMaxBytes / 1024)} KB).`); return; }
+  const rd = new FileReader();
+  rd.onload = () => {
+    const bytes = new Uint8Array(rd.result); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    send('tcsv', { name: f.name, data: btoa(bin) });
+  };
+  rd.onerror = () => say('No se pudo leer el archivo.');
+  rd.readAsArrayBuffer(f);
+});
+$('students').addEventListener('change', e => {
+  const sel = e.target; if (!sel.dataset.student || !sel.value) return;
+  const [room, team] = sel.value.split('|');
+  sel.blur();
+  send('tmove', { student: Number(sel.dataset.student), room, team: Number(team) });
+});
+$('rooms').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]'); if (!b || b.disabled) return;
+  if (b.dataset.act === 'end' && !confirm(`¿Terminar la ${roomName(b.dataset.room)}? Sus alumnos verán los resultados.`)) return;
+  send('troom', { room: b.dataset.room, action: b.dataset.act });
+});
+$('all-start').onclick = () => send('tall', { action: 'start' });
+$('all-end').onclick = () => { if (confirm('¿Terminar todas las salas?')) send('tall', { action: 'end' }); };
+$('split').onclick = () => send('tsplit');
+$('add').onclick = () => send('taddroom');
+connect();
+</script>
+</body>
+</html>

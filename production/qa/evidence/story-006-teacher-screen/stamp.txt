@@ -1,0 +1,13 @@
+Reviewed-Content-Hash: src/main.ts d54f0f771b5ca2d8f69209e96bcd683b9d73acae
+Reviewed-Content-Hash: src/net/protocol.ts f1d5781054b1600d7c2cfdf14b0b3c46e1c420b6
+Reviewed-Content-Hash: src/game/csv.ts cb2095be95c24b40ee3fbb3dd765c748833199df
+Reviewed-Content-Hash: src/server/aula.ts 9bc6adda66bcca04b86cd6b6f2ffa66195a7e1bd
+Reviewed-Content-Hash: src/server/lobby.ts c8e6dae7aa4b25b434923153d17e3d37e12627f7
+Reviewed-Content-Hash: src/server/log.ts 3ec85750ebd6c6478d93b48556ff74cfa67b4bd5
+Reviewed-Content-Hash: src/server/net.ts b7171c8f5f5cfb2a03deb67c1fc9afca35178af0
+Reviewed-Content-Hash: src/server/room.ts 5eef16a332b21d49a214b3c9d0e5055a64711ac3
+Reviewed-Content-Hash: src/server/rooms.ts c5d0daa05acaf17d3bb790cd43c30f3df895d2c9
+Reviewed-Content-Hash: src/server/settings.ts 5fecc80ece6d386ea591860c8e33a16359d6d483
+Reviewed-Content-Hash: src/server/teacher.ts 0e9e8b863516775f933802d15783356f09358570
+Reviewed-Content-Hash: src/server/profesor.html 00341b23f386d630b175c50144073c183c260a49
+Reviewed-Content-Hash: data/aula.json d0dfd1ecf748d891ebb6732281da13ffbab35158

@@ -1,0 +1,55 @@
+OK   loopback page 200 (got 200)
+OK   loopback teacher ws accepted (no Origin)
+OK   Origin http://localhost:57006 accepted
+OK   Origin http://127.0.0.1:57006 accepted
+OK   Origin http://[::1]:57006 accepted
+OK   Origin http://evil.example: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   Origin http://evil.example:57006: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   Origin http://localhost:57007: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   Origin null: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   upgrade Host evil.example: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   rebinding (Host+Origin evil.example:57006): refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+OK   GET /profesor Host evil.example -> 403
+OK   GET /profesor Host localhost -> 200
+OK   LAN 172.20.10.3 page 403 "Acceso denegado: esta página solo se abre desde el PC del profesor (localhost)." (got 403)
+OK   LAN 172.20.10.3 teacher ws: refused 403 Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).
+     LAN plain GET /ws-profesor -> 404
+OK   tinfo: 5 subjects, 4 maps
+OK   start: 4 waiting rooms
+OK   custom without CSV refused
+OK   unknown subject refused
+OK   CSV ok: Cargadas 5 preguntas de mis.csv
+OK   CSV too big refused: El archivo es demasiado grande (máximo 256 KB).
+OK   CSV with no questions refused
+     40k-row CSV: 239999 bytes
+OK   40k-row CSV refused in 30.1 ms round trip: Demasiadas filas (40000); el máximo es 500 preguntas.
+     parseCSV itself on the 40k rows (single-player path): 43 ms, 40000 questions
+OK   CSV name empty after stripping -> preguntas.csv
+OK   CSV bad base64 refused at the boundary
+OK   session subject custom, csv 5 (state custom)
+OK   session set: matematicas facil patio, csv kept
+OK   8 students joined, all see 'waiting'
+OK   teacher sees 8 students
+OK   no snapshots while waiting
+     split of 8: 1 rooms, humans per room 8
+OK   split: ceil(N/8) rooms, even, nobody left out
+OK   split: teams balanced within one
+OK   every student has a room after the split
+OK   move to a seat of the other team refused
+OK   start all: every room running
+OK   students received 184 snapshots
+OK   paused room did not advance (71 -> 71)
+OK   paused room: its students got no snapshots
+OK   paused room: students got room state 'paused' (paused)
+     (room full: join-while-paused case needs a free seat, run with 10)
+OK   teacher state: paused
+OK   resumed: steps 71 -> 160, owed time not burst
+OK   resumed: students get snapshots and state running
+OK   resume of a running room refused
+OK   student teacher-message refused (not_teacher)
+OK   counted as dropped (1); no room ended by it
+OK   end one: sala-5 ended, round 1 score 0,0
+OK   ended room: its students got room state ended
+OK   end all: no live rooms, 1 listed as ended
+     teacher states pushed: 18; net {"students":0,"connections":8,"dropped":1,"accepted":8,"snapshots":464,"snapshotBytes":226608}
+NO ERRORS

@@ -38,11 +38,17 @@ export interface RoomSpec {
   openSeats: number[];
   /** When a match is won: start another (true) or end the room (false). */
   rematch: boolean;
+  /** True for a room the teacher screen manages: it starts waiting when `waiting`, and is never closed for being empty. */
+  managed?: boolean;
+  /** Start in 'waiting' (the match is built but not stepped) until the teacher starts it. */
+  waiting?: boolean;
 }
 
 /** A room on the server. */
 export interface Room {
   id: string; spec: RoomSpec; seats: Seat[];
+  /** True for a teacher-managed room (see RoomSpec.managed). */
+  managed: boolean;
   /** The match in play; replaced by a new one on a rematch. */
   match: Match;
   /** Matches finished in this room. */
@@ -141,7 +147,7 @@ export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimi
     index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null, present: false,
   }));
   return {
-    id, spec, seats, match: roomMatch(spec, spec.seed, seats), matches: 0, status: 'running', reason: '',
+    id, spec, seats, managed: !!spec.managed, match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
     matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null,
   };
@@ -169,11 +175,11 @@ export function stepRoom(room: Room, clockMs: () => number): void {
  * Seats a student in a seat no student holds (a bot's or an open one; the bot hands the seat over).
  * Without `index` the team with fewer students is filled first (a tie goes to team 0), at its lowest
  * free seat, or the other team's when that one has none. Returns the seat, or null when the room is not
- * running or every seat is a student's.
+ * open (waiting, running or paused) or every seat is a student's.
  * @example const seat = takeSeat(room, connId, 'Ana'); // seat.team is 0 in an empty room
  */
 export function takeSeat(room: Room, owner: number, name: string, index?: number): Seat | null {
-  if (room.status !== 'running') return null;
+  if (room.status !== 'running' && room.status !== 'waiting' && room.status !== 'paused') return null;
   const free = room.seats.filter(s => s.kind !== 'human' && (index === undefined || s.index === index));
   const humans = (team: number): number => room.seats.filter(s => s.kind === 'human' && s.team === team).length;
   const first = humans(1) < humans(0) ? 1 : 0;
@@ -204,4 +210,18 @@ export function roomInfo(room: Room): RoomInfo {
     id: room.id, status: room.status, map: room.spec.match.map, seats: SEATS,
     humans: count('human'), bots: count('bot'), open: count('open'), round: room.match.round, score: [...room.match.score],
   };
+}
+
+/**
+ * Builds the room's match again from new choices and a new seed, with its present students in their seats. Only
+ * for a waiting room (nothing was played): the teacher's session applies to it when it starts. Returns false
+ * for any other status.
+ * @example rebuildMatch(room, { subject: 'matematicas', level: 'facil', topics: ['arith'], custom: [], customName: '', map: 'patio' }, 7);
+ */
+export function rebuildMatch(room: Room, match: RoomSpec['match'], seed: number): boolean {
+  if (room.status !== 'waiting') return false;
+  room.spec = { ...room.spec, match, seed };
+  room.match = roomMatch(room.spec, seed, room.seats);
+  room.pending.length = 0; room.match.events.length = 0;
+  return true;
 }

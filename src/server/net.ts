@@ -7,8 +7,10 @@
 // ping(), terminate(), close(code, reason)), and Node 22's node:http (closeAllConnections) and node:net.
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { parseClientMessage, errorMessage, PROTOCOL_VERSION, WS_PATH, type ErrorCode, type ServerMessage, type ProtocolLimits } from '../net/protocol';
+import { parseClientMessage, parseTeacherMessage, errorMessage, ERROR_TEXT, PROTOCOL_VERSION, WS_PATH, TEACHER_PATH, TEACHER_WS_PATH, type ErrorCode, type ServerMessage, type ProtocolLimits, type TeacherReply } from '../net/protocol';
+import { createTeacher, type Teacher, type TeacherLimits } from './teacher';
 import type { Rooms } from './rooms';
+import type { Room } from './room';
 import { STEP } from '../game/match';
 import { createLobby } from './lobby';
 import { queueInput, ackOf } from './room';
@@ -27,12 +29,43 @@ export interface NetLimits extends ProtocolLimits {
 /** What the network side needs: the rooms, the pages by path, a clock in ms, and the logs. */
 export interface NetDeps {
   rooms: Rooms; pages: Map<string, Page>; clockMs: () => number;
+  /** When given, the teacher role is served: the page `/profesor` (put it in `pages`) and the WebSocket at TEACHER_WS_PATH, both for loopback only. */
+  teacher?: TeacherNetLimits;
   log: (line: string) => void; warn: (kind: string, line: string) => void;
 }
+/** The teacher role's limits (data/aula.json): the teacher brain's, how often state is checked and pushed, and the largest frame. */
+export interface TeacherNetLimits extends TeacherLimits { updateMs: number; heartbeatS: number; maxChars: number }
+/**
+ * True when a socket's remote address is this PC itself (127.0.0.1, ::1 or ::ffff:127.0.0.1). Read from the
+ * socket, never from a header, so a client cannot claim it. A request to the PC's own LAN address arrives from
+ * that LAN address and is NOT loopback.
+ */
+export function isLoopback(address: string | undefined): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+/** The host names a page on this PC uses for the server: a Host or Origin naming anything else is a foreign page (or DNS rebinding). */
+const LOCAL_NAMES = ['localhost', '127.0.0.1', '[::1]'];
+/** True when a Host header is one of LOCAL_NAMES with the server's port (the port may be left out only on port 80). */
+export function isLocalHost(host: string | undefined, port: number): boolean {
+  if (!host) return false;
+  const h = host.toLowerCase();
+  return LOCAL_NAMES.some(n => h === `${n}:${port}` || (port === 80 && h === n));
+}
+/** True when an Origin header is absent (not a browser page) or is http(s) on one of LOCAL_NAMES with the server's port. */
+export function isLocalOrigin(origin: string | undefined, port: number): boolean {
+  if (origin === undefined) return true;
+  let u: URL;
+  try { u = new URL(origin); } catch { return false; }
+  const p = u.port === '' ? (u.protocol === 'https:' ? 443 : 80) : Number(u.port);
+  return (u.protocol === 'http:' || u.protocol === 'https:') && LOCAL_NAMES.includes(u.hostname) && p === port;
+}
+const FORBIDDEN_TEXT = 'Acceso denegado: esta página solo se abre desde el PC del profesor (localhost).';
 /** The running network side. */
 export interface Net {
   /** The port it listens on (the asked one, or the next free one). */
   port: number;
+  /** The teacher role, when it was asked for. */
+  teacher: Teacher | null;
   /** Connections open now, and messages dropped since start. */
   counts(): { students: number; connections: number; dropped: number; accepted: number; snapshots: number; snapshotBytes: number };
   /** Closes every connection and the port. */
@@ -49,7 +82,11 @@ interface Conn { id: number; tokens: number; lastT: number; strikes: number; ali
  */
 export async function startNet(port: number, tries: number, lim: NetLimits, deps: NetDeps): Promise<Net> {
   const http: Server = createServer((req, res) => {
-    const page = deps.pages.get((req.url ?? '/').split('?')[0]);
+    const path = (req.url ?? '/').split('?')[0];
+    if ((path === TEACHER_PATH || path.startsWith(TEACHER_PATH + '/')) && (!isLoopback(req.socket.remoteAddress) || !isLocalHost(req.headers.host, at))) {
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(FORBIDDEN_TEXT); return;
+    }
+    const page = deps.pages.get(path);
     if (!page || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('No encontrado'); return; }
     res.writeHead(200, { 'content-type': page.type, 'content-length': page.body.length, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
     res.end(req.method === 'HEAD' ? undefined : page.body);
@@ -66,7 +103,25 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   }
   http.on('error', e => deps.warn('http', `Error HTTP: ${e.message}`));
 
-  const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: lim.maxChars, perMessageDeflate: false });
+  // Both WebSocket servers take upgrades by hand (noServer) so one handler can route by path and gate the teacher's.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: lim.maxChars, perMessageDeflate: false });
+  const twss = new WebSocketServer({ noServer: true, maxPayload: deps.teacher?.maxChars ?? 1024, perMessageDeflate: false });
+  http.on('upgrade', (req, socket, head) => {
+    socket.on('error', () => {}); // a reset during the handshake must not become an uncaught error
+    const path = (req.url ?? '/').split('?')[0];
+    const reject = (line: string, body = ''): void => {
+      const bytes = Buffer.from(body);
+      socket.write(`HTTP/1.1 ${line}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${bytes.length}\r\n\r\n`); socket.end(bytes); socket.destroy();
+    };
+    if (path === WS_PATH) wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+    else if (path === TEACHER_WS_PATH && deps.teacher) {
+      const origin = req.headers.origin;
+      if (!isLoopback(req.socket.remoteAddress) || !isLocalHost(req.headers.host, at) || !isLocalOrigin(origin, at)) {
+        deps.warn('teacher-refused', 'Conexión de profesor rechazada: no viene de la página del profesor en este PC'); reject('403 Forbidden', FORBIDDEN_TEXT); return;
+      }
+      twss.handleUpgrade(req, socket, head, ws => twss.emit('connection', ws, req));
+    } else reject('404 Not Found');
+  });
   const conns = new Map<WebSocket, Conn>();
   let made = 0, dropped = 0, accepted = 0, snapshots = 0, snapshotBytes = 0;
   const send = (ws: WebSocket, msg: ServerMessage): void => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
@@ -82,12 +137,68 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
     send: (id, msg) => { const ws = byId.get(id); if (ws) send(ws, msg); },
     isAlive: id => { const ws = byId.get(id); return !!ws && !!conns.get(ws)?.alive; },
     close: id => { byId.get(id)?.close(4000, 'sesión recuperada desde otra conexión'); },
+    rebegin: id => { const ws = byId.get(id), c = ws && conns.get(ws); if (c) c.began = ''; },
   });
   const lobbyTimer = setInterval(lobby.tick, lim.lobbyTickMs);
+  // ---- the teacher role: its own connections, the same frame format, loopback only ----
+  const teacher = deps.teacher ? createTeacher(deps.teacher, { rooms: deps.rooms, lobby, log: deps.log }) : null;
+  const tconns = new Set<WebSocket>();
+  const tsend = (ws: WebSocket, msg: TeacherReply): void => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
+  let lastState = '', lastStateAt = 0;
+  /** Sends the state to every teacher page, when it changed or `force`d or the heartbeat is due. */
+  const pushState = (force: boolean): void => {
+    if (!teacher || !tconns.size) return;
+    const text = JSON.stringify(teacher.state()), now = deps.clockMs();
+    if (!force && text === lastState && now - lastStateAt < deps.teacher!.heartbeatS * 1000) return;
+    lastState = text; lastStateAt = now;
+    for (const ws of tconns) if (ws.readyState === ws.OPEN) ws.send(text);
+  };
+  const teacherTimer = teacher ? setInterval(() => pushState(false), deps.teacher!.updateMs) : undefined;
+  twss.on('connection', ws => {
+    tconns.add(ws);
+    ws.on('error', e => deps.warn('ws-teacher', `Conexión de profesor: ${e.message}`));
+    ws.on('close', () => tconns.delete(ws));
+    tsend(ws, teacher!.info()); ws.send(JSON.stringify(teacher!.state()));
+    ws.on('message', (data, isBinary) => {
+      const parsed = isBinary ? null : parseTeacherMessage(data.toString(), deps.teacher!.maxChars);
+      if (!parsed || !parsed.ok) { const code = parsed ? parsed.code : 'not_text'; tsend(ws, { v: PROTOCOL_VERSION, t: 'terror', code, text: ERROR_TEXT[code] }); return; }
+      try {
+        const reply = teacher!.handle(parsed.msg);
+        if (reply) tsend(ws, reply);
+        freezeFrames();
+        pushState(true);
+      } catch (e) {
+        deps.warn('teacher-fault', `Error al atender al profesor: ${e instanceof Error ? e.message : String(e)}`);
+        tsend(ws, { v: PROTOCOL_VERSION, t: 'terror', code: 'interno', text: 'Error interno del servidor: inténtalo otra vez.' });
+      }
+    });
+  });
   // Every snapEvery steps, each connected student of the room gets a snapshot with the events since the last one;
   // a `begin` goes first when their match is new to them (joined, rejoined, a rematch). After a rematch, a student
   // who was in the old match gets its last snapshot (with its matchEnd) before the new match's begin.
   const snapEvery = Math.max(1, Math.round(1 / STEP / lim.snapshotHz));
+  /** Sends the room's current match `begin` to one student and marks it sent. */
+  const sendBegin = (ws: WebSocket, c: Conn, room: Room, seat: number): void => {
+    c.began = `${room.id}:${room.matchNo}`;
+    send(ws, { v: PROTOCOL_VERSION, t: 'begin', map: room.match.opts.map, seat, match: room.matchNo, hz: 1 / STEP / snapEvery, names: room.match.players.map(p => p.name),
+      subject: room.match.opts.subject, level: room.match.opts.level });
+  };
+  /**
+   * A paused room is not stepped, so nobody who sat down in it since the pause (a join, a rejoin, a teacher's move) got
+   * its match: they get the `begin` and one snapshot (no events) now, and see the match frozen with the pause banner.
+   */
+  const freezeFrames = (): void => {
+    for (const room of deps.rooms.all()) {
+      if (room.status !== 'paused') continue;
+      for (const seat of room.seats) {
+        const ws = seat.kind === 'human' && seat.owner !== null ? byId.get(seat.owner) : undefined;
+        const c = ws && conns.get(ws);
+        if (!ws || !c || ws.readyState !== ws.OPEN || c.began === `${room.id}:${room.matchNo}`) continue;
+        sendBegin(ws, c, room, seat.index);
+        send(ws, buildSnapshot(room.match, seat.index, ackOf(room, seat.index), room.stats.steps, [], lim.eventRangeM));
+      }
+    }
+  };
   deps.rooms.onStepped = room => {
     if (room.stats.steps % snapEvery !== 0) return;
     for (const seat of room.seats) {
@@ -97,9 +208,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       const tag = `${room.id}:${room.matchNo}`;
       if (c.began !== tag) {
         if (room.last && c.began === `${room.id}:${room.matchNo - 1}`) send(ws, buildSnapshot(room.last.match, seat.index, ackOf(room, seat.index), room.stats.steps, room.last.events, lim.eventRangeM));
-        c.began = tag;
-        send(ws, { v: PROTOCOL_VERSION, t: 'begin', map: room.match.opts.map, seat: seat.index, match: room.matchNo, hz: 1 / STEP / snapEvery, names: room.match.players.map(p => p.name),
-          subject: room.match.opts.subject, level: room.match.opts.level });
+        sendBegin(ws, c, room, seat.index);
       }
       const text = JSON.stringify(buildSnapshot(room.match, seat.index, ackOf(room, seat.index), room.stats.steps, room.pending, lim.eventRangeM));
       ws.send(text); snapshots++; snapshotBytes += Buffer.byteLength(text);
@@ -125,7 +234,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       if (!parsed.ok) { refuse(ws, c, parsed.code); return; }
       const msg = parsed.msg;
       if (msg.t === 'ping') { accepted++; send(ws, { v: PROTOCOL_VERSION, t: 'pong' }); return; }
-      if (msg.t === 'hello') { accepted++; lobby.hello(c.id, msg.name, msg.rejoin === true); return; }
+      if (msg.t === 'hello') { accepted++; lobby.hello(c.id, msg.name, msg.rejoin === true); freezeFrames(); return; }
       if (msg.t === 'leave') { accepted++; lobby.leave(c.id); return; }
       const at = lobby.where(c.id);
       if (!at) { refuse(ws, c, 'need_hello'); return; }
@@ -141,13 +250,13 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   }, lim.pingIntervalS * 1000);
 
   return {
-    port: at,
+    port: at, teacher,
     counts: () => ({ students: lobby.count(), connections: conns.size, dropped, accepted, snapshots, snapshotBytes }),
     close: () => new Promise(done => {
       deps.rooms.onStepped = null;
-      clearInterval(pinger); clearInterval(lobbyTimer);
-      for (const ws of conns.keys()) ws.close(1001, 'servidor detenido');
-      wss.close();
+      clearInterval(pinger); clearInterval(lobbyTimer); clearInterval(teacherTimer);
+      for (const ws of [...conns.keys(), ...tconns]) ws.close(1001, 'servidor detenido');
+      wss.close(); twss.close();
       http.close(() => done());
       http.closeAllConnections();
     }),

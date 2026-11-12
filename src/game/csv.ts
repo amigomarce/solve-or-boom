@@ -101,15 +101,16 @@ export function parseCSV(text: string): { questions: ParsedQuestion[]; skipped: 
     if (c.length === 2) fill.push(item);
   });
   // Two-column rows borrow their wrong choices from the other rows' answers (numbers get nearby numbers).
-  const answers = out.map(o => o.list[0]);
+  // The pool of answers is built once (rebuilding it per row was quadratic); a row's own answer is skipped by index.
+  const pool = [...new Set(out.map(o => o.list[0]))], at = new Map(pool.map((a, i) => [a, i]));
   const bad = new Set<ParsedQuestion>();
   for (const o of fill) {
     const near = nearbyNumbers(o.list[0]);
     if (near) { o.list.push(...near); continue; }
-    const pool = [...new Set(answers.filter(a => a !== o.list[0]))];
-    if (pool.length < 3) { bad.add(o); continue; }
-    const start = [...o.q].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % pool.length;
-    for (let k = 0; k < 3; k++) o.list.push(pool[(start + k) % pool.length]);
+    const own = at.get(o.list[0]) ?? -1, size = pool.length - (own >= 0 ? 1 : 0);
+    if (size < 3) { bad.add(o); continue; }
+    const start = [...o.q].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % size;
+    for (let k = 0; k < 3; k++) { const i = (start + k) % size; o.list.push(pool[own >= 0 && i >= own ? i + 1 : i]); }
   }
   skipped += bad.size;
   return { questions: out.filter(o => !bad.has(o)), skipped };

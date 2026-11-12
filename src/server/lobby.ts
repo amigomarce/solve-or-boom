@@ -8,6 +8,7 @@
 // the seat that was held for them. That is accepted; nothing but a name identifies anybody.
 // Names live in memory only and are never logged: the log lines here carry connection ids and counts.
 import { PROTOCOL_VERSION, errorMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type RoomView, type SeatView, type ServerMessage } from '../net/protocol';
+import { SEATS_PER_TEAM, type TeacherStudent } from '../net/protocol';
 import { takeSeat, leaveSeat, setPresent, type Room } from './room';
 import type { Rooms } from './rooms';
 
@@ -22,6 +23,8 @@ export interface LobbyDeps {
   isAlive: (connId: number) => boolean;
   /** Closes a connection (used when a rejoin takes over a dead one's seat). */
   close: (connId: number) => void;
+  /** Makes the connection's next snapshot round send it a fresh `begin` (it changed seat or room). */
+  rebegin: (connId: number) => void;
 }
 /** The lobby. */
 export interface Lobby {
@@ -39,10 +42,22 @@ export interface Lobby {
   tick(): void;
   /** Students on the server now (connected or held). */
   count(): number;
+  /** Every student, in join order, for the teacher screen (names stay in memory). */
+  list(): TeacherStudent[];
+  /** The id the teacher screen uses for the student at this connection, if seated. */
+  idOf(connId: number): number | undefined;
+  /**
+   * Teacher: moves a student to a free seat of `team` in room `roomId` (the given seat, else the team's lowest
+   * free one). The student gets a new `joined`; both rooms' students get the new seating. Returns an error
+   * sentence in Spanish, or '' when done.
+   */
+  move(id: number, roomId: string, team: number, seat?: number): string;
+  /** Pushes a room's seating and state to its connected students (call after the room's status changed). */
+  refresh(room: Room): void;
 }
 
 /** A student: the unique name, the seat, and the connection (null while the seat is held). */
-interface Student { name: string; key: string; room: Room; seat: number; connId: number | null; holdUntilS: number }
+interface Student { id: number; name: string; key: string; room: Room; seat: number; connId: number | null; holdUntilS: number }
 
 /**
  * The lobby over the given rooms.
@@ -50,9 +65,10 @@ interface Student { name: string; key: string; room: Room; seat: number; connId:
  */
 export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
   const byKey = new Map<string, Student>(), byConn = new Map<number, Student>();
+  let madeIds = 0;
   const nowS = (): number => deps.clockMs() / 1000;
   const keyOf = (name: string): string => name.toLocaleLowerCase('es');
-  const stateOf = (room: Room): RoomView['state'] => (room.status === 'running' && deps.rooms.get(room.id) === room ? 'running' : 'ended');
+  const stateOf = (room: Room): RoomView['state'] => (deps.rooms.get(room.id) === room && (room.status === 'running' || room.status === 'waiting' || room.status === 'paused') ? room.status : 'ended');
   const view = (room: Room): RoomView => ({
     roomId: room.id, state: stateOf(room),
     seats: room.seats.map((s): SeatView => (s.kind === 'human' && s.name !== null
@@ -90,7 +106,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       if (current) { joined(current); return; } // a repeated hello on a seated connection just repeats the answer
       const old = byKey.get(keyOf(name));
       if (old) {
-        const live = old.room.status === 'running' && deps.rooms.get(old.room.id) === old.room;
+        const live = stateOf(old.room) !== 'ended';
         const takeable = old.connId === null || (rejoin && !deps.isAlive(old.connId));
         if (!live) release(old);
         else if (takeable) {
@@ -108,7 +124,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
         const room = deps.rooms.get(info.id)!;
         const seat = takeSeat(room, connId, uniqueName);
         if (!seat) continue;
-        const st: Student = { name: uniqueName, key: keyOf(uniqueName), room, seat: seat.index, connId, holdUntilS: 0 };
+        const st: Student = { id: ++madeIds, name: uniqueName, key: keyOf(uniqueName), room, seat: seat.index, connId, holdUntilS: 0 };
         byKey.set(st.key, st); byConn.set(connId, st);
         joined(st); push(room, connId);
         deps.log(`Conexión ${connId} ocupa el asiento ${seat.index} de ${room.id} (equipo ${seat.team})`);
@@ -130,6 +146,27 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       st.holdUntilS = nowS() + lim.rejoinGraceS; // the seat stays the student's (and shown as theirs) until tick() runs out the grace
     },
     has: connId => byConn.has(connId),
+    idOf: connId => byConn.get(connId)?.id,
+    refresh: room => push(room),
+    list: () => [...byKey.values()].sort((a, b) => a.id - b.id).map((st): TeacherStudent => ({
+      id: st.id, name: st.name, connected: st.connId !== null, room: st.room.id, seat: st.seat, team: st.room.seats[st.seat].team })),
+    move(id, roomId, team, seat) {
+      const st = [...byKey.values()].find(x => x.id === id), to = deps.rooms.get(roomId);
+      if (!st) return 'Ese alumno ya no está conectado.';
+      if (!to) return 'Esa sala no existe o ya terminó.';
+      if (seat !== undefined && Math.floor(seat / SEATS_PER_TEAM) !== team) return 'Ese asiento no es del equipo elegido.';
+      const free = to.seats.filter(s => s.kind !== 'human' && s.team === team && (seat === undefined || s.index === seat));
+      if (!free.length) return seat === undefined ? 'Ese equipo no tiene sitio libre.' : 'Ese asiento está ocupado.';
+      const from = st.room, owner = from.seats[st.seat].owner!;
+      leaveSeat(from, owner, nowS());
+      const taken = takeSeat(to, owner, st.name, free[0].index)!;
+      st.room = to; st.seat = taken.index;
+      if (st.connId === null) setPresent(to, taken.index, false); // held: a bot plays until they come back
+      else { deps.rebegin(st.connId); joined(st); }
+      if (from !== to) push(from, st.connId ?? -1);
+      push(to, st.connId ?? -1);
+      return '';
+    },
     where: connId => { const st = byConn.get(connId); return st ? { room: st.room, seat: st.seat } : undefined; },
     count: () => byKey.size,
     tick() {

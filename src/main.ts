@@ -65,6 +65,24 @@ const ROOM_STATE: Record<RoomView['state'], [string, string]> = {
   paused: ['Pausa del profesor', '#ffe28a'],
   ended: ['La sala terminó', '#ff9a8a'],
 };
+/** True while the teacher has paused this student's room (class mode): the match is frozen on the server, so nothing is sent or predicted. */
+function teacherPaused(): boolean { return CLASS_MODE && aula.room?.state === 'paused'; }
+/**
+ * The room ended under a student who was playing it: the results screen with the score the mirror has. When the
+ * match had not reached its own end (the teacher ended it), its headline says so; the per-student table is story 007.
+ */
+function showClassResults(): void {
+  const m = net.mirror?.match;
+  if (m) {
+    state = m;
+    if (!m.over) {
+      const mine = m.human.squad;
+      Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Marcador final: tu equipo ${m.score[mine]} - ${m.score[1 - mine]} rivales` });
+    }
+    scene = 'results';
+  } else scene = 'waiting';
+  if (locked) document.exitPointerLock();
+}
 /**
  * The networked match (story 005 Part A): `mirror` is the copy of the server's match the screen draws and
  * predicts (src/net/mirror.ts), `matchNo` the room's match number it was built for, `dressed` whether the
@@ -79,7 +97,7 @@ const net = { mirror: null as Mirror | null, matchNo: -1, dressed: false, cool: 
  */
 function netStep(inp: PlayerInput): void {
   const m = net.mirror, conn = aula.conn;
-  if (!m || !conn) return;
+  if (!m || !conn || teacherPaused()) return;
   const match = m.match, me = match.human, lim = AULA.max_look_per_message.value;
   // A long frame can gather more mouse turn than the server takes in one input: clamp it here, before the prediction, so both agree.
   inp.lookYaw = Math.max(-lim, Math.min(lim, inp.lookYaw)); inp.lookPitch = Math.max(-lim, Math.min(lim, inp.lookPitch));
@@ -115,7 +133,7 @@ function joinClass(): void {
       if (gen !== aula.gen) return;
       aula.room = { roomId: m.roomId, state: m.state, seats: m.seats };
       if (net.mirror) setNames(net.mirror, m.seats);
-      if (m.state === 'ended' && (scene === 'play' || scene === 'pause')) { scene = 'waiting'; if (locked) document.exitPointerLock(); }
+      if (m.state === 'ended' && (scene === 'play' || scene === 'pause' || (scene === 'controls' && ctl.from === 'pause'))) showClassResults();
     },
     onBegin: b => {
       if (gen !== aula.gen) return;
@@ -656,7 +674,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       stepMatch(state, { [state.human.id]: readInput(clicks.shift()) }, dt);
       playEvents();
     },
-    draw() { drawWorld(); drawHUD(); },
+    draw() { drawWorld(); drawHUD(); if (teacherPaused()) drawTeacherPause(); },
   },
   pause: {
     update() {
@@ -1072,6 +1090,14 @@ function drawHUD(paused?: boolean): void {
     text(aula.retry, W / 2, 314, 20, '#ffe28a');
   }
   if (!paused) { if (state.menu && !state.card) drawShop(); if (state.card) drawCard(); }
+}
+/** The banner over a match the teacher paused: centred, in ROOM_STATE.paused's words and colour. */
+function drawTeacherPause(): void {
+  const [words, colour] = ROOM_STATE.paused;
+  ctx.fillStyle = 'rgba(12,16,28,0.45)'; ctx.fillRect(0, 0, W, H);
+  rr(W / 2 - 300, H / 2 - 70, 600, 140, 18, 'rgba(15,20,32,0.92)', colour, 4);
+  text(words, W / 2, H / 2 - 16, 40, colour);
+  text('La partida sigue cuando el profesor la reanude.', W / 2, H / 2 + 34, 20, '#e8eef8', 'center', 'normal');
 }
 function drawShop() {
   const p = state.human, x = W / 2 - 330, y = 120, w = 660;

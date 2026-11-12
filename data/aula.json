@@ -1,7 +1,7 @@
 {
   "port": { "value": 3000, "min": 1024, "max": 65535, "step": 1 },
   "port_tries": { "value": 20, "min": 1, "max": 100, "step": 1 },
-  "demo_rooms": { "value": 2, "min": 0, "max": 16, "step": 1 },
+  "demo_rooms": { "value": 0, "min": 0, "max": 16, "step": 1 },
   "tick_ms": { "value": 8, "min": 1, "max": 20, "step": 1 },
   "tick_budget_ms": { "value": 12, "min": 2, "max": 100, "step": 1 },
   "max_catchup_steps": { "value": 6, "min": 1, "max": 30, "step": 1 },
@@ -25,5 +25,13 @@
   "input_hold_steps": { "value": 6, "min": 0, "max": 60, "step": 1 },
   "takeover_s": { "value": 3, "min": 0.5, "max": 60, "step": 0.5 },
   "load_rooms": { "value": 4, "min": 1, "max": 16, "step": 1 },
-  "load_seconds": { "value": 300, "min": 5, "max": 3600, "step": 5 }
+  "load_seconds": { "value": 300, "min": 5, "max": 3600, "step": 5 },
+  "waiting_rooms": { "value": 4, "min": 0, "max": 16, "step": 1 },
+  "max_rooms": { "value": 16, "min": 1, "max": 64, "step": 1 },
+  "finished_rooms_shown": { "value": 8, "min": 0, "max": 50, "step": 1 },
+  "teacher_update_ms": { "value": 500, "min": 100, "max": 5000, "step": 100 },
+  "teacher_heartbeat_s": { "value": 5, "min": 1, "max": 60, "step": 1 },
+  "teacher_max_message_bytes": { "value": 393216, "min": 4096, "max": 2097152, "step": 4096 },
+  "csv_max_bytes": { "value": 262144, "min": 1024, "max": 1048576, "step": 1024 },
+  "csv_max_questions": { "value": 500, "min": 1, "max": 5000, "step": 1 }
 }

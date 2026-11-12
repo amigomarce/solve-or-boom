@@ -21,6 +21,8 @@ import { aula } from './settings';
 import { log, rateLimitedLog } from './log';
 import { createRooms, type Rooms } from './rooms';
 import { startNet, type Net } from './net';
+import profesorHtml from './profesor.html?raw';
+import { TEACHER_PATH } from '../net/protocol';
 
 const args = process.argv.slice(2);
 /** The number after a flag, or undefined. Exits saying so when it is not a whole number >= 0. */
@@ -87,19 +89,23 @@ if (args.includes('--carga')) {
       maxChars: aula.max_message_bytes, maxName: aula.max_name_length, maxLook: aula.max_look_per_message,
       maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
       maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s, snapshotHz: aula.snapshot_hz, eventRangeM: aula.event_range_m,
-    }, { rooms, pages: new Map([['/', html], ['/index.html', html]]), clockMs, log, warn });
+    }, { rooms, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(profesorHtml) }]]), clockMs, log, warn,
+      teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, maxRooms: aula.max_rooms, finishedShown: aula.finished_rooms_shown,
+        updateMs: aula.teacher_update_ms, heartbeatS: aula.teacher_heartbeat_s, maxChars: aula.teacher_max_message_bytes } });
   } catch (e) {
     console.error(`No se pudo abrir el servidor: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);
   }
   const demo = flag('--salas') ?? aula.demo_rooms;
   for (let i = 0; i < demo; i++) rooms.create({ match: { subject: 'matematicas', level: 'medio', topics: ['arith', 'mult'], custom: [], customName: '', map: MAP_IDS[i % MAP_IDS.length] } });
+  for (let i = 0; i < aula.waiting_rooms; i++) net.teacher?.addRoom(); // empty rooms the students sit in until the teacher splits and starts
   const lan = Object.values(networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => `http://${a!.address}:${net!.port}`);
   console.log('\n=== Servidor del aula en marcha ===');
   if (lan.length) { console.log('Los alumnos abren en su navegador (misma red del colegio):'); for (const u of lan) console.log('   ' + u); }
   else console.log(`Este PC no tiene dirección de red local: solo funciona en este PC, en http://localhost:${net.port}`);
   console.log(`En este PC: http://localhost:${net.port}`);
-  console.log(`Salas de prueba (solo bots): ${demo}. No hace falta internet.`);
+  console.log(`Pantalla del profesor (solo en este PC): http://localhost:${net.port}${TEACHER_PATH}`);
+  console.log(`Salas de espera: ${aula.waiting_rooms}; salas de prueba (solo bots, en marcha): ${demo}. No hace falta internet.`);
   console.log('Para detenerlo: pulsa Ctrl+C en esta ventana.\n');
   if (aula.status_every_s > 0) setInterval(() => {
     const c = net!.counts(), list = rooms.list();

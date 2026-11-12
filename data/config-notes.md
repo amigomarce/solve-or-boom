@@ -130,3 +130,10 @@ holds no comments. The values themselves are in `data/config.json`.
 - `input_queue_max` (aula.json): a student's inputs waiting to be played, at most (8 = 133 ms); older ones are dropped
 - `input_hold_steps` (aula.json): steps a student's held controls are repeated when no input arrived in time, before idling
 - `takeover_s` (aula.json): seconds with no input from a connected student before a bot plays their seat (a hidden tab); their next input takes it back
+
+## Teacher screen (story 006), data/aula.json
+- `demo_rooms` 0: the server no longer starts running rooms of bots (they would take students before the teacher sets up). `--salas N` still makes N.
+- `waiting_rooms` 4: empty waiting rooms made at start so arriving students have a seat (4 rooms = 32 students) until "Repartir automáticamente" replaces them. 0 = students get "sin cupo" until the teacher adds a room.
+- `max_rooms` 16: most live rooms (the split and "add room" refuse past it). `finished_rooms_shown` 8: ended rooms still listed to the teacher.
+- `teacher_update_ms` 500: how often the teacher page's state is checked and pushed if changed; `teacher_heartbeat_s` 5: pushed anyway at least this often.
+- `teacher_max_message_bytes` 393216: largest teacher frame (a 262144-byte CSV is 349528 base64 chars). `csv_max_bytes` 262144 and `csv_max_questions` 500: the CSV limits (single player has none; these protect the server).
