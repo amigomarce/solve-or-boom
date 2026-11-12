@@ -41,6 +41,13 @@ export interface MatchOptions {
  * The match. Built field by field in blankMatch(); typing still to do (`Loose` keys).
  * The window.game hook shows this object as `state`.
  */
+/** What a classroom server listens for in a match (see Match.count). Only people are ever reported, never bots. */
+export interface MatchCount {
+  /** Person `p` answered their card: right or wrong, for this topic label and level id ('' when the question has none). */
+  answer(p: Loose, right: boolean, topic: string, level: string): void;
+  /** `victim` died; `killer` is who shot them (null for the bomb or a self-kill). */
+  kill(killer: Loose | null, victim: Loose): void;
+}
 export interface Match {
   players: Loose[]; feed: Loose[]; hurt: Loose[];
   /** What happened this step, for the screen to play and draw: main.ts reads and empties it after every step. */
@@ -51,6 +58,11 @@ export interface Match {
   human: Loose;
   /** True in a classroom room (see MatchOptions.classroom). */
   classroom?: boolean;
+  /**
+   * Set only by a classroom server (src/server/room.ts) to count what its students do: it is told each judged answer
+   * (with the card's topic and level) and each kill. Null in single player. Not enumerable, so the replay is unchanged.
+   */
+  count?: MatchCount | null;
   /** The match's seeded random numbers: every rules module draws from this, never from Math.random. */
   rng: () => number;
   /** The subject, level and map the match was built with. */
@@ -146,6 +158,7 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
     events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
   };
   Object.defineProperty(match, 'classroom', { value: false, enumerable: false, writable: true });
+  Object.defineProperty(match, 'count', { value: null, enumerable: false, writable: true });
   match.human = humans.length ? match.players[humans[0]] : null;
   match.me = (match.human ?? match.players[0]).st;
   match.players.forEach(resetGuns);

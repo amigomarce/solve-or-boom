@@ -23,6 +23,7 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
 }
 export function kill(match: Match, t: Loose, from: Loose): void {
   t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
+  match.count?.kill(from && from !== t ? from : null, t);
   if (from && from !== t) { from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money); }
   const me = match.human;
   feed(match, `${from ? from.name : 'La bomba'} ${from && from === me ? 'eliminaste a' : 'eliminó a'} ${t === me ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,

@@ -25,14 +25,22 @@ import { down, hit, pressed, clicks, mouse, buttons } from './input';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 import { connect, savedName, type Connection } from './net/client';
-import type { RoomView, You } from './net/protocol';
+import type { ResultsMessage, RoomView, You } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 
 // ---- Class mode ------------------------------------------------------------------------
 /** Served by the classroom server (npm run aula), which adds <meta name="aula"> to the page: the page opens on the join screen. */
 const CLASS_MODE = !!document.querySelector('meta[name="aula"]');
-/** The scene the page opens on. Story 007's main menu replaces this one decision. */
-const FIRST_SCENE = CLASS_MODE ? 'join' : 'title';
+/**
+ * The scene the page opens on: the join screen on the teacher's server (CLASS_MODE), the main menu anywhere else.
+ * A run driven through the game-state hook (?manual=1, src/hook.ts: only step() moves it) plays single player
+ * and opens on the session screen, the way ?scene= already lets a run choose where it starts.
+ */
+const FIRST_SCENE = CLASS_MODE ? 'join' : manual ? 'title' : 'menu';
+/** The main menu's choices, in order (the scene each one opens is in scenes.menu). */
+const MENU = ['solo', 'clase'] as const;
+/** The main menu's highlighted choice (an index into MENU), moved by Up / Down. */
+let menuSel = 0;
 /** The longest name the join screen lets the student type (the server's max_name_length). */
 const NAME_MAX = 20;
 /** One character a name may hold: a letter (á, ñ, ü...), a digit, a space or . _ - ( ). */
@@ -87,9 +95,10 @@ function showClassResults(): void {
  * The networked match (story 005 Part A): `mirror` is the copy of the server's match the screen draws and
  * predicts (src/net/mirror.ts), `matchNo` the room's match number it was built for, `dressed` whether the
  * figures' colours and the gates were set from its first snapshot, and `cool` the local wait before the
- * next own shot plays its sound and flash at once (the server's own arrives a round trip later).
+ * next own shot plays its sound and flash at once (the server's own arrives a round trip later). `results` is
+ * the student's own last `results` message and `resultsFor` the mirror's match it belongs to (story 007).
  */
-const net = { mirror: null as Mirror | null, matchNo: -1, dressed: false, cool: 0 };
+const net = { mirror: null as Mirror | null, matchNo: -1, dressed: false, cool: 0, results: null as ResultsMessage | null, resultsFor: null as Match | null };
 /**
  * One class-mode step of the own player: predicts it with `inp` and sends `inp` to the server (never
  * step(): the server runs the match; it also judges the buy menu, the question cards and the defuse). Also
@@ -159,6 +168,11 @@ function joinClass(): void {
         for (const gm of gates) { gm.position.y = 1.5; gm.visible = m.match.gatesClosed; }
       }
       playEvents(evs);
+    },
+    onResults: r => {
+      if (gen !== aula.gen) return;
+      // It names the match the mirror still holds (a rematch's begin comes after it): tie it to that copy, which the results screen draws.
+      net.results = r; net.resultsFor = net.mirror && r.match === net.matchNo ? net.mirror.match : null;
     },
     onError: e => { if (gen === aula.gen) aula.error = e.text; },
     onReconnecting: (a, max) => { if (gen === aula.gen) aula.retry = `Reconectando… (intento ${a} de ${max})`; },
@@ -659,6 +673,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (pressed('KeyC')) pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
       if (act && act.startsWith('map:')) pickMap(act.slice(4));
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
+      if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
       if (pressed('Enter') || pressed('Space') || act === 'start') {
         if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
         if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
@@ -766,6 +781,25 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (pressed('Enter') || act === 'menu') { scene = 'title'; }
     },
     draw() { drawWorld(); drawResults(); },
+  },
+  menu: {
+    update(dt) {
+      titleT += dt;
+      const act = clicks.shift();
+      if (pressed('ArrowUp') || pressed('ArrowDown')) menuSel = 1 - menuSel;
+      const pick = act ?? (pressed('Digit1') ? 'solo' : pressed('Digit2') ? 'clase' : pressed('Enter') || pressed('Space') ? MENU[menuSel] : undefined);
+      if (pick === 'solo') { menuSel = 0; scene = 'title'; }
+      if (pick === 'clase') { menuSel = 1; scene = 'classinfo'; }
+    },
+    draw() { drawMenu(); },
+  },
+  classinfo: {
+    update(dt) {
+      titleT += dt;
+      const act = clicks.shift();
+      if (act === 'back' || pressed('Escape') || pressed('Enter') || pressed('Backspace')) scene = 'menu';
+    },
+    draw() { drawClassInfo(); },
   },
   join: {
     update(dt) {
@@ -1198,6 +1232,42 @@ function drawLogo(y: number, size: number): void {
   text('OR', tx, y, size, '#ffffff', 'left'); tx += tw2;
   text('BOOM', tx, y, size, SIDE_CSS.att, 'left');
 }
+/** The main menu (outside the teacher's server): "Un jugador (contra bots)" opens the session screen, "Clase (multijugador)" says how to join a class. */
+function drawMenu() {
+  flyover();
+  buttons.length = 0;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(12,16,28,0.55)'; ctx.fillRect(0, 0, W, H);
+  drawLogo(74, 76);
+  text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
+  const items: [string, string, string][] = [
+    ['solo', 'Un jugador (contra bots)', 'Juega en este equipo, sin conexión.'],
+    ['clase', 'Clase (multijugador)', 'Juega con tu clase en el servidor del profesor.'],
+  ];
+  items.forEach(([id, label, sub], i) => {
+    const y = 210 + i * 170, on = menuSel === i;
+    button(340, y, 600, 100, label, id, { size: 34, fill: on ? '#e07a1c' : undefined, stroke: on ? '#fff3c4' : undefined });
+    text(sub, W / 2, y + 128, 20, '#e4e9f4', 'center', 'normal');
+  });
+  text('Haz clic en un botón, o elige con Arriba / Abajo y pulsa Enter (teclas 1 y 2).', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
+}
+/** "Clase (multijugador)" outside the teacher's server: this page cannot reach the class, so it says to open the address the teacher shows. */
+function drawClassInfo() {
+  flyover();
+  buttons.length = 0;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(12,16,28,0.55)'; ctx.fillRect(0, 0, W, H);
+  drawLogo(74, 76);
+  text('Clase (multijugador)', W / 2, 132, 26, '#ffd06a');
+  rr(240, 176, 800, 420, 16, 'rgba(14,19,30,0.92)', null);
+  text('Para jugar con tu clase, abre en el navegador', W / 2, 224, 24, '#fff', 'center', 'normal');
+  text('la dirección que muestra el profesor, por ejemplo:', W / 2, 258, 24, '#fff', 'center', 'normal');
+  text('http://192.168.1.87:3000', W / 2, 318, 36, '#ffd06a');
+  text('Escríbela en la barra de direcciones y entra con tu nombre.', W / 2, 378, 20, '#e4e9f4', 'center', 'normal');
+  wrapText('Este equipo tiene que estar en la misma red (wifi) que el del profesor. Este archivo no se conecta solo: la clase la sirve el ordenador del profesor.', 700, 18)
+    .slice(0, 3).forEach((l, i) => text(l, W / 2, 422 + i * 26, 18, '#aab4c8', 'center', 'normal'));
+  button(W / 2 - 160, 516, 320, 56, 'Volver (Esc)', 'back', { size: 22 });
+}
 /** The join screen: the name field, Entrar, the refusal or connecting line, and the privacy line, over the map flyover. */
 function drawJoin() {
   flyover();
@@ -1282,6 +1352,7 @@ function drawTitle() {
   drawLogo(74, 76);
   text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
   button(1060, 24, 180, 48, 'Controles', 'controls', { size: 22 });
+  button(40, 24, 180, 48, 'Menú (Esc)', 'mainmenu', { size: 22 });
   const custom = session.subject === QUESTIONS.CUSTOM;
   // 1. subject
   rr(40, 170, 330, 400, 16, 'rgba(14,19,30,0.9)', null);
@@ -1366,8 +1437,15 @@ function drawResults() {
   ctx.fillStyle = 'rgba(12,16,28,0.75)'; ctx.fillRect(0, 0, W, H);
   const mine = state.human.squad, won = state.score[mine] > state.score[1 - mine];
   text(state.gained, W / 2, 80, 48, won ? '#9ff08a' : '#ff9a8a');
-  text(state.answered || '', W / 2, 132, 22, '#fff');
+  text(state.answered || (CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
+  if (CLASS_MODE) drawClassResults(); else drawSoloTable();
+  const label = !CLASS_MODE ? 'Volver a la pantalla de sesión (Enter)' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida (Enter)' : 'Volver a la pantalla de entrada (Enter)';
+  button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
+}
+/** Single player's results table: every player's kills, deaths and right and wrong answers. */
+function drawSoloTable() {
+  const mine = state.human.squad;
   const cols: [string, number, CanvasTextAlign][] = [['Jugador', 300, 'left'], ['Equipo', 560, 'center'], ['Bajas', 680, 'center'], ['Muertes', 780, 'center'], ['Bien', 880, 'center'], ['Mal', 980, 'center']];
   rr(260, 196, 760, 380, 14, 'rgba(14,19,30,0.92)', null);
   cols.forEach(([n, x, a]) => text(n, x, 224, 18, '#ffd06a', a));
@@ -1378,8 +1456,48 @@ function drawResults() {
     const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad === mine ? 0 : 1), p.kills, p.deaths, p.right, p.wrong];
     vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
   });
-  const label = !CLASS_MODE ? 'Volver a la pantalla de sesión (Enter)' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida (Enter)' : 'Volver a la pantalla de entrada (Enter)';
-  button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
+}
+/** The most topic rows the class results panel draws; past it the last row says how many more there are. */
+const TOPIC_ROWS = 8;
+/**
+ * Class mode's end of match: "Tus resultados", the student's OWN counts from the server's `results` message (right,
+ * wrong, percentage, kills, deaths, then topic by topic), beside the teams' kills and deaths. Nobody else's answers
+ * are shown. Until the message arrives (it may come a little after matchEnd) the panel says it is on its way.
+ */
+function drawClassResults() {
+  const r = net.resultsFor === state ? net.results : null;
+  rr(60, 196, 580, 380, 14, 'rgba(14,19,30,0.92)', null);
+  text('Tus resultados', 84, 222, 22, '#ffd06a', 'left');
+  if (!r) text('Recibiendo tus resultados…', 350, 380, 20, '#c8d2e6', 'center', 'normal');
+  else {
+    if (r.why === 'ended') text('hasta que el profesor terminó', 616, 222, 15, '#aab4c8', 'right', 'normal');
+    const stats: [string, string, string][] = [['Bien', String(r.right), '#9ff08a'], ['Mal', String(r.wrong), '#ff9a8a'],
+      ['Acierto', r.right + r.wrong ? `${r.pct} %` : '—', '#fff'], ['Bajas', String(r.kills), '#fff'], ['Muertes', String(r.deaths), '#fff']];
+    stats.forEach(([n, v, c], k) => { const x = 120 + k * 104; text(n, x, 256, 15, '#aab4c8', 'center', 'normal'); text(v, x, 284, 26, c); });
+    const tc: [string, number, CanvasTextAlign][] = [['Tema', 84, 'left'], ['Nivel', 430, 'center'], ['Bien', 520, 'center'], ['Mal', 590, 'center']];
+    tc.forEach(([n, x, a]) => text(n, x, 324, 16, '#ffd06a', a));
+    if (!r.topics.length) text('No respondiste ninguna pregunta en esta partida.', 350, 380, 18, '#c8d2e6', 'center', 'normal');
+    const shown = r.topics.length <= TOPIC_ROWS ? r.topics.length : TOPIC_ROWS - 1;
+    r.topics.slice(0, shown).forEach((t, i) => {
+      const y = 352 + i * 26;
+      text(clip(t.tp, 290, 16, 'normal'), 84, y, 16, '#fff', 'left', 'normal');
+      text(t.lv ? QUESTIONS.LEVEL_NAMES[t.lv as Level] ?? t.lv : '—', 430, y, 16, '#c8d2e6', 'center', 'normal');
+      text(String(t.right), 520, y, 16, '#9ff08a', 'center');
+      text(String(t.wrong), 590, y, 16, '#ff9a8a', 'center');
+    });
+    if (shown < r.topics.length) text(`y ${r.topics.length - shown} temas más`, 84, 352 + shown * 26, 16, '#aab4c8', 'left', 'normal');
+  }
+  const mine = state.human.squad;
+  rr(660, 196, 560, 380, 14, 'rgba(14,19,30,0.92)', null);
+  text('Equipos', 684, 222, 22, '#ffd06a', 'left');
+  const cols: [string, number, CanvasTextAlign][] = [['Jugador', 684, 'left'], ['Equipo', 950, 'center'], ['Bajas', 1060, 'center'], ['Muertes', 1160, 'center']];
+  cols.forEach(([n, x, a]) => text(n, x, 256, 16, '#ffd06a', a));
+  [...state.players].sort((a, b) => a.squad - b.squad || b.kills - a.kills).forEach((p, i) => {
+    const y = 288 + i * 30, you = p === state.human;
+    if (you) rr(674, y - 14, 532, 28, 8, 'rgba(255,208,106,0.18)', null);
+    const vals = [clip(`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, 200, 16, you ? 'bold' : 'normal'), squadName(p.squad === mine ? 0 : 1), p.kills, p.deaths];
+    vals.forEach((v, k) => text(String(v), cols[k][1], y, 16, '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
+  });
 }
 let figScene: THREE.Scene | null = null, figCam: THREE.PerspectiveCamera | null = null;
 const FIG_LINE = [['rusher', 'att'], ['rifleman', 'att'], ['sniper', 'att'], ['rusher', 'def'], ['rifleman', 'def'], ['sniper', 'def'], ['bomb', '']];

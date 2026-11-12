@@ -83,9 +83,9 @@ export function answer(match: Match, p: Loose, i: number): void {
   const d = deskOf(match, p), c = d.card;
   if (!c || c.wrongT > 0 || c.okT > 0 || i >= c.q.choices.length) return;
   c.picked = i;
-  if (i === c.q.answer) { p.right++; d.wrongStreak = 0; c.okT = 0.35; personal(match, p, { type: 'answer', right: true }); }
+  if (i === c.q.answer) { p.right++; match.count?.answer(p, true, c.q.topic, c.q.level ?? ''); d.wrongStreak = 0; c.okT = 0.35; personal(match, p, { type: 'answer', right: true }); }
   else {
-    p.wrong++; d.wrongStreak++;
+    p.wrong++; match.count?.answer(p, false, c.q.topic, c.q.level ?? ''); d.wrongStreak++;
     // The lockout grows by wrong_delay_growth for each wrong answer in a row, up to wrong_delay_max.
     c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (d.wrongStreak - 1));
     d.deck.miss(c.q); personal(match, p, { type: 'answer', right: false });

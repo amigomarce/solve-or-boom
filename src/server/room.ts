@@ -8,6 +8,7 @@ import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, typ
 import type { Loose } from '../game/types';
 import { MAP_ID, loadMap } from '../game/map';
 import { SEATS, SEATS_PER_TEAM, type RoomInfo, type SeatKind } from '../net/protocol';
+import { addAnswer, newTally, nameKey, type Results, type Tally } from './results';
 
 /** One of the 8 seats. `owner` is a connection id while a student sits there (never a name). */
 /** `name` is the student's name while one sits there (memory only, display only, never logged), else null. */
@@ -76,11 +77,43 @@ export interface Room {
    */
   last: { match: Match; events: Loose[] } | null;
   play: PlayLimits;
+  /** The match in play: each student's counts by name key (src/server/results.ts), for their own end-of-match results. */
+  tally: Map<string, Tally>;
+  /** The finished match's tally from the step it was won until net.ts has sent the students theirs; null otherwise. */
+  report: Map<string, Tally> | null;
+  /** True once the students got their end-of-match results for the current match (a won match or the room ending). */
+  reported: boolean;
+  /** The teacher's store that every student's counts also go to; null when there is none (demo and load rooms). */
+  results: Results | null;
 }
 
 /** The controls that only last one step: cleared when a seat's held controls are repeated. */
 const PRESSED: (keyof PlayerInput)[] = ['usePress', 'firePress', 'shop', 'prone', 'jump', 'primary', 'pistol', 'swap', 'reload', 'scope', 'closeShop', 'closeCard', 'spectate', 'spectateKey'];
 const freshInputs = (): SeatInputs => ({ queue: [], held: idleInput(), ack: -1, lastSeq: -1, starved: 0, dropped: 0 });
+/**
+ * Starts counting the room's current match: an empty tally, and a Match.count that adds each answer and kill of a
+ * seated student (found by seat, keyed by the typed name) to that tally and to the teacher's store. Bots are never
+ * counted: only a seat whose player is a person reports. Call it after every new `room.match`.
+ */
+function bindCounting(room: Room): void {
+  room.tally = new Map(); room.reported = false;
+  const tallies = (p: Loose): Tally[] => {
+    const seat = room.seats[p.id];
+    if (!p.human || seat.kind !== 'human' || !seat.name) return [];
+    const key = nameKey(seat.name);
+    let mine = room.tally.get(key);
+    if (!mine) { mine = newTally(); room.tally.set(key, mine); }
+    const all = room.results?.tally(seat.name, room.id);
+    return all ? [mine, all] : [mine];
+  };
+  room.match.count = {
+    answer: (p, right, topic, level) => { for (const t of tallies(p)) addAnswer(t, room.id, topic, level, right); },
+    kill: (killer, victim) => {
+      if (killer) for (const t of tallies(killer)) t.kills++;
+      for (const t of tallies(victim)) t.deaths++;
+    },
+  };
+}
 /** A classroom match for this room's spec and seed, with the present students in their seats. */
 function roomMatch(spec: RoomSpec, seed: number, seats: Seat[]): Match {
   const match = createMatch({ ...spec.match, seed, humans: [], classroom: true });
@@ -142,15 +175,18 @@ export const ackOf = (room: Room, index: number): number => room.inputs[index].a
  * A running room with its first match built (round 1, buy time).
  * @example const r = newRoom('sala-1', { match: { subject: 'matematicas', level: 'medio', topics: ['arith'], custom: [], customName: '', map: 'patio' }, seed: 42, openSeats: [], rematch: true }, 0);
  */
-export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimits): Room {
+export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimits, results: Results | null = null): Room {
   const seats: Seat[] = Array.from({ length: SEATS }, (_, index) => ({
     index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null, present: false,
   }));
-  return {
+  const room: Room = {
     id, spec, seats, managed: !!spec.managed, match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
     matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null,
+    tally: new Map(), report: null, reported: false, results,
   };
+  bindCounting(room);
+  return room;
 }
 
 /**
@@ -167,7 +203,8 @@ export function stepRoom(room: Room, clockMs: () => number): void {
   room.stats.steps++; room.stats.totalMs += ms; room.stats.maxMs = Math.max(room.stats.maxMs, ms);
   if (!room.match.over) return;
   room.matches++;
-  if (room.spec.rematch) { room.last = { match: room.match, events: room.pending.splice(0) }; room.match = roomMatch(room.spec, (room.spec.seed + room.matches) >>> 0, room.seats); room.matchNo++; room.pending.push(...room.match.events); room.match.events.length = 0; }
+  room.report = room.tally;
+  if (room.spec.rematch) { room.last = { match: room.match, events: room.pending.splice(0) }; room.match = roomMatch(room.spec, (room.spec.seed + room.matches) >>> 0, room.seats); bindCounting(room); room.matchNo++; room.pending.push(...room.match.events); room.match.events.length = 0; }
   else { room.status = 'ended'; room.reason = 'partida terminada'; }
 }
 
@@ -221,7 +258,7 @@ export function roomInfo(room: Room): RoomInfo {
 export function rebuildMatch(room: Room, match: RoomSpec['match'], seed: number): boolean {
   if (room.status !== 'waiting') return false;
   room.spec = { ...room.spec, match, seed };
-  room.match = roomMatch(room.spec, seed, room.seats);
+  room.match = roomMatch(room.spec, seed, room.seats); bindCounting(room);
   room.pending.length = 0; room.match.events.length = 0;
   return true;
 }

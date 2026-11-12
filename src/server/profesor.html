@@ -66,6 +66,16 @@
   .empty { color: var(--soft); font-size: 15px; padding: 6px 0; }
   .finished { margin-top: 18px; }
   .finished .room { padding: 8px 12px; }
+  .results { margin-top: 18px; }
+  .results .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .results .bar .hint { flex: 1; min-width: 200px; }
+  table.res { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 14px; }
+  table.res th, table.res td { text-align: right; padding: 5px 8px; border-top: 1px solid var(--line); }
+  table.res th:first-child, table.res td:first-child, table.res th.l, table.res td.l { text-align: left; }
+  table.res th { color: var(--soft); font-weight: 600; font-size: 14px; border-top: 0; }
+  table.res td.name { max-width: 220px; }
+  table.res tr.weak td { background: #3a2220; color: #ffd9cf; }
+  .flag { font-size: 14px; padding: 1px 8px; border-radius: 999px; background: #5a2a22; color: #ffd9cf; border: 1px solid var(--bad); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -88,6 +98,7 @@
       <button id="upload" type="button">Subir CSV</button>
       <input id="file" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
       <div id="csv" class="csvline"></div>
+      <div id="available" class="csvline"></div>
       <h3>Mapa</h3>
       <div id="maps" class="chips"></div>
       <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
@@ -106,15 +117,25 @@
     </div>
     <div id="rooms" class="rooms"></div>
     <div id="finished" class="finished"></div>
+    <section class="panel results" aria-labelledby="h-results">
+      <h2 id="h-results">Resultados</h2>
+      <div class="bar">
+        <button id="export" type="button" class="main">Exportar CSV</button>
+        <button id="clear" type="button">Borrar resultados</button>
+        <span class="hint">Solo se guardan en la memoria de este programa: desaparecen al cerrar el servidor. Exporta el CSV para conservarlos.</span>
+      </div>
+      <div id="restopics"></div>
+      <div id="resstudents"></div>
+    </section>
   </div>
 </main>
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 2;
+const V = 3;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
-// tinfo sends map ids only; these are the maps' own names (data/maps/*.json). An unknown id shows as it is.
-const MAP_NAME = { pequeno: 'Pequeño', grande: 'Grande', patio: 'Patio', pasillos: 'Pasillos' };
+/** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
+const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
 const CUSTOM = 'custom';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -139,6 +160,7 @@ function connect() {
     else if (m.t === 'tstate') { st = m; if (info) render(); }
     else if (m.t === 'tcsvok') say(m.ok ? m.text + (m.skipped ? ` (${m.skipped === 1 ? '1 fila omitida' : m.skipped + ' filas omitidas'})` : '') : m.text, m.ok);
     else if (m.t === 'terror') say(m.text);
+    else if (m.t === 'texported') download(m);
     // A refused choice leaves the server's session as it was: rebuild the session panel so it shows that again.
     if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps']) delete last[k]; if (st && info) render(); }
   };
@@ -174,7 +196,11 @@ function render() {
   put('csv', s.csv ? `Archivo: <b>${esc(s.csv.name)}</b> · <span class="good">${s.csv.count === 1 ? '1 pregunta' : s.csv.count + ' preguntas'}</span>`
       + (s.csv.skipped ? ` · <span class="skip">${s.csv.skipped === 1 ? '1 fila omitida' : s.csv.skipped + ' filas omitidas'}</span>` : '')
     : `<span class="hint">Todavía no hay archivo. Máximo ${Math.floor(info.csvMaxBytes / 1024)} KB y ${info.csvMaxQuestions} preguntas.</span>`);
-  put('maps', info.maps.map(id => `<label class="chip"><input type="radio" name="map" value="${esc(id)}"${id === s.map ? ' checked' : ''}>${esc(MAP_NAME[id] || id)}</label>`).join(''));
+  put('maps', info.maps.map(m => `<label class="chip"><input type="radio" name="map" value="${esc(m.id)}"${m.id === s.map ? ' checked' : ''}>${esc(m.name)}</label>`).join(''));
+
+  put('available', s.available === null ? '<span class="hint">Preguntas: se generan sin límite.</span>'
+    : `<span class="${s.available ? 'good' : 'skip'}">${s.available === 1 ? '1 pregunta disponible' : s.available + ' preguntas disponibles'}</span>`);
+  renderResults();
 
   const live = st.rooms.filter(r => r.seats.length && (r.status === 'waiting' || r.status === 'running' || r.status === 'paused'));
   const on = st.students.filter(x => x.connected).length;
@@ -205,14 +231,37 @@ function roomCard(r) {
   const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
   const played = r.status !== 'waiting';
   return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
-    + `<span class="hint">Mapa ${esc(MAP_NAME[r.map] || r.map)}</span></div>`
+    + `<span class="hint">Mapa ${esc(mapName(r.map))}</span></div>`
     + `<div class="meta">${played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + `<div class="teams">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
     + b('end', 'Terminar', true) + '</div></div>';
 }
 
+/** The percent right as text ("—" with no answers). */
+const pct = (right, wrong) => (right + wrong ? Math.round(100 * right / (right + wrong)) + ' %' : '—');
+/** The topic view (weakest first, the ones to reinforce marked) and the student table. */
+function renderResults() {
+  const r = st.results, weak = t => t.right + t.wrong >= info.weakMinAnswers && 100 * t.right / (t.right + t.wrong) < info.weakBelowPct;
+  put('restopics', !r.topics.length ? '<div class="empty">Todavía no hay respuestas. Aquí verás qué temas reforzar.</div>'
+    : '<h3>Por tema (los más flojos primero)</h3><table class="res"><thead><tr><th>Tema</th><th>Correctas</th><th>Incorrectas</th><th>% correctas</th><th>Alumnos</th><th class="l"></th></tr></thead><tbody>'
+      + r.topics.map(t => `<tr${weak(t) ? ' class="weak"' : ''}><td class="name">${esc(t.topic)}</td><td>${t.right}</td><td>${t.wrong}</td><td>${pct(t.right, t.wrong)}</td><td>${t.students}</td><td class="l">${weak(t) ? '<span class="flag">A reforzar</span>' : ''}</td></tr>`).join('')
+      + '</tbody></table>');
+  put('resstudents', !r.students.length ? '' : '<h3>Por alumno</h3><table class="res"><thead><tr><th>Alumno</th><th class="l">Sala</th><th>Correctas</th><th>Incorrectas</th><th>% correctas</th><th>Bajas</th><th>Muertes</th></tr></thead><tbody>'
+    + r.students.map(x => `<tr><td class="name" title="${esc(x.name)}">${esc(x.name)}</td><td class="l">${esc(roomName(x.room))}</td><td>${x.right}</td><td>${x.wrong}</td><td>${pct(x.right, x.wrong)}</td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join('')
+    + '</tbody></table>');
+}
+/** Saves the CSV the server built (its text starts with the byte-order mark, so the Blob's UTF-8 bytes start EF BB BF and Excel reads the accents). */
+function download(m) {
+  const url = URL.createObjectURL(new Blob([m.text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = m.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  say(m.rows === 1 ? 'Descargado resultados.csv con 1 fila.' : `Descargado resultados.csv con ${m.rows} filas.`, true);
+}
+
 // ---- the teacher's actions ----
+$('export').onclick = () => send('texport');
+$('clear').onclick = () => { if (confirm('¿Borrar los resultados de todos los alumnos? No se puede deshacer. Los alumnos que están jugando seguirán sumando desde cero.')) send('tclear'); };
 $('subjects').addEventListener('change', e => {
   const id = e.target.value;
   if (id === CUSTOM) { sendSession({ subject: CUSTOM }); return; }

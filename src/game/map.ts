@@ -42,6 +42,8 @@ export interface MapData {
 export const MAPS: Record<string, MapData> = { pequeno, grande, patio, pasillos };
 /** The map ids in the selector's order. */
 export const MAP_IDS = Object.keys(MAPS);
+/** The map ids with the name the selector shows. */
+export const MAP_LIST: { id: string; name: string }[] = MAP_IDS.map(id => ({ id, name: MAPS[id].name }));
 const ZONES: Record<string, number> = { att_base: 1, def_base: 2, A: 3, B: 4 };
 
 export const CELL = 3, WALL_H = 4.5, EYE = 1.6, RADIUS = 0.35;

@@ -20,6 +20,7 @@ import { STEP } from '../game/match';
 import { aula } from './settings';
 import { log, rateLimitedLog } from './log';
 import { createRooms, type Rooms } from './rooms';
+import { createResults } from './results';
 import { startNet, type Net } from './net';
 import profesorHtml from './profesor.html?raw';
 import { TEACHER_PATH } from '../net/protocol';
@@ -35,10 +36,12 @@ function flag(name: string): number | undefined {
 }
 const clockMs = (): number => performance.now();
 const warn = rateLimitedLog(aula.log_repeat_s * 1000, clockMs);
+// The students' results: memory only, gone when the server stops (story 007).
+const results = createResults(aula.results_max_students);
 const rooms: Rooms = createRooms(
   { tickBudgetMs: aula.tick_budget_ms, maxCatchupSteps: aula.max_catchup_steps, maxBacklogSteps: aula.max_backlog_steps, emptyGraceS: aula.empty_grace_s,
     play: { queueMax: aula.input_queue_max, holdSteps: aula.input_hold_steps, takeoverSteps: Math.round(aula.takeover_s / STEP) } },
-  { clockMs, log, warn },
+  { clockMs, log, warn, results },
 );
 const ticker = setInterval(rooms.tick, aula.tick_ms);
 let net: Net | null = null, stopping = false;
@@ -89,8 +92,8 @@ if (args.includes('--carga')) {
       maxChars: aula.max_message_bytes, maxName: aula.max_name_length, maxLook: aula.max_look_per_message,
       maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
       maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s, snapshotHz: aula.snapshot_hz, eventRangeM: aula.event_range_m,
-    }, { rooms, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(profesorHtml) }]]), clockMs, log, warn,
-      teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, maxRooms: aula.max_rooms, finishedShown: aula.finished_rooms_shown,
+    }, { rooms, results, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(profesorHtml) }]]), clockMs, log, warn,
+      teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, maxRooms: aula.max_rooms, finishedShown: aula.finished_rooms_shown, weakBelowPct: aula.weak_below_pct, weakMinAnswers: aula.weak_min_answers,
         updateMs: aula.teacher_update_ms, heartbeatS: aula.teacher_heartbeat_s, maxChars: aula.teacher_max_message_bytes } });
   } catch (e) {
     console.error(`No se pudo abrir el servidor: ${e instanceof Error ? e.message : String(e)}`);

@@ -6,11 +6,12 @@ import { STEP } from '../game/match';
 import { MAP_IDS } from '../game/map';
 import { newRoom, stepRoom, roomInfo, type Room, type RoomSpec, type PlayLimits } from './room';
 import type { RoomInfo } from '../net/protocol';
+import type { Results } from './results';
 
 /** The limits the manager runs with (data/aula.json). */
 export interface RoomLimits { tickBudgetMs: number; maxCatchupSteps: number; maxBacklogSteps: number; emptyGraceS: number; play: PlayLimits }
 /** What the manager needs from outside: a clock in ms and two logs (plain and rate-limited). */
-export interface RoomDeps { clockMs: () => number; log: (line: string) => void; warn: (kind: string, line: string) => void }
+export interface RoomDeps { clockMs: () => number; log: (line: string) => void; warn: (kind: string, line: string) => void; /** Where students' counts go (memory only); omit for rooms that count nothing. */ results?: Results }
 
 /** The room manager. */
 export interface Rooms {
@@ -36,6 +37,8 @@ export interface Rooms {
   endAll(reason: string): void;
   /** Called after every step of a room (net.ts sends the snapshots from here); null for none. */
   onStepped: ((room: Room) => void) | null;
+  /** Called when a room ends or fails, with its seats still held (net.ts sends the students their results from here); null for none. */
+  onRetired: ((room: Room) => void) | null;
 }
 
 /** The match choices a room gets unless told otherwise. */
@@ -52,19 +55,21 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
   const retire = (room: Room): void => {
     live.delete(room.id);
     finished.push(room);
+    rooms.onRetired?.(room);
     if (finished.length > 50) finished.shift();
     deps.log(`Sala ${room.id} ${room.status === 'failed' ? 'falló' : 'terminada'}: ${room.reason}; ${room.matches} partidas, ${room.stats.steps} pasos`);
   };
   const rooms: Rooms = {
     finished,
     onStepped: null,
+    onRetired: null,
     create(spec = {}) {
       const id = `sala-${++made}`;
       const full: RoomSpec = {
         match: { ...DEFAULT_MATCH, ...spec.match }, seed: spec.seed ?? (Math.random() * 2 ** 31) >>> 0,
         openSeats: spec.openSeats ?? [], rematch: spec.rematch ?? true, managed: spec.managed, waiting: spec.waiting,
       };
-      const room = newRoom(id, full, nowS(), lim.play);
+      const room = newRoom(id, full, nowS(), lim.play, deps.results ?? null);
       live.set(id, room);
       deps.log(`Sala ${id} creada: mapa ${full.match.map}, semilla ${full.seed}, ${room.seats.filter(s => s.kind === 'bot').length} bots`);
       return room;

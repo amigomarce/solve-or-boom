@@ -7,7 +7,7 @@
 // ping(), terminate(), close(code, reason)), and Node 22's node:http (closeAllConnections) and node:net.
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { parseClientMessage, parseTeacherMessage, errorMessage, ERROR_TEXT, PROTOCOL_VERSION, WS_PATH, TEACHER_PATH, TEACHER_WS_PATH, type ErrorCode, type ServerMessage, type ProtocolLimits, type TeacherReply } from '../net/protocol';
+import { parseClientMessage, parseTeacherMessage, errorMessage, ERROR_TEXT, PROTOCOL_VERSION, WS_PATH, TEACHER_PATH, TEACHER_WS_PATH, type ErrorCode, type ServerMessage, type ProtocolLimits, type TeacherReply, RESULT_TOPICS_MAX } from '../net/protocol';
 import { createTeacher, type Teacher, type TeacherLimits } from './teacher';
 import type { Rooms } from './rooms';
 import type { Room } from './room';
@@ -15,6 +15,7 @@ import { STEP } from '../game/match';
 import { createLobby } from './lobby';
 import { queueInput, ackOf } from './room';
 import { buildSnapshot } from '../net/snapshot';
+import { nameKey, newTally, type Results } from './results';
 
 /** A page the server serves: its content type and bytes. The teacher screen (story 006) adds its own. */
 export interface Page { type: string; body: Buffer }
@@ -29,6 +30,8 @@ export interface NetLimits extends ProtocolLimits {
 /** What the network side needs: the rooms, the pages by path, a clock in ms, and the logs. */
 export interface NetDeps {
   rooms: Rooms; pages: Map<string, Page>; clockMs: () => number;
+  /** The teacher's results store (memory only); the same one the rooms count into. */
+  results: Results;
   /** When given, the teacher role is served: the page `/profesor` (put it in `pages`) and the WebSocket at TEACHER_WS_PATH, both for loopback only. */
   teacher?: TeacherNetLimits;
   log: (line: string) => void; warn: (kind: string, line: string) => void;
@@ -141,7 +144,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   });
   const lobbyTimer = setInterval(lobby.tick, lim.lobbyTickMs);
   // ---- the teacher role: its own connections, the same frame format, loopback only ----
-  const teacher = deps.teacher ? createTeacher(deps.teacher, { rooms: deps.rooms, lobby, log: deps.log }) : null;
+  const teacher = deps.teacher ? createTeacher(deps.teacher, { rooms: deps.rooms, lobby, results: deps.results, log: deps.log }) : null;
   const tconns = new Set<WebSocket>();
   const tsend = (ws: WebSocket, msg: TeacherReply): void => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
   let lastState = '', lastStateAt = 0;
@@ -199,8 +202,30 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       }
     }
   };
+  /**
+   * Sends the student in `seat` their OWN results for the match whose counts are in `room.report` (just won) or, when
+   * the room is ending early, `room.tally`. Nobody else's counts are ever in the message.
+   */
+  const sendResults = (ws: WebSocket, room: Room, seat: number, won: boolean, matchNo: number): void => {
+    const name = room.seats[seat].name, t = (room.report ?? room.tally).get(nameKey(name ?? '')) ?? newTally();
+    const total = t.right + t.wrong;
+    const topics = [...t.cells.values()].sort((a, b) => a.topic.localeCompare(b.topic, 'es') || a.level.localeCompare(b.level))
+      .slice(0, RESULT_TOPICS_MAX).map(c => ({ tp: c.topic, lv: c.level, right: c.right, wrong: c.wrong }));
+    send(ws, { v: PROTOCOL_VERSION, t: 'results', match: matchNo, why: won ? 'won' : 'ended', right: t.right, wrong: t.wrong,
+      pct: total ? Math.round(100 * t.right / total) : 0, kills: t.kills, deaths: t.deaths, topics });
+  };
+  /** Sends every connected student of the room their own results, once per match. */
+  const sendAllResults = (room: Room, won: boolean): void => {
+    if (room.reported) return;
+    room.reported = true;
+    for (const seat of room.seats) {
+      const ws = seat.kind === 'human' && seat.owner !== null ? byId.get(seat.owner) : undefined;
+      if (ws && ws.readyState === ws.OPEN) sendResults(ws, room, seat.index, won, room.matchNo - (room.last ? 1 : 0));
+    }
+  };
+  deps.rooms.onRetired = room => { if (room.status === 'ended' || room.status === 'failed') sendAllResults(room, false); };
   deps.rooms.onStepped = room => {
-    if (room.stats.steps % snapEvery !== 0) return;
+    if (room.stats.steps % snapEvery !== 0 && !room.report) return; // the step a match is won always sends, so matchEnd reaches the students
     for (const seat of room.seats) {
       const ws = seat.kind === 'human' && seat.owner !== null ? byId.get(seat.owner) : undefined;
       const c = ws && conns.get(ws);
@@ -208,12 +233,14 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       const tag = `${room.id}:${room.matchNo}`;
       if (c.began !== tag) {
         if (room.last && c.began === `${room.id}:${room.matchNo - 1}`) send(ws, buildSnapshot(room.last.match, seat.index, ackOf(room, seat.index), room.stats.steps, room.last.events, lim.eventRangeM));
+        if (room.report) sendResults(ws, room, seat.index, true, room.matchNo - 1);
         sendBegin(ws, c, room, seat.index);
       }
       const text = JSON.stringify(buildSnapshot(room.match, seat.index, ackOf(room, seat.index), room.stats.steps, room.pending, lim.eventRangeM));
       ws.send(text); snapshots++; snapshotBytes += Buffer.byteLength(text);
     }
-    room.pending.length = 0; room.last = null;
+    if (room.report && room.status === 'ended') sendAllResults(room, true); // a won match in a room that does not rematch (a rematch's students got theirs ahead of the next begin)
+    room.report = null; room.pending.length = 0; room.last = null;
   };
   wss.on('error', e => deps.warn('ws', `Error WebSocket: ${e.message}`));
   wss.on('connection', ws => {

@@ -9,8 +9,8 @@
 import type { PlayerInput } from '../game/player';
 import { LEVELS, type Level } from '../game/types';
 
-/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). */
-export const PROTOCOL_VERSION = 2;
+/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). */
+export const PROTOCOL_VERSION = 3;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -151,7 +151,30 @@ export interface SnapMessage {
   m: number; c: CardView | null;
 }
 /** Every message the server may send. */
-export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongMessage | ErrorMessage | BeginMessage | SnapMessage;
+/** One topic and level of a student's own results: the topic label as the card showed it, the level id ('' for a custom CSV), their counts. */
+export interface ResultTopic { tp: string; lv: string; right: number; wrong: number }
+/**
+ * Server to student: that student's OWN results for the match that just ended (never anyone else's). Sent once per
+ * match: when it is won (after the last snapshot, whose matchEnd event it follows; in a rematch room before the next
+ * `begin`) or when the room ends early (the teacher ended it, it failed: `why` is 'ended' and the counts are partial).
+ * A student with no answers still gets one, with zeros and no topics. The counts are for this match only, not the session.
+ */
+export interface ResultsMessage {
+  v: number; t: 'results';
+  /** Which match this is (BeginMessage.match of the match that ended). */
+  match: number;
+  /** 'won' when the match reached its end, 'ended' when the room was closed before. */
+  why: 'won' | 'ended';
+  right: number; wrong: number;
+  /** Whole percent right (0 when there were no answers: show a dash when right + wrong is 0). */
+  pct: number;
+  kills: number; deaths: number;
+  /** One row per topic and level answered, ordered by topic then level (at most RESULT_TOPICS_MAX). */
+  topics: ResultTopic[];
+}
+/** The most topic rows one `results` message holds. */
+export const RESULT_TOPICS_MAX = 64;
+export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongMessage | ErrorMessage | BeginMessage | SnapMessage | ResultsMessage;
 
 /** Why a message was refused. */
 export type ErrorCode = 'too_big' | 'not_text' | 'not_json' | 'bad_shape' | 'bad_version' | 'bad_type' | 'bad_field' | 'bad_name'
@@ -299,6 +322,16 @@ export function parseServerMessage(text: string): ServerMessage | null {
         s: raw.s as number[], as: raw.as as number, g: raw.g as number, pl: raw.pl as number, b: raw.b as number[], p: raw.p as number[][], y: raw.y as number[],
         e: raw.e as Record<string, unknown>[], m: raw.m as number, c: raw.c as CardView | null };
     }
+    case 'results': {
+      const nn = (x: unknown): x is number => isInt(x) && x >= 0;
+      const ok = isInt(raw.match) && (raw.why === 'won' || raw.why === 'ended') && nn(raw.right) && nn(raw.wrong) && isInt(raw.pct) && raw.pct >= 0 && raw.pct <= 100
+        && nn(raw.kills) && nn(raw.deaths) && Array.isArray(raw.topics) && raw.topics.length <= RESULT_TOPICS_MAX
+        && raw.topics.every(r => isObject(r) && isStr(r.tp) && isStr(r.lv) && nn(r.right) && nn(r.wrong));
+      if (!ok) return null;
+      return { v, t: 'results', match: raw.match as number, why: raw.why as 'won' | 'ended', right: raw.right as number, wrong: raw.wrong as number, pct: raw.pct as number,
+        kills: raw.kills as number, deaths: raw.deaths as number,
+        topics: (raw.topics as Record<string, unknown>[]).map(r => ({ tp: r.tp as string, lv: r.lv as string, right: r.right as number, wrong: r.wrong as number })) };
+    }
     case 'welcome': return Array.isArray(raw.rooms) && raw.rooms.every(isRoomInfo) ? { v, t: 'welcome', rooms: raw.rooms.map(r => ({ ...r })) } : null;
     default: return null;
   }
@@ -314,7 +347,7 @@ export const TEACHER_PATH = '/profesor';
 /** The teacher's WebSocket path (accepted only from loopback). */
 export const TEACHER_WS_PATH = '/ws-profesor';
 /** Every message type only the teacher may send. */
-export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall'] as const;
+export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear'] as const;
 
 /** Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'. */
 export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string }
@@ -332,14 +365,20 @@ export type RoomAction = 'start' | 'pause' | 'resume' | 'end';
 export interface TRoomMessage { v: number; t: 'troom'; room: string; action: RoomAction }
 /** Teacher to server: start every waiting room, or end every room. */
 export interface TAllMessage { v: number; t: 'tall'; action: 'start' | 'end' }
+/** Teacher to server: "Exportar CSV": asks for the results as CSV text (answered with `texported`). */
+export interface TExportMessage { v: number; t: 'texport' }
+/** Teacher to server: "Borrar resultados": forgets every student's results (a student mid-match counts from zero afterwards). */
+export interface TClearMessage { v: number; t: 'tclear' }
 /** Every message the teacher may send ('ping' is also accepted and answered with 'pong'). */
-export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRoomMessage | TAllMessage | PingMessage;
+export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRoomMessage | TAllMessage | TExportMessage | TClearMessage | PingMessage;
 
 /** The catalogue the form is built from, sent once on connect. */
 export interface TeacherInfoMessage {
   v: number; t: 'tinfo';
   subjects: { id: string; name: string; topics: { id: string; name: string }[] }[];
-  levels: { id: string; name: string }[]; maps: string[];
+  levels: { id: string; name: string }[]; maps: { id: string; name: string }[];
+  /** A topic is marked "to reinforce" when it has at least `weakMinAnswers` answers and fewer than `weakBelowPct` percent right. */
+  weakBelowPct: number; weakMinAnswers: number;
   /** Largest CSV (bytes) and most questions the server accepts. */
   csvMaxBytes: number; csvMaxQuestions: number;
 }
@@ -358,26 +397,35 @@ export interface TeacherSession {
   subject: string; level: Level; topics: string[]; map: string;
   /** The CSV loaded (null for none): kept when another subject is chosen. */
   csv: { name: string; count: number; skipped: number } | null;
+  /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
+  available: number | null;
+}
+/** The teacher's results: one row per student (by typed name) and one per topic, weakest first. Held in memory only. */
+export interface TeacherResults {
+  students: { name: string; room: string; right: number; wrong: number; kills: number; deaths: number }[];
+  topics: { topic: string; right: number; wrong: number; students: number }[];
 }
 /**
  * Server to teacher: everything on screen. Sent on connect, after every teacher action, when something changed
  * (checked every teacher_update_ms) and at least every teacher_heartbeat_s. `rooms` lists live rooms by id, then
  * the last rooms that ended (newest last).
  */
-export interface TeacherStateMessage { v: number; t: 'tstate'; session: TeacherSession; students: TeacherStudent[]; rooms: TeacherRoom[] }
+export interface TeacherStateMessage { v: number; t: 'tstate'; session: TeacherSession; students: TeacherStudent[]; rooms: TeacherRoom[]; results: TeacherResults }
 /** Server to teacher: the answer to a tcsv. */
 export interface TeacherCsvMessage { v: number; t: 'tcsvok'; ok: boolean; name: string; count: number; skipped: number; text: string }
+/** Server to teacher: the answer to texport. `text` is the whole CSV as a string that STARTS with U+FEFF (the byte-order mark; UTF-8 encoded it is EF BB BF); the page saves it as is as `name`. */
+export interface TeacherExportMessage { v: number; t: 'texported'; name: string; text: string; rows: number }
 /** Server to teacher: a request was refused; `text` is the Spanish sentence to show. */
 export interface TeacherErrorMessage { v: number; t: 'terror'; code: string; text: string }
 /** Every message the server sends the teacher (also 'pong'). */
-export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsvMessage | TeacherErrorMessage | PongMessage;
+export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsvMessage | TeacherExportMessage | TeacherErrorMessage | PongMessage;
 
 /** What parseTeacherMessage() returns. */
 export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
   tsession: ['v', 't', 'subject', 'level', 'topics', 'map'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
-  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], ping: ['v', 't'],
+  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], ping: ['v', 't'],
 };
 /**
  * Checks one text frame from the teacher's connection: size, JSON, version, type, exact keys and each field's
@@ -398,6 +446,8 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'ping': return { ok: true, msg: { v, t: 'ping' } };
     case 'tsplit': return { ok: true, msg: { v, t: 'tsplit' } };
     case 'taddroom': return { ok: true, msg: { v, t: 'taddroom' } };
+    case 'texport': return { ok: true, msg: { v, t: 'texport' } };
+    case 'tclear': return { ok: true, msg: { v, t: 'tclear' } };
     case 'tsession':
       if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
       if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;

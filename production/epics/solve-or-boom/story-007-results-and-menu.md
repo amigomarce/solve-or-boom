@@ -1,13 +1,13 @@
 # Story 007: Results per student and the two-mode main menu
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: [set by /dev-story when implementation begins]
+> **Last Updated**: 2026-11-12
 
 ## Context
 
@@ -60,13 +60,14 @@
 
 ## Files
 
-*Planned. `/dev-story` replaces this list with the files it changed.*
-
-- `src/server/` (counters, export) and the teacher page
-- `src/main.ts` (main menu, student results)
-- `.gitignore` (the results folder, if there is one)
-
----
+- src/server/results.ts (created: results store in server memory, CSV export)
+- src/server/profesor.html, teacher.ts, net.ts, room.ts, rooms.ts, aula.ts
+- src/net/protocol.ts (version 3, results message), src/net/client.ts
+- src/game/state.ts, player.ts, combat.ts, map.ts (answer and kill counting hooks, map names)
+- src/main.ts (main menu, class info screen, student results)
+- data/aula.json, data/config-notes.md
+- No results folder: results live in server memory only, nothing to git-ignore
+- No test files: tests are waived at qa.level minimal; the existing checks still pass
 
 ## QA Test Cases
 
@@ -87,3 +88,17 @@
 
 - Depends on: `production/epics/solve-or-boom/story-005-networked-play.md`, `production/epics/solve-or-boom/story-006-teacher-screen.md`
 - Unlocks: None
+
+## Completion Notes
+**Completed**: 2026-11-12
+**Criteria**: 5/8 passing (3 deferred to your play: the CSV opened in Excel with the accents intact, "Borrar resultados" emptying the table, the student's own results at the end of a match won to the end)
+**Deviations**: advisory. With many students the teacher's results table is rebuilt and sent every 500 ms (an estimate of 100 to 150 KB at the 1000-name cap, not measured). Names past the 1000-name cap are not counted and nothing tells the teacher. A formula-looking cell gets a visible apostrophe in Excel (unreachable today). Not seen running: a match won to the end, the rematch order and the "y N temas más" line. A 404 is logged on every page served by the classroom server (probably the favicon). The engine check did not read the menu, class-info and single-file code in `main.ts`, `vite.config.ts`, the internals of `client.ts` or `rooms.ts`/`aula.ts` beyond a search; Node and `ws` behaviour is NOT SOURCEABLE from the reference docs. `?manual=1` is what opens the session screen, so the same-seed run and the boot tests keep working.
+**Test Evidence**: waived at qa.level minimal. production/qa/evidence/story-007-results-and-menu/ (7 screenshots and an example CSV; stamp unchanged)
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- Results keyed by typed name without case, last room in the table and per-row room in the CSV; CSV with `;` separator, quoted cells, header Alumno;Sala;Tema;Nivel;Correctas;Incorrectas, levels by name, one empty row for a student with no answers, file `resultados.csv`, an apostrophe before a cell starting with = + - @, a store of at most 1000 names (`src/server/results.ts`, `teacher.ts`, `data/aula.json`) · kept 2026-11-12
+- A topic is "A reforzar" with 5+ answers and under 60 % right; bots are not counted; a teacher-ended room sends partial results; the winning step always sends a snapshot; protocol version 3 (`data/aula.json`, `src/net/protocol.ts`, `src/server/net.ts`, `room.ts`) · kept 2026-11-12
+- Main menu with two buttons, subtitles and a key hint, keys and mouse, "Menú (Esc)" on the session screen, "Clase" from the single file only explains the teacher's address, `?manual=1` opens the session screen (`src/main.ts`) · kept 2026-11-12
+- The teacher page's Resultados wording and the Borrar confirmation, and the student's "Tus resultados" and "Equipos" panels with an 8-topic limit and their waiting and empty lines (`src/server/profesor.html`, `src/main.ts`) · kept 2026-11-12

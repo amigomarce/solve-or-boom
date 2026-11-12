@@ -9,7 +9,7 @@
 // again with the name the server gave, so the student gets the same seat back. A page reload does the same
 // from the join screen: savedName() prefills the name and connect() with it returns the held seat.
 // Nothing is stored but the typed name, in localStorage, wrapped in try/catch (it may be blocked).
-import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type SnapMessage } from './protocol';
+import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type ResultsMessage, type RoomMessage, type SnapMessage } from './protocol';
 import { idleInput, type PlayerInput } from '../game/player';
 
 /** Why the connection ended for good. */
@@ -46,6 +46,8 @@ export interface ConnectOptions {
   onSnapshot?: (m: SnapMessage) => void;
   /** The snapshot's events, right after onSnapshot, when there are any (applySnapshot returns the same list). */
   onEvents?: (events: SnapMessage['e']) => void;
+  /** The student's OWN results for the match that ended (once a match: after its matchEnd snapshot, or when the teacher ends the room). */
+  onResults?: (m: ResultsMessage) => void;
   /**
    * Testing only: milliseconds every message waits, each way, before it is sent or read (so 100 gives a 200 ms
    * round trip). By default the page address's ?retraso=<ms> (0 to 1000), else 0.
@@ -128,6 +130,7 @@ export function connect(opts: ConnectOptions): Connection {
       } else if (m.t === 'room') opts.onRoom?.(m);
       else if (m.t === 'begin') opts.onBegin?.(m);
       else if (m.t === 'snap') { opts.onSnapshot?.(m); if (m.e.length) opts.onEvents?.(m.e); }
+      else if (m.t === 'results') opts.onResults?.(m);
       else if (m.t === 'error') {
         opts.onError?.({ code: m.code, text: m.text });
         if (FATAL.includes(m.code)) finish('refused');

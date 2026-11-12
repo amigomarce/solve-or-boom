@@ -9,7 +9,7 @@
 //  - "Repartir automáticamente" refuses while any room runs or is paused, replaces the waiting rooms, and makes
 //    ceil(students / 8) rooms with the students spread evenly (so nobody is left out: 10 students make two rooms of 5,
 //    3 v 2 plus bots), teams alternating. The free seats stay bots.
-import { MAP_IDS } from '../game/map';
+import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
 import { parseCSV, decodeCSV, type ParsedQuestion } from '../game/csv';
 import * as QUESTIONS from '../questions';
@@ -17,11 +17,12 @@ import { PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type TeacherInfoMessage, type 
 import { rebuildMatch, type Room } from './room';
 import type { Rooms } from './rooms';
 import type { Lobby } from './lobby';
+import type { Results } from './results';
 
 /** The teacher's limits (data/aula.json). */
-export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; maxRooms: number; finishedShown: number }
+export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; maxRooms: number; finishedShown: number; weakBelowPct: number; weakMinAnswers: number }
 /** What the teacher needs: the rooms, the lobby (students) and a log. */
-export interface TeacherDeps { rooms: Rooms; lobby: Lobby; log: (line: string) => void }
+export interface TeacherDeps { rooms: Rooms; lobby: Lobby; results: Results; log: (line: string) => void }
 /** The teacher screen's brain. */
 export interface Teacher {
   /** The catalogue and limits the page builds its form from. */
@@ -75,7 +76,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
 
   return {
     info: () => ({
-      v, t: 'tinfo', levels: LEVELS.map(id => ({ id, name: QUESTIONS.LEVEL_NAMES[id] })), maps: [...MAP_IDS],
+      v, t: 'tinfo', levels: LEVELS.map(id => ({ id, name: QUESTIONS.LEVEL_NAMES[id] })), maps: MAP_LIST.map(m => ({ ...m })), weakBelowPct: lim.weakBelowPct, weakMinAnswers: lim.weakMinAnswers,
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions,
@@ -94,7 +95,9 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
         session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map,
-          csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null },
+          csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
+          available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
+        results: deps.results.view(),
         rooms: [...deps.rooms.all().map(r => row(r, true)), ...deps.rooms.finished.slice(-lim.finishedShown).map(r => row(r, false))],
       };
     },
@@ -133,6 +136,8 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           return { v, t: 'tcsvok', ok: true, name: msg.name, count: res.questions.length, skipped: res.skipped,
             text: `${res.questions.length === 1 ? 'Cargada 1 pregunta' : `Cargadas ${res.questions.length} preguntas`} de ${msg.name}` };
         }
+        case 'texport': { const text = deps.results.csv(); return { v, t: 'texported', name: 'resultados.csv', text, rows: text.split('\r\n').length - 2 }; }
+        case 'tclear': deps.results.clear(); deps.log('Resultados borrados por el profesor'); return null;
         case 'taddroom': return make() ? null : err('demasiadas_salas', `Ya hay ${lim.maxRooms} salas, el máximo.`);
         case 'tsplit': return split();
         case 'tmove': {

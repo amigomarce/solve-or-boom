@@ -137,3 +137,8 @@ holds no comments. The values themselves are in `data/config.json`.
 - `max_rooms` 16: most live rooms (the split and "add room" refuse past it). `finished_rooms_shown` 8: ended rooms still listed to the teacher.
 - `teacher_update_ms` 500: how often the teacher page's state is checked and pushed if changed; `teacher_heartbeat_s` 5: pushed anyway at least this often.
 - `teacher_max_message_bytes` 393216: largest teacher frame (a 262144-byte CSV is 349528 base64 chars). `csv_max_bytes` 262144 and `csv_max_questions` 500: the CSV limits (single player has none; these protect the server).
+
+## Results (story 007), data/aula.json
+- `results_max_students` 1000: names the results store holds at most (memory only, nothing on disk); a new name past it is not counted. A class is 30 to 200 students; this only stops a runaway client opening names forever.
+- `weak_below_pct` 60: the teacher's topic view marks a topic "a reforzar" when fewer than this percent of its answers are right (60 = a bare pass in the usual 0 to 100 marking).
+- `weak_min_answers` 5: ...and only once it has at least this many answers, so one early miss does not mark a topic.
