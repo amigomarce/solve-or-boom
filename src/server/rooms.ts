@@ -4,11 +4,11 @@
 // room cannot starve the others. An exception in a room fails that room only.
 import { STEP } from '../game/match';
 import { MAP_IDS } from '../game/map';
-import { newRoom, stepRoom, roomInfo, type Room, type RoomSpec } from './room';
+import { newRoom, stepRoom, roomInfo, type Room, type RoomSpec, type PlayLimits } from './room';
 import type { RoomInfo } from '../net/protocol';
 
 /** The limits the manager runs with (data/aula.json). */
-export interface RoomLimits { tickBudgetMs: number; maxCatchupSteps: number; maxBacklogSteps: number; emptyGraceS: number }
+export interface RoomLimits { tickBudgetMs: number; maxCatchupSteps: number; maxBacklogSteps: number; emptyGraceS: number; play: PlayLimits }
 /** What the manager needs from outside: a clock in ms and two logs (plain and rate-limited). */
 export interface RoomDeps { clockMs: () => number; log: (line: string) => void; warn: (kind: string, line: string) => void }
 
@@ -28,6 +28,8 @@ export interface Rooms {
   tick(): void;
   /** Ends every room. */
   endAll(reason: string): void;
+  /** Called after every step of a room (net.ts sends the snapshots from here); null for none. */
+  onStepped: ((room: Room) => void) | null;
 }
 
 /** The match choices a room gets unless told otherwise. */
@@ -49,13 +51,14 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
   };
   const rooms: Rooms = {
     finished,
+    onStepped: null,
     create(spec = {}) {
       const id = `sala-${++made}`;
       const full: RoomSpec = {
         match: { ...DEFAULT_MATCH, ...spec.match }, seed: spec.seed ?? (Math.random() * 2 ** 31) >>> 0,
         openSeats: spec.openSeats ?? [], rematch: spec.rematch ?? true,
       };
-      const room = newRoom(id, full, nowS());
+      const room = newRoom(id, full, nowS(), lim.play);
       live.set(id, room);
       deps.log(`Sala ${id} creada: mapa ${full.match.map}, semilla ${full.seed}, ${room.seats.filter(s => s.kind === 'bot').length} bots`);
       return room;
@@ -89,6 +92,7 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
           for (let n = 0; n < lim.maxCatchupSteps && room.owed >= STEP && room.status === 'running'; n++) {
             stepRoom(room, deps.clockMs);
             room.owed -= STEP;
+            rooms.onStepped?.(room);
           }
         } catch (err) {
           room.status = 'failed';

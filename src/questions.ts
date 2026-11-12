@@ -45,8 +45,7 @@ export const SUBJECTS: Record<string, Subject> = {
   },
 };
 
-/** The bundled CSV text by file path. A missing file is simply absent, so a topic with no file has no questions. */
-const FILES: Record<string, string> = import.meta.glob('../assets/questions/**/*.csv', { query: '?raw', import: 'default', eager: true });
+import { FILES } from './banks';
 /** The parsed built-in banks by topic id. */
 const BANK: Record<string, ParsedQuestion[]> = {};
 for (const [path, text] of Object.entries(FILES)) {

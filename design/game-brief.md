@@ -63,7 +63,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Simulation split from drawing: the match runs without a screen (so a server can run it), the single-player game plays exactly as before
 - [x] Classroom server: a program the teacher opens on their PC (`npm run aula`) that serves the game on the school network, shows the address to join, and runs several 4 v 4 rooms at once with the server as the authority
 - [x] Student join: a student types a name, enters the room the teacher assigned and sees their team; empty seats are filled with bots
-- [ ] Networked play: each student sends their inputs and gets the match state back; each student answers their own buy and defuse questions, the server checks the answers and keeps the money
+- [x] Networked play: each student sends their inputs and gets the match state back; each student answers their own buy and defuse questions, the server checks the answers and keeps the money
 - [ ] Teacher screen: set up the session (subject, level, contents or CSV, map), split the class into rooms and teams, and start, pause and end each room
 - [ ] Results per student: right and wrong answers per student and per topic, exportable to CSV, kept only on the teacher's PC; the main menu offers "Un jugador (contra bots)" and "Clase (multijugador)"
 

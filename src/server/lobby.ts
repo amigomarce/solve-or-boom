@@ -8,7 +8,7 @@
 // the seat that was held for them. That is accepted; nothing but a name identifies anybody.
 // Names live in memory only and are never logged: the log lines here carry connection ids and counts.
 import { PROTOCOL_VERSION, errorMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type RoomView, type SeatView, type ServerMessage } from '../net/protocol';
-import { takeSeat, leaveSeat, type Room } from './room';
+import { takeSeat, leaveSeat, setPresent, type Room } from './room';
 import type { Rooms } from './rooms';
 
 /** The lobby's settings (data/aula.json). */
@@ -33,6 +33,8 @@ export interface Lobby {
   dropped(connId: number): void;
   /** True while this connection has a seat. */
   has(connId: number): boolean;
+  /** The room and seat this connection plays, if it has one. */
+  where(connId: number): { room: Room; seat: number } | undefined;
   /** Frees the seats whose grace ran out and pushes the rooms whose state changed. Call it every few hundred ms. */
   tick(): void;
   /** Students on the server now (connected or held). */
@@ -95,6 +97,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
           if (old.connId !== null) { byConn.delete(old.connId); deps.close(old.connId); }
           old.connId = connId; old.holdUntilS = 0; byConn.set(connId, old);
           old.room.seats[old.seat].owner = connId;
+          setPresent(old.room, old.seat, true);
           joined(old); push(old.room, connId);
           deps.log(`Conexión ${connId} recupera su asiento en ${old.room.id}`);
           return;
@@ -123,9 +126,11 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       const st = byConn.get(connId);
       if (!st) return;
       byConn.delete(connId); st.connId = null;
+      setPresent(st.room, st.seat, false); // a bot plays the seat until they come back
       st.holdUntilS = nowS() + lim.rejoinGraceS; // the seat stays the student's (and shown as theirs) until tick() runs out the grace
     },
     has: connId => byConn.has(connId),
+    where: connId => { const st = byConn.get(connId); return st ? { room: st.room, seat: st.seat } : undefined; },
     count: () => byKey.size,
     tick() {
       const t = nowS(), changed = new Set<Room>(), all = [...byKey.values()];

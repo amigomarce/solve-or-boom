@@ -1,0 +1,9 @@
+delay 0 ms each way; 945 s; room ended (partida terminada); matches 1; final score 4-3; rounds 1:0-0 2:0-1 3:0-2 4:0-3 5:1-3 6:2-3 7:3-3; halftime swap true
+steps 56721, dropped steps 0, mean step 0.073 ms, max 14.45 ms
+server: 37694 snapshots, 487 bytes each, 9704 B/s per client; 112586 messages accepted, 0 refused
+Ana seat 0: 18911 msgs in (20.0/s), 18907 snaps, joined 1x, begins 1; prediction error mean 0.027 m, max 0.90 m; saw other student: 178 shots, 1 kills; events {"gate":7,"shot":1077,"lowAmmo":9,"empty":1969,"reload":11,"kill":19,"roundEnd":7,"round":6,"hurt":5,"matchEnd":1}
+Beto seat 4: 18791 msgs in (19.9/s), 18787 snaps, joined 2x, begins 2; prediction error mean 0.062 m, max 1.80 m; saw other student: 96 shots, 1 kills; events {"gate":7,"shot":1048,"lowAmmo":15,"reload":21,"hurt":11,"kill":19,"roundEnd":7,"round":6,"empty":1629,"matchEnd":1}
+seat 0: ack 56464, inputs dropped (queue full) 169
+seat 4: ack 52488, inputs dropped (queue full) 148
+disconnect check: while away: seat kind human, present false, player human false, room running
+no errors

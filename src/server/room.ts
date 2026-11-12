@@ -1,15 +1,32 @@
 // A room: 8 seats (4 v 4) and one match the server runs and owns. The teacher's screen (story 006) creates
 // and ends rooms through src/server/rooms.ts; this module is the room itself.
 //
-// For now every player of the match is driven by the server: the 7 bots by the bot rules, and the rules'
-// one human player (match.human, seat 0) by an idle input, standing in its base. Seating students and
-// routing their inputs to their players is story 005; the seats here already say who sits where.
-import { createMatch, step, STEP, type Match, type MatchOptions } from '../game/match';
+// Seat i is player i of the match. A seated student whose connection is open and who keeps sending inputs plays
+// their player; otherwise (no student, a dropped connection held for rejoin, or no input for takeover_s) a bot
+// plays it with the single-player AI. Each student's inputs are queued and played one per step, in seq order.
+import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, type MatchOptions, type PlayerInput } from '../game/match';
+import type { Loose } from '../game/types';
+import { MAP_ID, loadMap } from '../game/map';
 import { SEATS, SEATS_PER_TEAM, type RoomInfo, type SeatKind } from '../net/protocol';
 
 /** One of the 8 seats. `owner` is a connection id while a student sits there (never a name). */
 /** `name` is the student's name while one sits there (memory only, display only, never logged), else null. */
-export interface Seat { index: number; team: number; kind: SeatKind; owner: number | null; name: string | null }
+export interface Seat {
+  index: number; team: number; kind: SeatKind; owner: number | null; name: string | null;
+  /** True while the student plays the seat's player (connected and sending); false while a bot stands in. */
+  present: boolean;
+}
+/** How a room plays its students' inputs (data/aula.json). */
+export interface PlayLimits {
+  /** Inputs queued per seat at most; older ones are dropped past it. */
+  queueMax: number;
+  /** Steps a seat's last held controls are repeated when no input arrived, before going idle. */
+  holdSteps: number;
+  /** Steps with no input before a bot stands in for a connected student. */
+  takeoverSteps: number;
+}
+/** One seat's inputs: the queue not yet played, the last played (its held controls), its seq, and steps since one arrived. */
+interface SeatInputs { queue: { seq: number; input: PlayerInput }[]; held: PlayerInput; ack: number; lastSeq: number; starved: number; dropped: number }
 
 /** How to build a room. */
 export interface RoomSpec {
@@ -41,35 +58,110 @@ export interface Room {
   emptySince: number;
   /** Step timing: steps run, their total and longest ms, and steps dropped for being too far behind. */
   stats: { steps: number; totalMs: number; maxMs: number; dropped: number };
+  /** The match number in this room (0 for the first); a rematch adds one. */
+  matchNo: number;
+  /** The rules' events since the last snapshot was sent (net.ts empties it); emptied every step while no student plays. */
+  pending: Loose[];
+  /** Each seat's inputs, by seat index. */
+  inputs: SeatInputs[];
+  /**
+   * The match a rematch just replaced and its last events (its matchEnd among them), until the next snapshot round
+   * sends them to its students ahead of the new match's `begin` (net.ts); then null.
+   */
+  last: { match: Match; events: Loose[] } | null;
+  play: PlayLimits;
 }
+
+/** The controls that only last one step: cleared when a seat's held controls are repeated. */
+const PRESSED: (keyof PlayerInput)[] = ['usePress', 'firePress', 'shop', 'prone', 'jump', 'primary', 'pistol', 'swap', 'reload', 'scope', 'closeShop', 'closeCard', 'spectate', 'spectateKey'];
+const freshInputs = (): SeatInputs => ({ queue: [], held: idleInput(), ack: -1, lastSeq: -1, starved: 0, dropped: 0 });
+/** A classroom match for this room's spec and seed, with the present students in their seats. */
+function roomMatch(spec: RoomSpec, seed: number, seats: Seat[]): Match {
+  const match = createMatch({ ...spec.match, seed, humans: [], classroom: true });
+  for (const s of seats) if (s.kind === 'human' && s.present) seatHuman(match, s.index, s.name ?? '');
+  return match;
+}
+
+/**
+ * A student starts or stops playing their seat's player: a bot stands in while they are away (a dropped
+ * connection, no inputs for takeover_s) and hands the player back when they return. Their queued inputs are dropped.
+ */
+export function setPresent(room: Room, index: number, on: boolean): void {
+  const seat = room.seats[index];
+  if (seat.kind !== 'human' || seat.present === on) return;
+  seat.present = on;
+  const inp = room.inputs[index];
+  inp.queue.length = 0; inp.held = idleInput(); inp.starved = 0;
+  if (on) { inp.lastSeq = -1; inp.ack = -1; } // a rejoined page counts its seq from 0 again: the old count would drop all its inputs as repeats
+  // seatBot plans the bot's route on the loaded map, and this runs outside step() (a drop, a takeover): another room's map may be up.
+  if (!on && MAP_ID !== room.match.opts.map) loadMap(room.match.opts.map);
+  if (on) seatHuman(room.match, index, seat.name ?? ''); else seatBot(room.match, index);
+}
+
+/**
+ * Queues one input of the student in seat `index`. An input with a seq not above the last queued one is
+ * ignored (a repeat); past queueMax the oldest is dropped. A student a bot stood in for gets their player back.
+ * Returns false when the input was ignored.
+ */
+export function queueInput(room: Room, index: number, seq: number, input: Partial<PlayerInput>): boolean {
+  const seat = room.seats[index], inp = room.inputs[index];
+  if (seat.kind !== 'human' || seq <= inp.lastSeq) return false;
+  if (!seat.present) setPresent(room, index, true);
+  inp.lastSeq = seq;
+  inp.queue.push({ seq, input: { ...idleInput(), ...input } });
+  if (inp.queue.length > room.play.queueMax) { inp.queue.shift(); inp.dropped++; }
+  return true;
+}
+
+/** Each present student's input for this step: the next queued one, or their held controls repeated for holdSteps, then idle. */
+function takeInputs(room: Room): Record<number, PlayerInput> {
+  const out: Record<number, PlayerInput> = {};
+  for (const seat of room.seats) {
+    if (seat.kind !== 'human' || !seat.present) continue;
+    const inp = room.inputs[seat.index], next = inp.queue.shift();
+    if (next) { inp.ack = next.seq; inp.held = next.input; inp.starved = 0; out[seat.index] = next.input; continue; }
+    if (++inp.starved > room.play.takeoverSteps) { setPresent(room, seat.index, false); continue; }
+    if (inp.starved > room.play.holdSteps) { out[seat.index] = idleInput(); continue; }
+    const held: PlayerInput = { ...inp.held, lookYaw: 0, lookPitch: 0, digits: [], buyItem: '', answer: -1 };
+    for (const k of PRESSED) (held as unknown as Record<string, unknown>)[k] = false;
+    out[seat.index] = held;
+  }
+  return out;
+}
+
+/** The last input seq the server played for seat `index` (-1 none). */
+export const ackOf = (room: Room, index: number): number => room.inputs[index].ack;
 
 /**
  * A running room with its first match built (round 1, buy time).
  * @example const r = newRoom('sala-1', { match: { subject: 'matematicas', level: 'medio', topics: ['arith'], custom: [], customName: '', map: 'patio' }, seed: 42, openSeats: [], rematch: true }, 0);
  */
-export function newRoom(id: string, spec: RoomSpec, nowS: number): Room {
+export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimits): Room {
   const seats: Seat[] = Array.from({ length: SEATS }, (_, index) => ({
-    index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null,
+    index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null, present: false,
   }));
   return {
-    id, spec, seats, match: createMatch({ ...spec.match, seed: spec.seed }), matches: 0, status: 'running', reason: '',
+    id, spec, seats, match: roomMatch(spec, spec.seed, seats), matches: 0, status: 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
+    matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null,
   };
 }
 
 /**
- * One fixed step of the room's match, timed. A won match starts the next one (a rematch, seed + matches)
- * or ends the room. The step's events are emptied: no screen reads them yet.
+ * One fixed step of the room's match with the students' inputs, timed. The step's events go to room.pending for
+ * the next snapshots (dropped while no student plays). A won match starts the next one (a rematch, seed +
+ * matches, matchNo + 1; the old one waits in room.last for its final snapshot) or ends the room.
  */
 export function stepRoom(room: Room, clockMs: () => number): void {
   const t0 = clockMs();
-  step(room.match, {}, STEP);
+  step(room.match, takeInputs(room), STEP);
+  if (room.seats.some(s => s.kind === 'human' && s.owner !== null)) room.pending.push(...room.match.events);
   room.match.events.length = 0;
   const ms = clockMs() - t0;
   room.stats.steps++; room.stats.totalMs += ms; room.stats.maxMs = Math.max(room.stats.maxMs, ms);
   if (!room.match.over) return;
   room.matches++;
-  if (room.spec.rematch) room.match = createMatch({ ...room.spec.match, seed: (room.spec.seed + room.matches) >>> 0 });
+  if (room.spec.rematch) { room.last = { match: room.match, events: room.pending.splice(0) }; room.match = roomMatch(room.spec, (room.spec.seed + room.matches) >>> 0, room.seats); room.matchNo++; room.pending.push(...room.match.events); room.match.events.length = 0; }
   else { room.status = 'ended'; room.reason = 'partida terminada'; }
 }
 
@@ -87,7 +179,9 @@ export function takeSeat(room: Room, owner: number, name: string, index?: number
   const first = humans(1) < humans(0) ? 1 : 0;
   const seat = free.find(s => s.team === first) ?? free[0];
   if (!seat) return null;
-  seat.kind = 'human'; seat.owner = owner; seat.name = name; room.emptySince = -1;
+  seat.kind = 'human'; seat.owner = owner; seat.name = name; seat.present = true; room.emptySince = -1;
+  room.inputs[seat.index] = freshInputs();
+  seatHuman(room.match, seat.index, name);
   return seat;
 }
 
@@ -96,7 +190,10 @@ export function takeSeat(room: Room, owner: number, name: string, index?: number
  * room was built with it open). The room starts its empty countdown when it was the last student.
  */
 export function leaveSeat(room: Room, owner: number, nowS: number): void {
-  for (const s of room.seats) if (s.owner === owner) { s.kind = room.spec.openSeats.includes(s.index) ? 'open' : 'bot'; s.owner = null; s.name = null; }
+  for (const s of room.seats) if (s.owner === owner) {
+    setPresent(room, s.index, false);
+    s.kind = room.spec.openSeats.includes(s.index) ? 'open' : 'bot'; s.owner = null; s.name = null;
+  }
   if (!room.seats.some(s => s.kind === 'human')) room.emptySince = nowS;
 }
 

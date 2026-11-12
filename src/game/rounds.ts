@@ -5,14 +5,15 @@ import { roundPay } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { botBuy, planRound } from './plans';
-import { closeCard, freshStance, resetGuns, botFresh, say, sideOf, spawnSpots, type Match } from './state';
+import { closeDesk, freshStance, resetGuns, botFresh, say, sideOf, spawnSpots, type Match } from './state';
 
 export function startRound(match: Match) {
   match.round++;
   match.phase = 'buy'; match.phaseT = tune.buy_time; match.roundT = MAP.round_time;
-  match.menu = false; closeCard(match, true); match.alert = null; match.banner = null; match.plantT = 0;
+  for (const p of match.players) if (p.human) closeDesk(match, p);
+  match.alert = null; match.banner = null; match.plantT = 0;
   mapState.gatesClosed = match.gatesClosed = true; match.gateT = 0;
-  Object.assign(match.me, freshStance());
+  for (const p of match.players) Object.assign(p.st, freshStance());
   const sides: Record<string, number> = { att: 0, def: 0 };
   for (const p of match.players) {
     if (!p.alive) resetGuns(p);
@@ -24,16 +25,16 @@ export function startRound(match: Match) {
     if (!p.human && !p.cur) p.cur = 'pistol';
     if (!p.human) Object.assign(p, botFresh());
   }
-  // The bomb: you carry it when you attack; otherwise a bot does.
+  // The bomb: a person carries it when one attacks (the lowest seat); otherwise a bot does.
   const attackers = match.players.filter(p => sideOf(match, p) === 'att');
   const human = match.human;
-  let carrier = sideOf(match, human) === 'att' ? human : null;
+  let carrier = attackers.find(p => p.human) ?? null;
   if (!carrier) { const c = attackers.filter(p => p.role !== 'sniper'); carrier = c[Math.floor(match.rng() * c.length)]; }
   Object.assign(match.bomb, { state: 'carried', carrier, timer: tune.bomb_time, defuser: null, panicT: 0, beepT: 0 });
   for (const p of match.players) if (!p.human) botBuy(match, p);
   planRound(match);
-  const side = sideOf(match, human);
-  say(match, side === 'att' ? `Ronda ${match.round}: ATAQUE. Compra y planta la bomba en A o B` :
+  const side = human ? sideOf(match, human) : '';
+  if (human) say(match, side === 'att' ? `Ronda ${match.round}: ATAQUE. Compra y planta la bomba en A o B` :
     `Ronda ${match.round}: DEFENSA. Evita que planten o responde para desactivar`, 5);
   match.events.push({ type: 'round', round: match.round, side });
 }
@@ -48,8 +49,8 @@ export function endRound(match: Match, winSide: string, reason: string): void {
     p.money = Math.min(tune.max_money, p.money + pay);
   }
   match.phase = 'post'; match.phaseT = tune.round_end_delay;
-  match.banner = { text: `${win === 0 ? 'Tu equipo gana' : 'Los rivales ganan'} la ronda`, reason, mine: win === match.human.squad };
-  match.menu = false; closeCard(match, true);
+  match.banner = { text: `${win === 0 ? 'Tu equipo gana' : 'Los rivales ganan'} la ronda`, reason, mine: !!match.human && win === match.human.squad };
+  for (const p of match.players) if (p.human) closeDesk(match, p);
   match.events.push({ type: 'roundEnd', win, reason, score: match.score.slice() });
 }
 export function checkRound(match: Match) {
@@ -63,10 +64,10 @@ export function checkRound(match: Match) {
 }
 export function afterRound(match: Match) {
   if (match.score[0] >= tune.rounds_to_win || match.score[1] >= tune.rounds_to_win) {
-    const p = match.human, total = p.right + p.wrong;
+    const p = match.human, total = p ? p.right + p.wrong : 0;
     const won = match.score[0] > match.score[1];
     match.gained = `${won ? 'Tu equipo gana' : 'Los rivales ganan'} ${match.score[0]} - ${match.score[1]}`;
-    match.answered = total ? `Respondiste bien ${p.right} de ${total} preguntas (${Math.round(100 * p.right / total)} %)` : 'No respondiste ninguna pregunta en esta partida';
+    if (p) match.answered = total ? `Respondiste bien ${p.right} de ${total} preguntas (${Math.round(100 * p.right / total)} %)` : 'No respondiste ninguna pregunta en esta partida';
     match.over = true; match.events.push({ type: 'matchEnd', won });
     return;
   }

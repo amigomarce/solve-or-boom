@@ -4,6 +4,7 @@
 // input, drawing and the questions are modules beside it.
 import * as THREE from 'three';
 import { CONFIG, tune } from './config';
+import AULA from '../data/aula.json';
 import * as QUESTIONS from './questions';
 import { parseCSV, decodeCSV, type ParsedQuestion } from './game/csv';
 import { LEVELS, type Level } from './game/types';
@@ -16,7 +17,7 @@ import {
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
-  createMatch, blankMatch, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel,
+  createMatch, blankMatch, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say,
   ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
@@ -25,6 +26,7 @@ import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 import { connect, savedName, type Connection } from './net/client';
 import type { RoomView, You } from './net/protocol';
+import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 
 // ---- Class mode ------------------------------------------------------------------------
 /** Served by the classroom server (npm run aula), which adds <meta name="aula"> to the page: the page opens on the join screen. */
@@ -64,8 +66,38 @@ const ROOM_STATE: Record<RoomView['state'], [string, string]> = {
   ended: ['La sala terminó', '#ff9a8a'],
 };
 /**
+ * The networked match (story 005 Part A): `mirror` is the copy of the server's match the screen draws and
+ * predicts (src/net/mirror.ts), `matchNo` the room's match number it was built for, `dressed` whether the
+ * figures' colours and the gates were set from its first snapshot, and `cool` the local wait before the
+ * next own shot plays its sound and flash at once (the server's own arrives a round trip later).
+ */
+const net = { mirror: null as Mirror | null, matchNo: -1, dressed: false, cool: 0 };
+/**
+ * One class-mode step of the own player: predicts it with `inp` and sends `inp` to the server (never
+ * step(): the server runs the match; it also judges the buy menu, the question cards and the defuse). Also
+ * plays the own shot at once and moves a dead student's view to a living teammate.
+ */
+function netStep(inp: PlayerInput): void {
+  const m = net.mirror, conn = aula.conn;
+  if (!m || !conn) return;
+  const match = m.match, me = match.human, lim = AULA.max_look_per_message.value;
+  // A long frame can gather more mouse turn than the server takes in one input: clamp it here, before the prediction, so both agree.
+  inp.lookYaw = Math.max(-lim, Math.min(lim, inp.lookYaw)); inp.lookPitch = Math.max(-lim, Math.min(lim, inp.lookPitch));
+  conn.sendInput(predict(m, inp, STEP), inp);
+  net.cool = Math.max(0, net.cool - STEP); me.flashT = Math.max(0, me.flashT - STEP);
+  const a = me.ammo[me.cur];
+  if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
+    && me.reloadT <= 0 && net.cool <= 0 && a && a.mag > 0) {
+    a.mag--; net.cool = tune[me.cur + '_rate']; me.flashT = 0.05; SFX.shot(me.cur); // the snapshot puts the server's magazine back
+  }
+  if (!me.alive && (inp.spectate || inp.spectateKey || !match.specP?.alive)) {
+    const mates = match.players.filter(q => q.alive && q.squad === me.squad), pool = mates.length ? mates : match.players.filter(q => q.alive);
+    if (pool.length) { match.spec = (match.spec + 1) % pool.length; match.specP = pool[match.spec]; }
+  }
+}
+/**
  * Sends the typed name to the classroom server; a blank one is refused here without connecting. The
- * connection's callbacks move the page between the join and waiting screens.
+ * connection's callbacks move the page between the join and waiting screens and the match.
  */
 function joinClass(): void {
   if (aula.busy) return;
@@ -74,13 +106,48 @@ function joinClass(): void {
   Object.assign(aula, { error: '', busy: true, retry: '' });
   aula.conn = connect({
     name: aula.name,
-    onJoined: m => { if (gen !== aula.gen) return; nameInput.blur(); Object.assign(aula, { busy: false, you: m.you, room: m.room, retry: '', error: '' }); scene = 'waiting'; },
-    onRoom: m => { if (gen === aula.gen) aula.room = { roomId: m.roomId, state: m.state, seats: m.seats }; },
+    onJoined: m => {
+      if (gen !== aula.gen) return;
+      nameInput.blur(); Object.assign(aula, { busy: false, you: m.you, room: m.room, retry: '', error: '' });
+      if (scene === 'join') scene = 'waiting'; // a rejoin mid-match stays on the match: its begin follows
+    },
+    onRoom: m => {
+      if (gen !== aula.gen) return;
+      aula.room = { roomId: m.roomId, state: m.state, seats: m.seats };
+      if (net.mirror) setNames(net.mirror, m.seats);
+      if (m.state === 'ended' && (scene === 'play' || scene === 'pause')) { scene = 'waiting'; if (locked) document.exitPointerLock(); }
+    },
+    onBegin: b => {
+      if (gen !== aula.gen) return;
+      // After a rematch the old match's last snapshot (its matchEnd) came first: the old copy, over, stays on the end screen.
+      const old = net.mirror, ended = !!old && b.match !== net.matchNo && old.match.over;
+      useMap(b.map);
+      net.mirror = createMirror(b); Object.assign(net, { matchNo: b.match, dressed: false, cool: 0 });
+      models.forEach((m, i) => { m.group.visible = i !== b.seat; });
+      if (!ended) {
+        state = net.mirror.match;
+        if (scene !== 'pause' && scene !== 'controls') scene = 'play';
+      }
+    },
+    onSnapshot: s => {
+      const m = net.mirror;
+      if (gen !== aula.gen || !m) return;
+      const me = m.match.human, flash = me.flashT; // the own muzzle flash is played locally (netStep)
+      const evs = applySnapshot(m, s, performance.now());
+      me.flashT = flash;
+      if (!net.dressed) { // a match joined midway: the figures' sides and the gates as they are now
+        net.dressed = true;
+        for (const p of m.match.players) models[p.id].team.color.setHex(SIDE_HEX[sideOf(m.match, p)]);
+        for (const gm of gates) { gm.position.y = 1.5; gm.visible = m.match.gatesClosed; }
+      }
+      playEvents(evs);
+    },
     onError: e => { if (gen === aula.gen) aula.error = e.text; },
     onReconnecting: (a, max) => { if (gen === aula.gen) aula.retry = `Reconectando… (intento ${a} de ${max})`; },
     onClosed: c => {
       if (gen !== aula.gen) return;
       Object.assign(aula, { busy: false, conn: null, you: null, room: null, retry: '' });
+      net.mirror = null; if (locked) document.exitPointerLock();
       if (c.reason === 'unreachable') aula.error = 'No se pudo conectar con el servidor del aula.';
       if (c.reason === 'gave_up') aula.error = 'Se perdió la conexión con el servidor del aula. Pulsa Entrar para volver.';
       scene = 'join';
@@ -506,14 +573,17 @@ function readInput(act: string | undefined): PlayerInput {
   inp.closeShop = act === 'closebuy'; inp.closeCard = act === 'closecard'; inp.spectate = act === 'spec';
   return inp;
 }
-/** Plays and draws what the last step's events say (sounds, tracers, sparks, the round's models), logs the ones checks read, and empties the list. */
-function playEvents(): void {
-  for (const e of state.events) {
+/**
+ * Plays and draws what the events say (sounds, tracers, sparks, the round's models), logs the ones checks read,
+ * and empties the list: the last step's (single player) or a snapshot's (class mode).
+ */
+function playEvents(list: Loose[] = state.events): void {
+  for (const e of list) {
     if (LOG.has(e.type)) events.push(e);
     switch (e.type) {
       case 'shot':
         tracer(e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
-        if (e.human) { SFX.shot(e.w); viewGuns[e.w].flash.visible = true; if (e.spark) spark(e.to[0], e.to[1], e.to[2]); }
+        if (e.human) { if (!CLASS_MODE) { SFX.shot(e.w); viewGuns[e.w].flash.visible = true; } if (e.spark) spark(e.to[0], e.to[1], e.to[2]); } // class mode played it on the trigger
         else { const v = heard(e.x, e.z), at = heardFrom(e.x, e.z); SFX.shot(e.w, v * 0.8, at.pan, at.dist); }
         break;
       case 'hit': SFX.hit(); break;
@@ -539,7 +609,7 @@ function playEvents(): void {
       case 'matchEnd': scene = 'results'; if (locked) document.exitPointerLock(); break;
     }
   }
-  state.events.length = 0;
+  list.length = 0;
 }
 
 // ---- Scenes ---------------------------------------------------------------------------
@@ -582,6 +652,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   play: {
     update(dt) {
       if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; lookYaw = 0; lookPitch = 0; if (locked) document.exitPointerLock(); return; }
+      if (CLASS_MODE) { netStep(readInput(clicks.shift())); return; }
       stepMatch(state, { [state.human.id]: readInput(clicks.shift()) }, dt);
       playEvents();
     },
@@ -590,11 +661,12 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   pause: {
     update() {
       const act = clicks.shift();
+      if (CLASS_MODE) netStep(idleInput()); // the match goes on on the server: stand still, keep the seat
       if (pressed(bind.pause) || pressed('Escape') || act === 'resume') scene = 'play';
       if (act === 'controls') { Object.assign(ctl, { from: 'pause', sel: 0, capture: false, note: '' }); scene = 'controls'; }
       if (pressed('BracketLeft') || act === 'sens:-') CONFIG.mouse_sens.value = Math.max(CONFIG.mouse_sens.min, +(tune.mouse_sens - 0.1).toFixed(2));
       if (pressed('BracketRight') || act === 'sens:+') CONFIG.mouse_sens.value = Math.min(CONFIG.mouse_sens.max, +(tune.mouse_sens + 0.1).toFixed(2));
-      if (pressed('Backspace') || act === 'quit') scene = 'title';
+      if (pressed('Backspace') || act === 'quit') { if (CLASS_MODE) aula.conn?.leave(); else scene = 'title'; }
     },
     draw() {
       drawWorld(); drawHUD(true);
@@ -606,13 +678,14 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       text('También con [ y ]', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
       button(W / 2 - 160, 380, 320, 52, `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
       button(W / 2 - 160, 444, 320, 52, 'Controles', 'controls', { size: 22 });
-      button(W / 2 - 160, 508, 320, 52, 'Salir a la pantalla de sesión', 'quit', { size: 20 });
+      button(W / 2 - 160, 508, 320, 52, CLASS_MODE ? 'Salir de la sala' : 'Salir a la pantalla de sesión', 'quit', { size: 20 });
       text(`Asignatura: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
     },
   },
   controls: {
     update() {
       const act = clicks.shift(), n = ACTIONS.length; // rows 0..n-1 are the actions, n is Restablecer, n + 1 is Volver
+      if (CLASS_MODE && ctl.from === 'pause') netStep(idleInput());
       if (act && act.startsWith('key:')) Object.assign(ctl, { sel: Number(act.slice(4)), capture: true, note: '' });
       else if (act === 'keysreset') { resetKeys(); Object.assign(ctl, { capture: false, note: 'Teclas por defecto restablecidas' }); }
       else if (act === 'back') { scene = ctl.from; return; }
@@ -665,6 +738,13 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   results: {
     update() {
       const act = clicks.shift();
+      if (CLASS_MODE) {
+        const next = net.mirror && net.mirror.match !== state ? net.mirror : null; // a rematch already running
+        if (!next) { if (pressed('Enter') || act === 'menu') aula.conn?.leave(); return; }
+        netStep(idleInput());
+        if (pressed('Enter') || act === 'menu' || next.match.phase !== 'buy') { state = next.match; scene = 'play'; }
+        return;
+      }
       if (pressed('Enter') || act === 'menu') { scene = 'title'; }
     },
     draw() { drawWorld(); drawResults(); },
@@ -706,7 +786,7 @@ function toggleTopic(t: string): void {
 function placeModels() {
   for (const p of state.players) {
     const m = models[p.id];
-    if (p.human) continue;
+    if (p === state.human) continue; // other students are drawn like bots
     const x = lerp(p.px, p.x, ALPHA), z = lerp(p.pz, p.z, ALPHA);
     m.group.position.set(x, 0, z);
     if (p.alive) {
@@ -764,7 +844,7 @@ function drawWorld() {
   renderer.clear(); renderer.render(world, camera);
   if (view !== p) models[view.id].group.visible = true;
   // first-person gun
-  const planting = p.alive && state.plantT > 0;
+  const planting = p.alive && state.plantT > 0 && b.carrier === p; // plantT is the carrier's: another student's plant is not yours
   viewBomb.group.visible = planting;
   for (const [k, g] of Object.entries(viewGuns)) g.group.visible = p.alive && !p.scoped && !planting && k === p.cur;
   if (planting) { // the bomb in your hands, lowered toward the floor as the plant fills
@@ -842,14 +922,14 @@ function drawMinimap(x0: number, y0: number): void {
   text('A', x0 + (SITE.A.cx + 0.5) * k, y0 + (SITE.A.cy + 0.5) * k, 16, '#a3241a');
   text('B', x0 + (SITE.B.cx + 0.5) * k, y0 + (SITE.B.cy + 0.5) * k, 16, '#a3241a');
   const me = state.human, b = state.bomb;
-  if (b.state === 'planted' || b.state === 'dropped' || (b.state === 'carried' && sideOf(state, me) === 'att' && b.carrier && !b.carrier.human)) {
+  if (b.state === 'planted' || b.state === 'dropped' || (b.state === 'carried' && sideOf(state, me) === 'att' && b.carrier && b.carrier !== me)) {
     if (b.state !== 'carried' || sideOf(state, me) === 'att') drawBombIcon(x0 + b.x / CELL * k, y0 + b.z / CELL * k, 12);
   }
   for (const p of state.players) {
     if (!p.alive) continue;
     const mine = p.squad === me.squad;
     if (!mine && state.t - p.spotT > 1.5) continue;
-    drawArrow(x0 + p.x / CELL * k, y0 + p.z / CELL * k, p.yaw, p.human ? 6 : 5, p.human ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
+    drawArrow(x0 + p.x / CELL * k, y0 + p.z / CELL * k, p.yaw, p === me ? 6 : 5, p === me ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
   }
 }
 function drawHUD(paused?: boolean): void {
@@ -865,11 +945,11 @@ function drawHUD(paused?: boolean): void {
   if (state.boomT > 0) { ctx.fillStyle = `rgba(255,220,160,${state.boomT * 0.6})`; ctx.fillRect(0, 0, W, H); }
   // teammates' names over their heads
   for (const q of state.players) {
-    if (q.human || !q.alive || q.squad !== p.squad || q === state.specP && !p.alive) continue;
+    if (q === p || !q.alive || q.squad !== p.squad || q === state.specP && !p.alive) continue;
     if (!losClear(camera.position.x, camera.position.z, q.x, q.z)) continue;
     const s = project(q.x, 2.25, q.z);
     if (!s || s.x < 0 || s.x > W || s.y < 0 || s.y > H) continue;
-    const tag = `${q.name} (${ROLE_NAME[q.role]})`; ctx.font = `bold 14px ${FONT}`;
+    const tag = q.human ? q.name : `${q.name} (${ROLE_NAME[q.role]})`; ctx.font = `bold 14px ${FONT}`; // a student has no bot role
     const tw = ctx.measureText(tag).width + 14; rr(s.x - tw / 2, s.y - 11, tw, 22, 6, "rgba(15,20,32,0.75)", null);
     text(tag, s.x, s.y, 14, SIDE_CSS[sideOf(state, q)]);
   }
@@ -949,7 +1029,7 @@ function drawHUD(paused?: boolean): void {
     const sp = state.specP;
     rr(W / 2 - 280, H - 92, 560, 64, 12, 'rgba(15,20,32,0.78)', null);
     text('Has caído', W / 2, H - 74, 20, '#ff8a7a');
-    text(sp ? `Viendo a ${sp.name} (${ROLE_NAME[sp.role]}). Clic o Espacio para el siguiente` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
+    text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. Clic o Espacio para el siguiente` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
   }
   // the one hint that matters now
   let hint = '';
@@ -970,7 +1050,7 @@ function drawHUD(paused?: boolean): void {
     rr(W / 2 - w / 2, H - 160, w, 44, 10, 'rgba(15,20,32,0.8)', '#ffd06a', 2);
     text(hint, W / 2, H - 138, 22, '#ffe7a8'); ctx.globalAlpha = 1;
   }
-  if (state.plantT > 0) {
+  if (state.plantT > 0 && b.carrier === p) {
     const k = state.plantT / tune.plant_time;
     rr(W / 2 - 160, H / 2 + 60, 320, 26, 8, 'rgba(15,20,32,0.85)', null);
     rr(W / 2 - 156, H / 2 + 64, 312 * k, 18, 6, SIDE_CSS.att, null);
@@ -986,6 +1066,10 @@ function drawHUD(paused?: boolean): void {
     rr(W / 2 - 330, 150, 660, 120, 16, 'rgba(15,20,32,0.88)', state.banner.mine ? '#7fe07a' : '#ff7a6a', 4);
     text(state.banner.text, W / 2, 192, 36, state.banner.mine ? '#9ff08a' : '#ff9a8a');
     text(state.banner.reason, W / 2, 238, 20, '#e8eef8');
+  }
+  if (CLASS_MODE && aula.retry) { // the connection dropped: the same line as the waiting screen's
+    rr(340, 290, 600, 48, 12, '#4a3210', '#ffb366', 2);
+    text(aula.retry, W / 2, 314, 20, '#ffe28a');
   }
   if (!paused) { if (state.menu && !state.card) drawShop(); if (state.card) drawCard(); }
 }
@@ -1254,7 +1338,7 @@ function drawResults() {
   buttons.length = 0;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(12,16,28,0.75)'; ctx.fillRect(0, 0, W, H);
-  const won = state.score[0] > state.score[1];
+  const mine = state.human.squad, won = state.score[mine] > state.score[1 - mine];
   text(state.gained, W / 2, 80, 48, won ? '#9ff08a' : '#ff9a8a');
   text(state.answered || '', W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
@@ -1263,11 +1347,13 @@ function drawResults() {
   cols.forEach(([n, x, a]) => text(n, x, 224, 18, '#ffd06a', a));
   [...state.players].sort((a, b) => a.squad - b.squad || b.kills - a.kills).forEach((p, i) => {
     const y = 262 + i * 38;
-    if (p.human) rr(276, y - 16, 728, 32, 8, 'rgba(255,208,106,0.18)', null);
-    const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad), p.kills, p.deaths, p.right, p.wrong];
-    vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && p.human ? 'bold' : 'normal'));
+    const you = p === state.human;
+    if (you) rr(276, y - 16, 728, 32, 8, 'rgba(255,208,106,0.18)', null);
+    const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad === mine ? 0 : 1), p.kills, p.deaths, p.right, p.wrong];
+    vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
   });
-  button(W / 2 - 220, 600, 440, 62, 'Volver a la pantalla de sesión (Enter)', 'menu', { size: 22 });
+  const label = !CLASS_MODE ? 'Volver a la pantalla de sesión (Enter)' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida (Enter)' : 'Volver a la pantalla de entrada (Enter)';
+  button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
 }
 let figScene: THREE.Scene | null = null, figCam: THREE.PerspectiveCamera | null = null;
 const FIG_LINE = [['rusher', 'att'], ['rifleman', 'att'], ['sniper', 'att'], ['rusher', 'def'], ['rifleman', 'def'], ['sniper', 'def'], ['bomb', '']];
@@ -1309,7 +1395,10 @@ function tick() {
   ALPHA = acc / STEP;
   drawFrame();
 }
-function drawFrame() { scenes[scene].draw(); }
+function drawFrame() {
+  if (net.mirror && state === net.mirror.match) interpolate(net.mirror, performance.now()); // the other players, a little in the past
+  scenes[scene].draw();
+}
 function frame() { tick(); requestAnimationFrame(frame); }
 function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
 

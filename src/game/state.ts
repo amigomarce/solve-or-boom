@@ -8,8 +8,8 @@ import { tune } from './tune';
 import { LEVELS, type Level, type Loose } from './types';
 import * as QUESTIONS from '../questions';
 
-/** The human's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
- *  Kept off the player and off the match's own keys so a run that never uses them plays exactly as before. */
+/** A person's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
+ *  Every player has one (`p.st`); `match.me` is the viewer's. */
 export interface Stance { stance: string; prone: boolean; proneT: number; jumpY: number; vy: number; eye: number; sprint: boolean }
 
 /** What the match was built from: the question choices and the map. */
@@ -28,6 +28,13 @@ export interface MatchOptions {
   customName: string;
   /** The map id (data/maps/). */
   map: string;
+  /** Seat ids (0..7) played by a person from the first step. Default [0]: the single-player game's one human. */
+  humans?: number[];
+  /**
+   * True for a classroom room: several students share the match and the server owns it. Each student buys and
+   * defuses through their own question card and deck (deskOf). Default false.
+   */
+  classroom?: boolean;
 }
 
 /**
@@ -38,8 +45,12 @@ export interface Match {
   players: Loose[]; feed: Loose[]; hurt: Loose[];
   /** What happened this step, for the screen to play and draw: main.ts reads and empties it after every step. */
   events: Loose[];
-  /** The human's stance, jump and eye height. */
+  /** The viewer's stance, jump and eye height: the same object as `match.human.st` (players[0].st when there is no viewer). */
   me: Stance;
+  /** The player this screen plays and draws (the single-player human, or a classroom client's own seat); null on the server. */
+  human: Loose;
+  /** True in a classroom room (see MatchOptions.classroom). */
+  classroom?: boolean;
   /** The match's seeded random numbers: every rules module draws from this, never from Math.random. */
   rng: () => number;
   /** The subject, level and map the match was built with. */
@@ -49,9 +60,9 @@ export interface Match {
   [k: string]: Loose;
 }
 
-/** The roster: the human plus 3 bot teammates against 4 bots. */
+/** The roster: 8 seats, 4 per squad (seats 0..3 squad 0, 4..7 squad 1). The single-player human sits in seat 0. */
 export const ROSTER = [
-  { name: 'You', role: 'rifleman', squad: 0, human: true },
+  { name: 'You', role: 'rifleman', squad: 0, human: true }, // human: the single-player seat (main.ts hides its model); a match's own humans come from MatchOptions.humans
   { name: 'Kira', role: 'rusher', squad: 0 }, { name: 'Tomas', role: 'rifleman', squad: 0 }, { name: 'Ana', role: 'sniper', squad: 0 },
   { name: 'Rex', role: 'rusher', squad: 1 }, { name: 'Mila', role: 'rifleman', squad: 1 }, { name: 'Iker', role: 'rifleman', squad: 1 }, { name: 'Sol', role: 'sniper', squad: 1 },
 ];
@@ -98,17 +109,19 @@ export function botFresh(): Loose {
     cleared: false, looks: [], lookT: 0, strictT: -99,
   };
 }
-function newPlayer(r: Loose, i: number): Loose {
-  return {
-    id: i, name: r.human ? 'Tú' : 'Bot ' + r.name, role: r.role, squad: r.squad, human: !!r.human,
+function newPlayer(r: Loose, i: number, human: boolean): Loose {
+  const p = {
+    id: i, name: human ? 'Tú' : 'Bot ' + r.name, role: r.role, squad: r.squad, human,
     x: 0, z: 0, px: 0, pz: 0, yaw: 0, pitch: 0, recoil: 0, hp: 100, armor: 0, alive: true,
     money: tune.start_money, primary: null, cur: 'pistol', ammo: {}, cool: 0, reloadT: 0, scoped: false,
     kills: 0, deaths: 0, right: 0, wrong: 0, moving: false, spotT: -99,
     target: null, reactT: 0, scanT: 0, path: [], pathI: 0, wps: [], arrived: false, holdYaw: 0, holdT: 0,
     routeKind: '', anchor: '', strafe: 1, strafeT: 0, alertT: 0, alertYaw: 0, lastX: 0, lastZ: 0, lastSeenT: -99,
     defusing: false, thinkT: 0, defuseRight: 0, plantT: 0, deadT: 0, walkPh: 0, flashT: 0, stuckT: 0, rotated: false,
-    ...(r.human ? {} : botFresh()),
+    ...(human ? {} : botFresh()),
   };
+  // Not enumerable, like Match.classroom: the same-seed replay compares the serialised state, which must not change.
+  return Object.defineProperty(p, 'st', { value: freshStance(), enumerable: false, writable: true });
 }
 /** Takes a player's primary gun and armour away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {
@@ -119,18 +132,22 @@ export function resetGuns(p: Loose): void {
 /**
  * A match before its first round: the roster on their pistols, no question deck. This is what the
  * screens read on the session screen. createMatch() (match.ts) builds one ready to play.
+ * `humans` are the seats a person plays (default seat 0, the single-player game); the viewer `match.human` is the
+ * first of them, or null for none (the server).
  * @example const m = blankMatch(7); m.players.length // 8
  */
-export function blankMatch(seed: number): Match {
+export function blankMatch(seed: number, humans: number[] = [0]): Match {
   const match: Match = {
     t: 0, score: [0, 0], gained: '', round: 0, attSquad: 0, phase: 'buy', phaseT: 0, roundT: 0,
-    players: ROSTER.map(newPlayer), human: null, lossStreak: [0, 0],
+    players: ROSTER.map((r, i) => newPlayer(r, i, humans.includes(i))), human: null, lossStreak: [0, 0],
     bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
     wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, gatesClosed: true, rtrT: 0, bombSeen: false,
-    events: [], me: freshStance(), rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
+    events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
   };
-  match.human = match.players[0];
+  Object.defineProperty(match, 'classroom', { value: false, enumerable: false, writable: true });
+  match.human = humans.length ? match.players[humans[0]] : null;
+  match.me = (match.human ?? match.players[0]).st;
   match.players.forEach(resetGuns);
   return match;
 }
@@ -139,8 +156,8 @@ export function blankMatch(seed: number): Match {
 export const sideOf = (match: Match, p: Loose): string => (p.squad === match.attSquad ? 'att' : 'def');
 /** A squad as the screens name it. */
 export const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
-/** True while the human has the buy menu or a question card open. */
-export const uiOpen = (match: Match): boolean => !!(match.menu || match.card);
+/** True while `d` has the buy menu or a question card open: a match (its viewer's) or a deskOf(). */
+export const uiOpen = (d: Loose): boolean => !!(d.menu || d.card);
 /** How far the bots' skill has ramped, 0 to 1. */
 export const level = (match: Match): number => levelFor(match.round, tune.ramp_rounds);
 /** Shows a HUD message for t seconds (match.msg, match.msgT). */
@@ -151,8 +168,9 @@ export function feed(match: Match, s: string, mine: boolean): void { match.feed.
 export function spawnSpots(side: string): Cell[] {
   return side === 'att' ? MAP.spawns.att : MAP.spawns.def;
 }
-/** Moves the spectator to the next living player of the human's squad (any living one when none is left). */
+/** Moves the spectator to the next living player of the viewer's squad (any living one when none is left). */
 export function nextSpec(match: Match): void {
+  if (!match.human) return;
   const pool = match.players.filter(p => p.alive && p.squad === match.human.squad && !p.human);
   const any = pool.length ? pool : match.players.filter(p => p.alive);
   if (!any.length) return;
@@ -168,20 +186,41 @@ export function questionLevel(match: Match, item?: string): Level | undefined {
   const step = item ? tune['question_step_' + item] : 0;
   return LEVELS[Math.min(LEVELS.length - 1, LEVELS.indexOf(match.opts.level) + step)];
 }
-/** Opens a question card (kind 'buy' for an item, or 'defuse'); the screen frees the mouse for it. */
-export function openCard(match: Match, kind: string, item?: string): void {
-  const level = questionLevel(match, item);
-  match.card = { kind, item, level, q: match.deck.next(level), picked: -1, wrongT: 0, wrongTotal: 0, okT: 0, anim: 0, got: 0 };
-  match.events.push({ type: 'unlock' });
+/**
+ * Where a person's buy menu, question card, wrong-answer streak and deck live (`menu`, `card`, `wrongStreak`, `deck`):
+ * the match itself for the viewer and in single player (as before story 005 Part B), else the player's own desk.
+ * A classroom server (no viewer) gives each student a desk with their own deck, built on first use from
+ * `match.newDeck` (createMatch) and kept for the whole match, through a rejoin.
+ * @example deskOf(room.match, room.match.players[2]).card // seat 2's open card, or null
+ */
+export function deskOf(match: Match, p: Loose): Loose {
+  if (p === match.human || !match.classroom) return match;
+  if (!p.desk) Object.defineProperty(p, 'desk', { value: { menu: false, card: null, wrongStreak: 0, deck: match.newDeck ? match.newDeck(p.id) : match.deck }, enumerable: false, writable: true });
+  return p.desk;
+}
+/** Pushes an event for person `p`: in a classroom it carries `p` (the player id), so only that student's snapshot gets it. */
+export function personal(match: Match, p: Loose, e: Loose): void { match.events.push(match.classroom ? { ...e, p: p.id } : e); }
+/** Shows `p` a HUD message: the viewer's via say(); a classroom student's as a 'say' event for their snapshot. */
+export function tell(match: Match, p: Loose, m: string, t = 3.5): void {
+  if (p === match.human) say(match, m, t);
+  else if (match.classroom) match.events.push({ type: 'say', p: p.id, text: m, t });
+}
+/** Opens a question card for `p` (kind 'buy' for an item, or 'defuse'), drawn from their deck; the screen frees the mouse for it. */
+export function openCard(match: Match, p: Loose, kind: string, item?: string): void {
+  const level = questionLevel(match, item), d = deskOf(match, p);
+  d.card = { kind, item, level, q: d.deck.next(level), picked: -1, wrongT: 0, wrongTotal: 0, okT: 0, anim: 0, got: 0 };
+  personal(match, p, { type: 'unlock' });
 }
 /**
- * Closes the open card. A question not yet answered goes back as the next draw (GDD Edge Cases); one in its
+ * Closes `p`'s open card. A question not yet answered goes back as the next draw (GDD Edge Cases); one in its
  * wrong-answer lockout was already missed, and one already answered right is spent. While a right answer is
  * being confirmed the card stays open unless `force` (death, the round ending, the bomb gone).
  */
-export function closeCard(match: Match, force = false): void {
-  const c = match.card;
+export function closeCard(match: Match, p: Loose, force = false): void {
+  const d = deskOf(match, p), c = d.card;
   if (!c || (c.okT > 0 && !force)) return;
-  if (c.okT <= 0 && c.wrongT <= 0) match.deck.putBack(c.q);
-  match.card = null;
+  if (c.okT <= 0 && c.wrongT <= 0) d.deck.putBack(c.q);
+  d.card = null;
 }
+/** Closes `p`'s buy menu and any card, even one confirming a right answer (death, the round's start or end, a bot taking the seat). */
+export function closeDesk(match: Match, p: Loose): void { deskOf(match, p).menu = false; closeCard(match, p, true); }

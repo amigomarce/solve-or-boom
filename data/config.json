@@ -1,6 +1,9 @@
 {
   "seed": 1,
   "default_map": { "value": "grande", "options": ["pequeno", "grande", "patio", "pasillos"] },
+  "net_interp_ms": { "value": 100, "min": 0, "max": 400, "step": 10 },
+  "net_snap_m": { "value": 2, "min": 0.1, "max": 10, "step": 0.1 },
+  "net_correct_blend": { "value": 0.35, "min": 0.05, "max": 1, "step": 0.05 },
   "volume": { "value": 0.5, "min": 0, "max": 1, "step": 0.05 },
   "sfx_limit_db": { "value": -12, "min": -30, "max": 0, "step": 1 },
   "sfx_pistol_level": { "value": 0.9, "min": 0, "max": 2, "step": 0.05 },

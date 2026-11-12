@@ -1,0 +1,3 @@
+Answers kept out of the class build (2026-11-12, after npm run build:class and build:single in the repo)
+¿Cuál es la capital de Italia?  dist-class=0  dist-single=1
+¿Cuál de estos animales es un mamífero?  dist-class=0  dist-single=1

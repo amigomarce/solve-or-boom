@@ -93,7 +93,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
     if (best) {
       if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level(match)) * (0.8 + match.rng() * 0.4); }
       b.target = best; b.lastX = best.x; b.lastZ = best.z; b.lastSeenT = match.t;
-      if (best.squad !== match.human.squad || true) best.spotT = match.t;
+      best.spotT = match.t;
       siteAlert(match, b, best.x, best.z);
       if (b.defusing) { b.defusing = false; match.bomb.defuser = null; }
     } else {

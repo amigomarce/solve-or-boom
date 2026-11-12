@@ -4,16 +4,17 @@ import { EYE, solidSight, center, SITE } from './map';
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeCard, feed, level, nextSpec, say, sideOf, WEAPON, type Match } from './state';
+import { closeDesk, feed, level, nextSpec, say, sideOf, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive) return;
   { const r = armourHit(dmg, t.armor, tune.armor_absorb); t.armor = r.armor; dmg = r.dmg; }
   t.hp -= dmg;
   if (t.human) {
-    match.flashT = 0.35; match.events.push({ type: 'hurt' });
-    match.hurt.push({ yaw: yawTo(from.x - t.x, from.z - t.z), t: 1.0 });
-    if (match.card && match.card.kind === 'defuse') { /* you keep answering: the clock does not stop */ }
+    const yaw = yawTo(from.x - t.x, from.z - t.z);
+    if (t === match.human) match.flashT = 0.35;
+    match.events.push({ type: 'hurt', p: t.id, yaw });
+    if (t === match.human) match.hurt.push({ yaw, t: 1.0 });
   } else {
     t.alertT = 1.5; t.alertYaw = yawTo(from.x - t.x, from.z - t.z); if (t.defusing) t.defusing = false;
     t.wantCover = true; t.threatX = from.x; t.threatZ = from.z;
@@ -23,25 +24,26 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
 export function kill(match: Match, t: Loose, from: Loose): void {
   t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
   if (from && from !== t) { from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money); }
-  feed(match, `${from ? from.name : 'La bomba'} ${from && from.human ? 'eliminaste a' : 'eliminó a'} ${t.human ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
-    (from && from.human) || t.human);
-  if (from && from.human && from !== t) { match.killT = 0.4; match.events.push({ type: 'killmark' }); }
+  const me = match.human;
+  feed(match, `${from ? from.name : 'La bomba'} ${from && from === me ? 'eliminaste a' : 'eliminó a'} ${t === me ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
+    (from && from === me) || t === me);
+  if (from && from.human && from !== t) { if (from === me) match.killT = 0.4; match.events.push({ type: 'killmark', p: from.id }); }
   if (match.bomb.state === 'carried' && match.bomb.carrier === t) {
     match.bomb.state = 'dropped'; match.bomb.x = t.x; match.bomb.z = t.z; match.bomb.carrier = null;
-    if (sideOf(match, match.human) === 'att') say(match, t.human ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
+    if (me && sideOf(match, me) === 'att') say(match, t === me ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
   }
   if (match.bomb.defuser === t) match.bomb.defuser = null;
-  if (t.human) { match.menu = false; closeCard(match, true); match.spec = 0; t.scoped = false; nextSpec(match); }
+  if (t.human) { t.scoped = false; closeDesk(match, t); if (t === me) { match.spec = 0; nextSpec(match); } }
   match.events.push({ type: 'kill', who: t.name, by: from ? from.name : '' });
 }
 
 export function humanShoot(match: Match, p: Loose): void {
   const w = p.cur, a = p.ammo[w];
   if (p.reloadT > 0 || p.cool > 0) return;
-  if (a.mag <= 0) { match.events.push({ type: 'empty' }); p.cool = 0.25; if (a.res > 0) startReload(match, p); return; }
+  if (a.mag <= 0) { match.events.push({ type: 'empty', p: p.id }); p.cool = 0.25; if (a.res > 0) startReload(match, p); return; }
   a.mag--; p.cool = tune[w + '_rate'];
-  if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) match.events.push({ type: 'lowAmmo' });
-  const spread = humanSpread(match, p), eye = match.me.eye + match.me.jumpY;
+  if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) match.events.push({ type: 'lowAmmo', p: p.id });
+  const spread = humanSpread(match, p), eye = p.st.eye + p.st.jumpY;
   const yaw = p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (match.rng() - 0.5) * 2 * spread;
   p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
   if (w === 'sniper') p.scoped = false;
@@ -64,11 +66,12 @@ export function humanShoot(match: Match, p: Loose): void {
   }
   const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = eye + tp * bestT;
   const gx = p.x + hx * 0.6 - hz * 0.18, gz = p.z + hz * 0.6 + hx * 0.18;
-  match.events.push({ type: 'shot', human: true, w, x: p.x, z: p.z, from: [gx, eye - 0.18, gz], to: [ex, ey, ez], spark: !best });
+  match.events.push({ type: 'shot', human: true, by: p.id, w, x: p.x, z: p.z, from: [gx, eye - 0.18, gz], to: [ex, ey, ez], spark: !best });
   p.flashT = 0.05;
   makeNoise(match, p.x, p.z, tune.bot_hear_shot, p.squad);
   if (best) {
-    match.hitT = 0.15; match.events.push({ type: 'hit' });
+    if (p === match.human) match.hitT = 0.15;
+    match.events.push({ type: 'hit', p: p.id });
     applyDamage(match, best, tune[w + '_dmg'] * (head ? tune.headshot_mult : 1), p);
   }
   void cp;
@@ -76,13 +79,13 @@ export function humanShoot(match: Match, p: Loose): void {
 /** The human's shot spread now, in radians: the gun, moving, the scope, then the stance and the air multipliers. */
 export function humanSpread(match: Match, p: Loose): number {
   const s = p.cur === 'sniper' && p.scoped ? 0.002 : tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0);
-  const stance = match.me.stance === 'prone' ? tune.prone_spread_mult : match.me.stance === 'crouch' ? tune.crouch_spread_mult : 1;
-  return s * stance * (match.me.jumpY > 0 || match.me.vy !== 0 ? tune.air_spread_mult : 1);
+  const st = p.st, stance = st.stance === 'prone' ? tune.prone_spread_mult : st.stance === 'crouch' ? tune.crouch_spread_mult : 1;
+  return s * stance * (st.jumpY > 0 || st.vy !== 0 ? tune.air_spread_mult : 1);
 }
 export function startReload(match: Match, p: Loose): void {
   const a = p.ammo[p.cur];
   if (p.reloadT > 0 || a.res <= 0 || a.mag >= tune[p.cur + '_mag']) return;
-  p.reloadT = tune.reload_time; p.scoped = false; if (p.human) match.events.push({ type: 'reload', w: p.cur });
+  p.reloadT = tune.reload_time; p.scoped = false; if (p.human) match.events.push({ type: 'reload', p: p.id, w: p.cur });
 }
 export function finishReload(p: Loose): void {
   const a = p.ammo[p.cur], need = tune[p.cur + '_mag'] - a.mag;
@@ -115,14 +118,14 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
   if (a.mag <= 0) { b.reloadT = tune.reload_time; return; }
   a.mag--; b.cool = tune[w + '_rate'] * tune.bot_fire_slow * (0.85 + match.rng() * 0.3);
   const d = Math.hypot(t.x - b.x, t.z - b.z);
-  const stanceHit = !t.human ? 1 : match.me.stance === 'prone' ? tune.prone_hit_mult : match.me.stance === 'crouch' ? tune.crouch_hit_mult : 1;
+  const stanceHit = !t.human ? 1 : t.st.stance === 'prone' ? tune.prone_hit_mult : t.st.stance === 'crouch' ? tune.crouch_hit_mult : 1;
   const chance = hitChance(level(match), tune.bot_acc_start, tune.bot_acc_end, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
   const hitIt = match.rng() < chance;
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;
   const miss = hitIt ? 0 : (match.rng() - 0.5) * 2.2;
-  const body = t.human ? match.me.eye / EYE : 1, lift = t.human ? match.me.jumpY : 0; // the human's body: lower when down, higher in a jump
-  match.events.push({ type: 'shot', human: false, w, x: b.x, z: b.z, from: [gx, 1.3, gz], to: [t.x - fz * miss, (hitIt ? 1.2 : 1.0 + match.rng() * 1.2) * body + lift, t.z + fx * miss], spark: false });
+  const body = t.human ? t.st.eye / EYE : 1, lift = t.human ? t.st.jumpY : 0; // a person's body: lower when down, higher in a jump
+  match.events.push({ type: 'shot', human: false, by: b.id, w, x: b.x, z: b.z, from: [gx, 1.3, gz], to: [t.x - fz * miss, (hitIt ? 1.2 : 1.0 + match.rng() * 1.2) * body + lift, t.z + fx * miss], spark: false });
   b.flashT = 0.06;
   makeNoise(match, b.x, b.z, tune.bot_hear_shot, b.squad);
   if (hitIt) applyDamage(match, t, tune[w + '_dmg'], b);

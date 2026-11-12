@@ -1,13 +1,13 @@
 # Story 005: Networked play
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: L
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: [set by /dev-story when implementation begins]
+> **Last Updated**: 2026-11-12
 
 ## Context
 
@@ -65,12 +65,14 @@
 
 ## Files
 
-*Planned. `/dev-story` replaces this list with the files it changed.*
-
-- `src/server/` (rooms, inputs, snapshots) and `src/net/` (client connection, shared message format)
-- `src/main.ts`
-
----
+- src/main.ts (class-mode play: mirror, prediction, per-student card, look clamp)
+- src/game/seats.ts (created), match.ts, state.ts, player.ts, combat.ts, bots.ts, rounds.ts, bomb.ts
+- src/net/snapshot.ts (created), src/net/mirror.ts (created), protocol.ts, client.ts
+- src/server/room.ts, rooms.ts, lobby.ts, net.ts, aula.ts
+- src/banks.ts (created), src/banks-none.ts (created), src/questions.ts (class build without question banks)
+- vite.config.ts, package.json (build:class; aula serves dist-class), .gitignore (dist-class/)
+- data/aula.json, data/config.json, data/config-notes.md
+- No test files: tests are waived at qa.level minimal; the existing checks still pass
 
 ## QA Test Cases
 
@@ -91,3 +93,17 @@
 
 - Depends on: `production/epics/solve-or-boom/story-002-simulation-split.md`, `production/epics/solve-or-boom/story-003-classroom-server.md`, `production/epics/solve-or-boom/story-004-student-join.md`
 - Unlocks: `production/epics/solve-or-boom/story-007-results-and-menu.md`
+
+## Completion Notes
+**Completed**: 2026-11-12
+**Criteria**: 7/10 passing (3 deferred to your play: the round flow with a student planting and defusing with a right answer, how the game feels with about 100 ms of delay, one full match in two real browsers)
+**Deviations**: advisory. Anyone typing a dropped student's name takes the seat, money and deck (`src/server/lobby.ts`). Every player's position goes to every client (`src/net/snapshot.ts`). `src/net/mirror.ts:141` uses a non-null assertion on the student's own row. `design/gdd/question-bank.md` Core Rule 7 ("only the human player draws") needs updating to per student. The lockout and retry rules were not checked against the GDD and no run exercised a defuse with a right answer. Single player starts with the same first question because `data/config.json` has `"seed": 1` (from before this story). `@types/ws` is behind `ws`. Node and `ws` APIs are NOT SOURCEABLE from the reference docs (checked against the installed type definitions). The engine check did not read `combat.ts`, `bots.ts`, `rounds.ts`, `bomb.ts` or the defuse path in `player.ts`.
+**Test Evidence**: waived at qa.level minimal. production/qa/evidence/story-005-networked-play/ (screenshots, driver logs at 0 ms and 100 ms, answers grep; stamp unchanged)
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- A bot takes a seat after 3 s without input or on disconnect and hands it back on return; the held controls repeat for 6 steps and the input queue holds 8; one student defuses at a time; the card closes when a bot takes the seat; the bomb goes to the lowest-seat human attacker (`src/server/room.ts`, `data/aula.json`, `src/game/player.ts`, `src/game/seats.ts`, `src/game/rounds.ts`) · kept 2026-11-12
+- 20 snapshots a second in JSON with positions in cm, shots sent within 100 m, protocol version 2 with the card in every snapshot, other players drawn 100 ms in the past, snap above 2 m and blend 0.35, `?retraso` delay in both directions (`data/aula.json`, `data/config.json`, `src/net/`) · kept 2026-11-12
+- Simpler HUD wording from events, own shot sound and flash played at once, pause and Controles keep the seat, final-screen buttons "Jugar la siguiente partida (Enter)" and "Volver a la pantalla de entrada (Enter)", "Salir de la sala", dead students spectate any living teammate, a finished room returns to the waiting screen (`src/main.ts`, `src/net/mirror.ts`) · kept 2026-11-12
+- The class page is a separate build without question banks (`dist-class`, `npm run build:class`, `vite.config.ts`, `src/banks-none.ts`) and includes `data/aula.json`; mouse look is clamped to 3.2 rad per step on client and server; each student's deck is seeded from the match seed and the seat (`src/game/match.ts`, `src/net/protocol.ts`, `src/main.ts`) · kept 2026-11-12

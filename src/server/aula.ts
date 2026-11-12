@@ -34,7 +34,8 @@ function flag(name: string): number | undefined {
 const clockMs = (): number => performance.now();
 const warn = rateLimitedLog(aula.log_repeat_s * 1000, clockMs);
 const rooms: Rooms = createRooms(
-  { tickBudgetMs: aula.tick_budget_ms, maxCatchupSteps: aula.max_catchup_steps, maxBacklogSteps: aula.max_backlog_steps, emptyGraceS: aula.empty_grace_s },
+  { tickBudgetMs: aula.tick_budget_ms, maxCatchupSteps: aula.max_catchup_steps, maxBacklogSteps: aula.max_backlog_steps, emptyGraceS: aula.empty_grace_s,
+    play: { queueMax: aula.input_queue_max, holdSteps: aula.input_hold_steps, takeoverSteps: Math.round(aula.takeover_s / STEP) } },
   { clockMs, log, warn },
 );
 const ticker = setInterval(rooms.tick, aula.tick_ms);
@@ -73,8 +74,8 @@ if (args.includes('--carga')) {
   }, seconds * 1000);
 } else {
   let page: Buffer;
-  try { page = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'dist-single', 'index.html')); } catch {
-    console.error('Falta dist-single/index.html: ejecuta "npm run build:single" (npm run aula lo hace solo).');
+  try { page = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'dist-class', 'index.html')); } catch {
+    console.error('Falta dist-class/index.html: ejecuta "npm run build:class" (npm run aula lo hace solo).');
     process.exit(1);
   }
   const port = flag('--puerto') ?? (process.env.AULA_PORT ? Number(process.env.AULA_PORT) : aula.port);
@@ -85,7 +86,7 @@ if (args.includes('--carga')) {
     net = await startNet(port, aula.port_tries, {
       maxChars: aula.max_message_bytes, maxName: aula.max_name_length, maxLook: aula.max_look_per_message,
       maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
-      maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s,
+      maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s, snapshotHz: aula.snapshot_hz, eventRangeM: aula.event_range_m,
     }, { rooms, pages: new Map([['/', html], ['/index.html', html]]), clockMs, log, warn });
   } catch (e) {
     console.error(`No se pudo abrir el servidor: ${e instanceof Error ? e.message : String(e)}`);

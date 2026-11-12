@@ -1,0 +1,11 @@
+delay 100 ms each way; 501 s; room running (); matches 1; final score 1-0; rounds 1:0-0 2:0-1 3:1-1 1:0-0 2:1-0; halftime swap true
+steps 30061, dropped steps 0, mean step 0.084 ms, max 3.68 ms
+server: 19914 snapshots, 513 bytes each, 10185 B/s per client; 59104 messages accepted, 0 refused
+Ana part B: {"menus":3,"cards":10,"buyCards":4,"defuseCards":0,"sentWrong":6,"sentRight":4,"verdictRight":4,"verdictWrong":6,"lockoutPresses":44,"buys":["smg","smg","smg","armor"],"spent":4250,"moneyStart":1250,"cheatTried":3,"cheatOpened":0,"defused":0,"leaks":0,"textMismatch":0,"newQAfterWrong":4,"endBeforeBegin":"begin 1: matchEnd before it 1x, old copy over true"}; server right 0, wrong 0
+Ana seat 0: 10022 msgs in (20.0/s), 10017 snaps, joined 1x, begins 2; prediction error mean 0.187 m, max 1.73 m; saw other student: 212 shots, 1 kills; events {"unlock":7,"answer":10,"buy":4,"gate":4,"shot":1083,"reload":12,"lowAmmo":53,"empty":619,"kill":13,"roundEnd":4,"say":78,"round":3,"hurt":4,"matchEnd":1,"match":1,"plant":1,"beep":25}
+Beto part B: {"menus":3,"cards":15,"buyCards":4,"defuseCards":0,"sentWrong":7,"sentRight":5,"verdictRight":3,"verdictWrong":12,"lockoutPresses":225,"buys":["smg","smg","armor"],"spent":3050,"moneyStart":1250,"cheatTried":3,"cheatOpened":0,"defused":0,"leaks":0,"textMismatch":0,"newQAfterWrong":5,"endBeforeBegin":"begin 1: matchEnd before it 1x, old copy over true"}; server right 0, wrong 0
+Beto seat 4: 9898 msgs in (19.8/s), 9893 snaps, joined 2x, begins 3; prediction error mean 0.062 m, max 1.86 m; saw other student: 332 shots, 1 kills; events {"unlock":7,"answer":15,"buy":3,"gate":4,"shot":1061,"lowAmmo":40,"empty":915,"reload":7,"kill":13,"hurt":4,"roundEnd":4,"round":3,"say":79,"matchEnd":1,"match":1,"plant":1,"beep":25}
+seat 0: ack 24052, inputs dropped (queue full) 0
+seat 4: ack 20134, inputs dropped (queue full) 0
+disconnect check: while away: seat kind human, present false, player human false, room running
+no errors

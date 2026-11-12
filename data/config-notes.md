@@ -117,8 +117,16 @@ holds no comments. The values themselves are in `data/config.json`.
 - `max_messages_per_second`, `message_burst`: a connection's allowance (a token bucket); messages beyond it are dropped
 - `max_strikes`: dropped or invalid messages a connection may send before the server closes it
 - `max_name_length`: longest name a student can give (kept in memory only, never logged)
-- `max_look_per_message`: radians, the most one input message may turn the aim in yaw or pitch
+- `max_look_per_message`: radians, the most one input message may turn the aim in yaw or pitch; one over it is clamped to it (by the page before sending and by the server), never refused
 - `ping_interval_s`: seconds between the server's pings; a connection that did not answer the last one is closed
 - `log_repeat_s`: the same kind of log line is printed at most once per this many seconds
 - `status_every_s`: seconds between the one-line room summary in the terminal (0 = never)
 - `load_rooms`, `load_seconds`: the load check (npm run aula -- --carga): rooms of bots, and how long; --segundos N overrides
+- `net_interp_ms`: classroom client: milliseconds in the past the other players are drawn, between two snapshots (two snapshots at snapshot_hz 20)
+- `net_snap_m`: classroom client: a prediction error over this many metres is corrected at once instead of blended
+- `net_correct_blend`: classroom client: the share of a smaller prediction error corrected at each snapshot (0.35 at 20 a second: about 100 ms to halve)
+- `snapshot_hz` (aula.json): snapshots per second sent to each student; the 60-step rate divided by a whole number of steps
+- `event_range_m` (aula.json): metres within which a student gets another player's shot (sound and tracer)
+- `input_queue_max` (aula.json): a student's inputs waiting to be played, at most (8 = 133 ms); older ones are dropped
+- `input_hold_steps` (aula.json): steps a student's held controls are repeated when no input arrived in time, before idling
+- `takeover_s` (aula.json): seconds with no input from a connected student before a bot plays their seat (a hidden tab); their next input takes it back

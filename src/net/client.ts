@@ -9,7 +9,8 @@
 // again with the name the server gave, so the student gets the same seat back. A page reload does the same
 // from the join screen: savedName() prefills the name and connect() with it returns the held seat.
 // Nothing is stored but the typed name, in localStorage, wrapped in try/catch (it may be blocked).
-import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type ErrorCode, type JoinedMessage, type RoomMessage } from './protocol';
+import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type SnapMessage } from './protocol';
+import { idleInput, type PlayerInput } from '../game/player';
 
 /** Why the connection ended for good. */
 export type CloseReason =
@@ -39,6 +40,17 @@ export interface ConnectOptions {
   onReconnecting?: (attempt: number, max: number, inMs: number) => void;
   /** The connection ended for good; no more callbacks follow. */
   onClosed?: (c: { reason: CloseReason }) => void;
+  /** A match starts for the student (after joined, a rejoin, a rematch): build the copy with createMirror(). */
+  onBegin?: (m: BeginMessage) => void;
+  /** A snapshot arrived (snapshot_hz a second): give it to applySnapshot(). */
+  onSnapshot?: (m: SnapMessage) => void;
+  /** The snapshot's events, right after onSnapshot, when there are any (applySnapshot returns the same list). */
+  onEvents?: (events: SnapMessage['e']) => void;
+  /**
+   * Testing only: milliseconds every message waits, each way, before it is sent or read (so 100 gives a 200 ms
+   * round trip). By default the page address's ?retraso=<ms> (0 to 1000), else 0.
+   */
+  simDelayMs?: number;
 }
 /** A live connection. */
 export interface Connection {
@@ -48,6 +60,24 @@ export interface Connection {
   close(): void;
   /** The name the server gave (e.g. "Ana (2)"), or the typed one until joined. */
   name(): string;
+  /** Sends one step's controls with its seq (from predict()); only the fields that are not idle travel. Dropped while not connected. */
+  sendInput(seq: number, input: PlayerInput): void;
+}
+
+/** The ?retraso=<ms> of the page address, 0 to 1000 (0 outside a browser). */
+function delayFromAddress(): number {
+  const v = typeof location === 'undefined' ? 0 : Number(new URLSearchParams(location.search).get('retraso'));
+  return Number.isFinite(v) ? Math.max(0, Math.min(1000, v)) : 0;
+}
+const IDLE = idleInput();
+/** The fields of `input` that differ from an idle input. */
+function compact(input: PlayerInput): Partial<PlayerInput> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    const idle = (IDLE as unknown as Record<string, unknown>)[k];
+    if (Array.isArray(v) ? v.length > 0 : v !== idle) out[k] = v;
+  }
+  return out as Partial<PlayerInput>;
 }
 
 const NAME_KEY = 'aula.nombre';
@@ -68,7 +98,13 @@ export function connect(opts: ConnectOptions): Connection {
   const delays = opts.retryDelaysMs ?? RETRY_DELAYS_MS;
   const url = opts.url ?? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${WS_PATH}`;
   let name = opts.name, ws: WebSocket | null = null, timer: ReturnType<typeof setTimeout> | undefined;
-  let everJoined = false, attempt = 0, done = false;
+  let everJoined = false, seated = false, attempt = 0, done = false;
+  const delay = opts.simDelayMs ?? delayFromAddress();
+  /** Sends now, or after the simulated delay (equal delays keep the order). */
+  const sendText = (s: WebSocket, text: string): void => {
+    const go = (): void => { if (s.readyState === WebSocket.OPEN) s.send(text); };
+    if (delay > 0) setTimeout(go, delay); else go();
+  };
 
   const finish = (reason: CloseReason): void => {
     if (done) return;
@@ -81,23 +117,26 @@ export function connect(opts: ConnectOptions): Connection {
     let s: WebSocket;
     try { s = new WebSocket(url); } catch { finish('unreachable'); return; }
     ws = s;
-    s.onopen = () => s.send(JSON.stringify(attempt > 0 ? { v: PROTOCOL_VERSION, t: 'hello', name, rejoin: true } : { v: PROTOCOL_VERSION, t: 'hello', name }));
-    s.onmessage = ev => {
-      const m = typeof ev.data === 'string' ? parseServerMessage(ev.data) : null;
-      if (!m || done) return;
+    s.onopen = () => sendText(s, JSON.stringify(attempt > 0 ? { v: PROTOCOL_VERSION, t: 'hello', name, rejoin: true } : { v: PROTOCOL_VERSION, t: 'hello', name }));
+    const read = (data: unknown): void => {
+      const m = typeof data === 'string' ? parseServerMessage(data) : null;
+      if (!m || done || ws !== s) return;
       if (m.t === 'joined') {
-        everJoined = true; attempt = 0; name = m.you.name;
+        everJoined = true; seated = true; attempt = 0; name = m.you.name;
         try { localStorage.setItem(NAME_KEY, opts.name.trim()); } catch { /* blocked: no prefill */ }
         opts.onJoined?.(m);
       } else if (m.t === 'room') opts.onRoom?.(m);
+      else if (m.t === 'begin') opts.onBegin?.(m);
+      else if (m.t === 'snap') { opts.onSnapshot?.(m); if (m.e.length) opts.onEvents?.(m.e); }
       else if (m.t === 'error') {
         opts.onError?.({ code: m.code, text: m.text });
         if (FATAL.includes(m.code)) finish('refused');
       }
     };
+    s.onmessage = ev => { if (delay > 0) setTimeout(() => read(ev.data), delay); else read(ev.data); };
     s.onclose = () => {
       if (done || ws !== s) return;
-      ws = null;
+      ws = null; seated = false;
       if (!everJoined) { finish('unreachable'); return; }
       if (attempt >= delays.length) { finish('gave_up'); return; }
       const wait = delays[attempt++];
@@ -109,10 +148,11 @@ export function connect(opts: ConnectOptions): Connection {
   open();
   return {
     leave() {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ v: PROTOCOL_VERSION, t: 'leave' }));
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ v: PROTOCOL_VERSION, t: 'leave' })); // not delayed: finish() closes at once
       finish('left');
     },
     close: () => finish('closed'),
     name: () => name,
+    sendInput(seq, input) { if (ws && seated) sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'input', seq, input: compact(input) })); },
   };
 }

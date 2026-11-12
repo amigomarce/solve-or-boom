@@ -21,7 +21,7 @@ export function plantBomb(match: Match, p: Loose): void {
 }
 export function defuseBomb(match: Match, p: Loose): void {
   match.bomb.state = 'defused'; match.bomb.defuser = null; match.events.push({ type: 'defused' });
-  feed(match, p.human ? 'Desactivaste la bomba' : `${p.name} desactivó la bomba`, p.human);
+  feed(match, p === match.human ? 'Desactivaste la bomba' : `${p.name} desactivó la bomba`, p === match.human);
   endRound(match, 'def', 'La bomba fue desactivada');
 }
 export function updateBomb(match: Match, dt: number): void {
@@ -33,7 +33,7 @@ export function updateBomb(match: Match, dt: number): void {
       if (p.alive && sideOf(match, p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3) {
         b.state = 'carried'; b.carrier = p; p.fetching = false;
         if (!p.human) routeTo(match, p, 'site');
-        if (p.human) say(match, 'Recogiste la bomba'); break;
+        if (p === match.human) say(match, 'Recogiste la bomba'); break;
       }
     }
   }

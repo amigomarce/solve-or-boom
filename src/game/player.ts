@@ -7,7 +7,7 @@ import type { Loose } from './types';
 import { startReload, finishReload, humanShoot, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { routeTo } from './plans';
-import { closeCard, feed, openCard, say, sideOf, uiOpen, SHOP, WEAPON, type Match } from './state';
+import { closeCard, deskOf, feed, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Stance } from './state';
 
 /**
  * One human player's inputs for one step: actions, not keys. "Held" fields are true while the control is
@@ -65,107 +65,137 @@ export function shopBlock(p: Loose, it: typeof SHOP[number]): string {
   if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
   return '';
 }
-/** Gives the human a bought item and takes its price. */
+/** Gives a person a bought item and takes its price. */
 export function grant(match: Match, p: Loose, id: string): void {
   const it = SHOP.find(s => s.id === id)!;
   p.money -= tune[it.price];
   if (id === 'armor') p.armor = 100;
   else if (id === 'ammo') for (const [w, a] of Object.entries(p.ammo as Record<string, Loose>)) a.res = tune[w + '_reserve'];
   else { p.primary = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
-  feed(match, `Compraste: ${it.name}`, true);
-  match.events.push({ type: 'buy', item: id });
+  if (p === match.human) feed(match, `Compraste: ${it.name}`, true);
+  personal(match, p, { type: 'buy', item: id });
 }
-export function answer(match: Match, i: number): void {
-  const c = match.card, p = match.human;
+/**
+ * Person `p` answers their open card with choice `i`. Ignored with no card, during the wrong-answer lockout, while a
+ * right answer is being confirmed, or out of range: the server's check for a classroom student's answer.
+ */
+export function answer(match: Match, p: Loose, i: number): void {
+  const d = deskOf(match, p), c = d.card;
   if (!c || c.wrongT > 0 || c.okT > 0 || i >= c.q.choices.length) return;
   c.picked = i;
-  if (i === c.q.answer) { p.right++; match.wrongStreak = 0; c.okT = 0.35; match.events.push({ type: 'answer', right: true }); }
+  if (i === c.q.answer) { p.right++; d.wrongStreak = 0; c.okT = 0.35; personal(match, p, { type: 'answer', right: true }); }
   else {
-    p.wrong++; match.wrongStreak++;
+    p.wrong++; d.wrongStreak++;
     // The lockout grows by wrong_delay_growth for each wrong answer in a row, up to wrong_delay_max.
-    c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (match.wrongStreak - 1));
-    match.deck.miss(c.q); match.events.push({ type: 'answer', right: false });
+    c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (d.wrongStreak - 1));
+    d.deck.miss(c.q); personal(match, p, { type: 'answer', right: false });
     if (c.kind === 'defuse') match.bomb.panicT = 1.6;
   }
 }
-export function updateCard(match: Match, dt: number, inp: PlayerInput): void {
-  const c = match.card;
+/** One step of `p`'s open card: number keys answer, a confirmed right answer completes the buy or defuse, a lockout ends in a new question. */
+export function updateCard(match: Match, p: Loose, dt: number, inp: PlayerInput): void {
+  const d = deskOf(match, p), c = d.card;
   c.anim = Math.min(1, c.anim + dt * 5);
-  for (let k = 0; k < 4; k++) if (inp.digits.includes(k)) answer(match, k);
+  for (let k = 0; k < 4; k++) if (inp.digits.includes(k)) answer(match, p, k);
   if (c.okT > 0) {
     c.okT -= dt;
     if (c.okT <= 0) {
-      if (c.kind === 'buy') { grant(match, match.human, c.item); match.card = null; }
+      if (c.kind === 'buy') { grant(match, p, c.item); d.card = null; }
       else {
         c.got++;
-        if (c.got >= tune.defuse_answers) { match.card = null; defuseBomb(match, match.human); }
-        else { c.q = match.deck.next(c.level); c.picked = -1; }
+        if (c.got >= tune.defuse_answers) { d.card = null; defuseBomb(match, p); }
+        else { c.q = d.deck.next(c.level); c.picked = -1; }
       }
     }
   } else if (c.wrongT > 0) {
     c.wrongT -= dt;
-    if (c.wrongT <= 0) { c.q = match.deck.next(c.level); c.picked = -1; } // a wrong answer always brings a new question
+    if (c.wrongT <= 0) { c.q = d.deck.next(c.level); c.picked = -1; } // a wrong answer always brings a new question
   }
 }
-export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput): void {
-  p.cool = Math.max(0, p.cool - dt); p.flashT = Math.max(0, p.flashT - dt);
-  p.recoil *= Math.exp(-dt * 7);
-  if (p.reloadT > 0) { p.reloadT -= dt; if (p.reloadT <= 0) finishReload(p); }
-  const live = match.phase === 'live', buy = match.phase === 'buy';
-  // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
+/**
+ * The first part of a human's step, shared by the server and a client's prediction: the prone change, the jump,
+ * the sprint flag, the crouch and the eye height. `quiet` skips the landing noise the bots hear (a prediction
+ * must not wake the copies of the bots it holds).
+ */
+export function stanceStep(match: Match, p: Loose, dt: number, inp: PlayerInput, quiet = false): void {
+  const me = p.st as Stance, live = match.phase === 'live';
   const f = inp.moveF, s = inp.moveS;
   const planting = live && match.bomb.carrier === p && inp.use;
   const walk = inp.walk, sprintKey = inp.sprint && !walk && (f !== 0 || s !== 0);
-  if (match.me.proneT > 0) { match.me.proneT -= dt; if (match.me.proneT <= 0) { match.me.proneT = 0; match.me.prone = !match.me.prone; } }
-  if (match.me.jumpY > 0 || match.me.vy !== 0) {
-    match.me.vy -= tune.gravity * dt; match.me.jumpY += match.me.vy * dt;
-    if (match.me.jumpY <= 0) { match.me.jumpY = 0; match.me.vy = 0; if (live) makeNoise(match, p.x, p.z, tune.bot_hear_land, p.squad); } // the landing is heard
+  if (me.proneT > 0) { me.proneT -= dt; if (me.proneT <= 0) { me.proneT = 0; me.prone = !me.prone; } }
+  if (me.jumpY > 0 || me.vy !== 0) {
+    me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt;
+    if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live && !quiet) makeNoise(match, p.x, p.z, tune.bot_hear_land, p.squad); } // the landing is heard
   }
-  match.me.sprint = sprintKey && !uiOpen(match) && !planting && !match.me.prone && match.me.proneT === 0;
-  const crouch = !match.me.prone && !match.me.sprint && inp.crouch;
-  match.me.stance = match.me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
-  const eyeTo = (match.me.proneT > 0 ? !match.me.prone : match.me.prone) ? tune.prone_eye : crouch ? tune.crouch_eye : EYE;
-  match.me.eye += (eyeTo - match.me.eye) * Math.min(1, tune.eye_rate * dt);
-  if (Math.abs(eyeTo - match.me.eye) < 0.002) match.me.eye = eyeTo;
-  // Menus and cards first.
-  if (inp.shop) {
-    if (match.card && match.card.kind === 'buy') closeCard(match);
-    else if (match.menu) match.menu = false;
-    else if (buy && inOwnBase(match, p)) { match.menu = true; match.events.push({ type: 'unlock' }); }
-    else say(match, buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
-  }
-  if (match.card && match.card.kind === 'defuse') {
-    if (match.bomb.state !== 'planted') closeCard(match, true);
-    else if (inp.usePress) closeCard(match);
-  }
-  if (match.card) { updateCard(match, dt, inp); p.moving = false; return; }
-  if (match.menu) {
-    if (!buy) { match.menu = false; say(match, 'Se acabó el tiempo de compra'); }
-    for (let k = 0; k < SHOP.length; k++) if (inp.digits.includes(k)) tryBuy(match, SHOP[k].id);
-    p.moving = false; return;
-  }
+  me.sprint = sprintKey && !uiOpen(deskOf(match, p)) && !planting && !me.prone && me.proneT === 0;
+  const crouch = !me.prone && !me.sprint && inp.crouch;
+  me.stance = me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
+  const eyeTo = (me.proneT > 0 ? !me.prone : me.prone) ? tune.prone_eye : crouch ? tune.crouch_eye : EYE;
+  me.eye += (eyeTo - me.eye) * Math.min(1, tune.eye_rate * dt);
+  if (Math.abs(eyeTo - me.eye) < 0.002) me.eye = eyeTo;
+}
+/**
+ * The second part: the arrow-key look, the stance keys (prone, jump) and the walk itself, with the footstep
+ * noise the bots hear (skipped when `quiet`). A client predicts its own player with stanceStep + moveStep;
+ * the mouse look (lookYaw, lookPitch) is applied by the caller before them.
+ */
+export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, quiet = false): void {
+  const me = p.st as Stance, live = match.phase === 'live';
+  const f = inp.moveF, s = inp.moveS;
+  const planting = live && match.bomb.carrier === p && inp.use;
+  const walk = inp.walk, sprintKey = inp.sprint && !walk && (f !== 0 || s !== 0);
   // Look with the arrow keys too.
   if (inp.lookLeft) p.yaw += tune.key_turn_speed * dt;
   if (inp.lookRight) p.yaw -= tune.key_turn_speed * dt;
   if (inp.lookUp) p.pitch = Math.min(1.4, p.pitch + tune.key_turn_speed * 0.6 * dt);
   if (inp.lookDown) p.pitch = Math.max(-1.4, p.pitch - tune.key_turn_speed * 0.6 * dt);
   // Stance keys: prone toggles (and takes prone_time), sprinting stands you up, a jump needs standing on the ground.
-  const ground = match.me.jumpY === 0 && match.me.vy === 0, changing = match.me.proneT > 0;
-  if (!changing && ground && (inp.prone || (match.me.prone && sprintKey))) match.me.proneT = tune.prone_time;
-  if (inp.jump && ground && !changing && match.me.stance === 'stand') match.me.vy = tune.jump_velocity;
+  const ground = me.jumpY === 0 && me.vy === 0, changing = me.proneT > 0;
+  if (!changing && ground && (inp.prone || (me.prone && sprintKey))) me.proneT = tune.prone_time;
+  if (inp.jump && ground && !changing && me.stance === 'stand') me.vy = tune.jump_velocity;
   // Move.
-  let sp = walk ? tune.walk_speed : match.me.sprint ? tune.sprint_speed : tune.run_speed;
+  let sp = walk ? tune.walk_speed : me.sprint ? tune.sprint_speed : tune.run_speed;
   if (p.cur === 'sniper') sp *= tune.sniper_speed_mult;
   if (p.scoped) sp *= 0.5;
-  if (match.me.stance === 'prone') sp *= tune.prone_speed_mult; else if (match.me.stance === 'crouch') sp *= tune.crouch_speed_mult;
-  if ((f || s) && !planting && match.me.proneT === 0) {
+  if (me.stance === 'prone') sp *= tune.prone_speed_mult; else if (me.stance === 'crouch') sp *= tune.crouch_speed_mult;
+  if ((f || s) && !planting && me.proneT === 0) {
     const n = Math.hypot(f, s), fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     const mx = (fx * f + -fz * s) / n, mz = (fz * f + fx * s) / n;
     moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp > tune.walk_speed + 0.1;
   } else p.moving = false;
   // Footsteps the enemy bots hear: sprinting carries far, running less; walking, crouched or prone is silent.
-  const stepR = !live || !p.moving || match.me.jumpY > 0 ? 0 : match.me.sprint ? tune.bot_hear_sprint : match.me.stance === 'stand' ? tune.bot_hear_run : 0;
-  if (stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad);
+  const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
+  if (!quiet && stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad);
+}
+/**
+ * One step of a person's player: stance, their buy menu and question card (deskOf), movement, weapons,
+ * shooting and the bomb. `p` is any human player (the single-player one, or a student in a classroom room).
+ */
+export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput): void {
+  p.cool = Math.max(0, p.cool - dt); p.flashT = Math.max(0, p.flashT - dt);
+  p.recoil *= Math.exp(-dt * 7);
+  if (p.reloadT > 0) { p.reloadT -= dt; if (p.reloadT <= 0) finishReload(p); }
+  const live = match.phase === 'live', buy = match.phase === 'buy', me = p.st as Stance, d = deskOf(match, p);
+  // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
+  stanceStep(match, p, dt, inp);
+  // The person's menu and card first.
+  if (inp.shop) {
+    if (d.card && d.card.kind === 'buy') closeCard(match, p);
+    else if (d.menu) d.menu = false;
+    else if (buy && inOwnBase(match, p)) { d.menu = true; personal(match, p, { type: 'unlock' }); }
+    else tell(match, p, buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
+  }
+  if (d.card && d.card.kind === 'defuse') {
+    if (match.bomb.state !== 'planted') closeCard(match, p, true);
+    else if (inp.usePress) closeCard(match, p);
+  }
+  if (d.card) { updateCard(match, p, dt, inp); p.moving = false; return; }
+  if (d.menu) {
+    if (!buy) { d.menu = false; tell(match, p, 'Se acabó el tiempo de compra'); }
+    for (let k = 0; k < SHOP.length; k++) if (inp.digits.includes(k)) tryBuy(match, p, SHOP[k].id);
+    p.moving = false; return;
+  }
+  moveStep(match, p, dt, inp);
   // Weapons.
   if (inp.primary && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
   if (inp.pistol && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
@@ -175,8 +205,8 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   if (live) {
     const auto = WEAPON[p.cur].auto;
     const trig = auto ? inp.fire : inp.firePress;
-    if (trig && !match.me.sprint && match.me.proneT === 0) humanShoot(match, p);
-  } else if (inp.firePress) say(match, 'Se puede disparar cuando se abran las puertas');
+    if (trig && !me.sprint && me.proneT === 0) humanShoot(match, p);
+  } else if (inp.firePress) tell(match, p, 'Se puede disparar cuando se abran las puertas');
   // The bomb.
   const b = match.bomb;
   if (live && b.carrier === p) {
@@ -194,12 +224,19 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     }
   }
   if (live && b.state === 'planted' && sideOf(match, p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && inp.usePress) {
-    if (b.defuser && !b.defuser.human) { b.defuser.defusing = false; }
-    b.defuser = p; openCard(match, 'defuse');
+    // One student defuses at a time: a teammate's open defuse card keeps the bomb theirs.
+    if (b.defuser && b.defuser !== p && b.defuser.human && deskOf(match, b.defuser).card?.kind === 'defuse') tell(match, p, 'Un compañero ya está desactivando la bomba');
+    else {
+      if (b.defuser && !b.defuser.human) { b.defuser.defusing = false; }
+      b.defuser = p; openCard(match, p, 'defuse');
+    }
   }
 }
-export function tryBuy(match: Match, id: string): void {
-  const p = match.human, it = SHOP.find(s => s.id === id)!, why = shopBlock(p, it);
-  if (why) { say(match, `${it.name}: ${why}`); match.events.push({ type: 'click' }); return; }
-  openCard(match, 'buy', id);
+/** Opens `p`'s buy card for a shop item, or says why it cannot be bought (an unknown id does nothing). */
+export function tryBuy(match: Match, p: Loose, id: string): void {
+  const it = SHOP.find(s => s.id === id);
+  if (!it) return;
+  const why = shopBlock(p, it);
+  if (why) { tell(match, p, `${it.name}: ${why}`); personal(match, p, { type: 'click' }); return; }
+  openCard(match, p, 'buy', id);
 }
