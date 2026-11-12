@@ -1,0 +1,13 @@
+GPU frame time (Apple M1, ANGLE Metal, headed Chrome), map Grande, seed 7, 7 bots walking in view, 570 frames each.
+scn-base = repo before story 010; scn = with story 010. Three runs each, alternating:
+{"dist":"scn-base/dist-single","frames":570,"meanMs":3.35,"medianMs":3.1,"p95Ms":5.7} nonFile 0 errs 0
+{"dist":"scn/dist-single","frames":570,"meanMs":3.64,"medianMs":3.5,"p95Ms":4.8} nonFile 0 errs 0
+{"dist":"scn-base/dist-single","frames":570,"meanMs":3.13,"medianMs":3,"p95Ms":4.2} nonFile 0 errs 0
+{"dist":"scn/dist-single","frames":570,"meanMs":3.2,"medianMs":3.2,"p95Ms":3.9} nonFile 0 errs 0
+{"dist":"scn-base/dist-single","frames":570,"meanMs":3.11,"medianMs":3,"p95Ms":4.1} nonFile 0 errs 0
+{"dist":"scn/dist-single","frames":570,"meanMs":3.15,"medianMs":3.1,"p95Ms":3.8} nonFile 0 errs 0
+
+Averages: before 3.20 ms, after 3.33 ms (+4.2 %). The agent measured +5.6 %.
+dist-single/index.html: 740559 bytes before, 750408 after. No request other than the page itself.
+
+Map comparison (map-check-before.json, map-check-after.json): the map checker returns no problems for pequeno, grande, patio and pasillos, and grid, zones, gates, crates, spawns and routes are identical before and after.

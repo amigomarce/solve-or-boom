@@ -1,0 +1,7 @@
+Reviewed-Content-Hash: src/main.ts ee31921545251aaada69ae4dc15759896ddce203
+Reviewed-Content-Hash: src/game/map.ts ba2f601df93b14408c6399dc57d6cd84f2e924ab
+Reviewed-Content-Hash: data/config.json c6204178ecf1b0a29cf43aa75a65d5b0e1b89dfd
+Reviewed-Content-Hash: data/maps/pequeno.json b0c8c1538cd8d77be52fa3e2a0f28dfe98095991
+Reviewed-Content-Hash: data/maps/grande.json e429698434284a4a0c546845c27b440e1166b92b
+Reviewed-Content-Hash: data/maps/patio.json e1f2322f7ccb6481bf723e8153a28874dfbbe969
+Reviewed-Content-Hash: data/maps/pasillos.json 59cb70c421af86a404f8f36e71a7a3b460500ec7

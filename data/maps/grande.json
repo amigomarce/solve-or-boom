@@ -23,6 +23,7 @@
   ],
   "crates": [[36, 6], [39, 9], [35, 29], [39, 24], [17, 17], [26, 18], [38, 17], [21, 5], [21, 30], [41, 5], [41, 30],
     [35, 11], [42, 12], [35, 24], [42, 23], [15, 6], [27, 4], [15, 29], [27, 31], [33, 19], [22, 16], [10, 10], [10, 25]],
+  "props": [{ "kind": "barrel", "cell": [39, 9] }, { "kind": "pallet", "cell": [35, 29] }, { "kind": "sandbag", "cell": [39, 24] }, { "kind": "barrel", "cell": [26, 18] }, { "kind": "pallet", "cell": [38, 17] }, { "kind": "sandbag", "cell": [21, 5] }, { "kind": "barrel", "cell": [41, 5] }, { "kind": "pallet", "cell": [41, 30] }, { "kind": "sandbag", "cell": [35, 11] }, { "kind": "barrel", "cell": [35, 24] }, { "kind": "pallet", "cell": [42, 23] }, { "kind": "sandbag", "cell": [15, 6] }, { "kind": "barrel", "cell": [15, 29] }, { "kind": "pallet", "cell": [27, 31] }, { "kind": "sandbag", "cell": [33, 19] }, { "kind": "barrel", "cell": [10, 10] }, { "kind": "pallet", "cell": [10, 25] }],
   "spawns": { "att": [[5, 17], [5, 18], [3, 15], [3, 20]], "def": [[48, 17], [48, 18], [50, 15], [50, 20]] },
   "sites": { "A": [38, 8], "B": [38, 27] },
   "routes": {

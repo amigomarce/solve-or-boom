@@ -44,6 +44,7 @@
     { "rect": [44, 30, 47, 31], "note": "east base down to B" }
   ],
   "crates": [[37, 5], [41, 8], [36, 9], [37, 30], [41, 27], [36, 26], [40, 18], [42, 4], [42, 31]],
+  "props": [{ "kind": "barrel", "cell": [41, 8] }, { "kind": "pallet", "cell": [36, 9] }, { "kind": "sandbag", "cell": [37, 30] }, { "kind": "barrel", "cell": [36, 26] }, { "kind": "pallet", "cell": [40, 18] }, { "kind": "sandbag", "cell": [42, 4] }],
   "spawns": { "att": [[3, 17], [3, 18], [2, 16], [2, 19]], "def": [[50, 17], [50, 18], [51, 16], [51, 19]] },
   "sites": { "A": [39, 6], "B": [39, 29] },
   "routes": {

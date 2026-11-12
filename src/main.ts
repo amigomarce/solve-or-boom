@@ -289,23 +289,89 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D, w: 
 const SIDE_HEX: Record<string, number> = { att: 0xf08a24, def: 0x1fb3a6 };
 const SIDE_CSS: Record<string, string> = { att: '#f39436', def: '#2cc4b6' };
 
-const wallTex = canvasTex(128, 128, (g, w, h) => {
-  g.fillStyle = '#f2e7d2'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#e4d5ba'; g.fillRect(0, h * 0.62, w, h * 0.38);
-  g.fillStyle = '#5b4a3a'; g.fillRect(0, h * 0.6, w, 5);
-  g.strokeStyle = '#4f3f31'; g.lineWidth = 10; g.strokeRect(0, 0, w, h);
+/** Deterministic noise in 0..1 from three integers: the scenery must look the same on every run and every machine. */
+const hash3 = (x: number, y: number, s: number): number => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+const rgbCss = (r: number, g: number, b: number): string => `rgb(${r | 0},${g | 0},${b | 0})`;
+// Walls (story 010): brick courses with a darker base band and a lighter cap, each brick a little different. Drawn once.
+const wallTex = canvasTex(256, 256, (g, w, h) => {
+  const capH = h * 0.09, baseH = h * 0.2, rows = 6, bh = (h - capH - baseH) / rows;
+  g.fillStyle = '#6a5340'; g.fillRect(0, 0, w, h); // mortar
+  for (let r = 0; r < rows; r++) for (let k = -1; k < 5; k++) {
+    const bw = w / 4, x = k * bw + (r % 2) * bw / 2, v = hash3(k, r, 3) * 26 - 13;
+    g.fillStyle = rgbCss(236 + v, 222 + v, 192 + v); g.fillRect(x + 2, capH + r * bh + 2, bw - 4, bh - 4);
+  }
+  g.fillStyle = '#9a7f62'; g.fillRect(0, h - baseH, w, baseH); // darker base band
+  g.fillStyle = '#7a6148'; g.fillRect(0, h - baseH, w, 6);
+  for (let k = 0; k < 4; k++) { g.fillStyle = 'rgba(60,45,30,0.25)'; g.fillRect(k * w / 4 + 10, h - baseH + 14, w / 4 - 20, baseH - 28); }
+  g.fillStyle = '#fff6e0'; g.fillRect(0, 0, w, capH); // lighter cap
+  g.fillStyle = '#6a5340'; g.fillRect(0, capH, w, 4);
+  g.strokeStyle = '#4f3f31'; g.lineWidth = 8; g.strokeRect(0, 0, w, h);
 });
 const crateTex = canvasTex(128, 128, (g, w, h) => {
   g.fillStyle = '#cf8f48'; g.fillRect(0, 0, w, h);
+  for (let y = 0; y < 6; y++) { g.fillStyle = rgbCss(207 + hash3(y, 1, 5) * 24 - 12, 143 + hash3(y, 2, 5) * 20 - 10, 72); g.fillRect(0, y * 21, w, 21); }
   g.strokeStyle = '#8a5524'; g.lineWidth = 4;
   for (let y = 21; y < h; y += 21) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
   g.lineWidth = 12; g.strokeStyle = '#9c6230'; g.beginPath(); g.moveTo(10, 10); g.lineTo(w - 10, h - 10); g.moveTo(w - 10, 10); g.lineTo(10, h - 10); g.stroke();
   g.lineWidth = 14; g.strokeStyle = '#6e421b'; g.strokeRect(0, 0, w, h);
+  g.fillStyle = '#3d3a36'; for (const [x, y] of [[0, 0], [w - 24, 0], [0, h - 24], [w - 24, h - 24]]) { g.fillRect(x, y, 24, 24); g.fillStyle = '#9aa0a6'; g.fillRect(x + 9, y + 9, 6, 6); g.fillStyle = '#3d3a36'; }
 });
+/** A flag's picture (drawn once): a letter on red for a bomb site, white chevrons on the side's colour for a base. */
+function flagTex(css: string, letter: string): THREE.CanvasTexture {
+  return canvasTex(64, 96, (g, w, h) => {
+    g.fillStyle = css; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#ffffff'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+    if (letter) { g.font = 'bold 70px Verdana, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.fillText(letter, w / 2, h / 2 + 4); }
+    else { g.lineWidth = 9; for (const y of [24, 50, 76]) { g.beginPath(); g.moveTo(14, y - 12); g.lineTo(w / 2, y + 4); g.lineTo(w - 14, y - 12); g.stroke(); } }
+  });
+}
+const FLAG_TEX: Record<string, THREE.CanvasTexture> = { A: flagTex('#d2452f', 'A'), B: flagTex('#d2452f', 'B'), att: flagTex(SIDE_CSS.att, ''), def: flagTex(SIDE_CSS.def, '') };
+// The sky: a gradient dome with a sun disc, painted once and kept on the camera (never moves, never fogged).
+const sky = ((): THREE.Mesh => {
+  const sd = new THREE.Vector3().copy(sun.position).normalize(), W2 = 1024, H2 = 512;
+  const tex = canvasTex(W2, H2, (g) => {
+    const gr = g.createLinearGradient(0, 0, 0, H2 / 2); gr.addColorStop(0, '#4f98de'); gr.addColorStop(0.55, '#86c4f0'); gr.addColorStop(1, '#a8daf2');
+    g.fillStyle = gr; g.fillRect(0, 0, W2, H2 / 2); g.fillStyle = '#a8daf2'; g.fillRect(0, H2 / 2, W2, H2 / 2);
+    const at = (dx: number, dy: number, dz: number): [number, number, number] => { const th = Math.acos(dy); return [(((Math.atan2(dz, -dx) / (2 * Math.PI)) % 1) + 1) % 1 * W2, th / Math.PI * H2, Math.sin(th)]; };
+    const [sx, sy, ss] = at(sd.x, sd.y, sd.z), R = tune.scn_sun_size / 180 * H2; // radius in degrees; the width stretches toward the pole
+    for (const [r, a] of [[R * 3, 0.18], [R * 1.8, 0.3], [R, 1]] as const) { g.fillStyle = `rgba(255,248,214,${a})`; g.beginPath(); g.ellipse(sx, sy, r / ss, r, 0, 0, 7); g.fill(); }
+  });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(300, 24, 12), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }));
+  m.renderOrder = -10; m.frustumCulled = false; m.matrixAutoUpdate = false;
+  m.onBeforeRender = (_r, _s, cam) => { m.matrixWorld.setPosition(cam.position); }; // follows the eye, so the dome is always the same distance away
+  world.add(m); return m;
+})();
+// Blocky clouds (story 010): `scn_clouds` clusters of 3 or 4 white blocks with a flat bottom, high round the arena, joined into one
+// mesh that follows the eye like the dome. Drawn first, without depth, so everything in the arena covers them.
+{
+  const parts: THREE.BufferGeometry[] = [], S = tune.scn_cloud_size, c = new THREE.Color();
+  for (let i = 0; i < tune.scn_clouds; i++) {
+    const a = hash3(i, 1, 9) * Math.PI * 2, r = 210 + hash3(i, 2, 9) * 50, y0 = 55 + hash3(i, 3, 9) * 45, n = 3 + (i % 2);
+    for (let k = 0; k < n; k++) {
+      const w = S * (0.8 + hash3(i, 10 + k, 9) * 0.5), h = S * (k === 1 || k === 2 ? 0.55 : 0.35) * (0.8 + hash3(i, 20 + k, 9) * 0.4);
+      const g = new THREE.BoxGeometry(w, h, S * 0.7); g.translate((k - (n - 1) / 2) * S * 0.75, y0 + h / 2, 0); // all blocks sit on the same bottom line
+      g.rotateY(Math.PI / 2 - a); g.translate(Math.cos(a) * r, 0, Math.sin(a) * r); // the row of blocks faces the arena
+      c.setHex(k % 2 ? 0xffffff : 0xeef4fa); const col = new Float32Array(g.getAttribute('position').count * 3); for (let j = 0; j < col.length; j += 3) col.set([c.r, c.g, c.b], j);
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3)); parts.push(g);
+    }
+  }
+  if (parts.length) {
+    const clouds = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthWrite: false, depthTest: false }));
+    parts.forEach(g => g.dispose());
+    clouds.renderOrder = -9; clouds.frustumCulled = false; clouds.matrixAutoUpdate = false;
+    clouds.onBeforeRender = (_r, _s, cam) => { clouds.matrixWorld.setPosition(cam.position); };
+    world.add(clouds);
+  }
+}
+const BARREL_COL = [0xc2432f, 0x2f6fb3, 0xd9a82e, 0x4f8a45], BAG_COL = [0xc9b27a, 0xbfa76d, 0xd2bd88, 0xb59f66];
 // The map's meshes: built for the loaded map (src/game/map.ts, from data/maps/), thrown away for the next.
 let mapGroup: THREE.Group | null = null, floorTex: THREE.CanvasTexture | null = null, builtFor = '';
 const gates: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>[] = [];
-/** Builds the 3D world of the loaded map (floor, walls, crates, gates), disposing the previous map's. */
+/**
+ * Builds the 3D world of the loaded map (floor, walls, crates and props, site and base marks, gates), disposing the previous map's.
+ * Story 010 (Brief MVP feature 23): everything is drawn or built once; the props, posts and flags of a map are merged into a
+ * few meshes. Props only dress cells that are crates in the grid (data/maps/*.json `props`), so nothing the rules read changes.
+ */
 function buildWorld(): void {
   if (mapGroup) {
     mapGroup.traverse(o => {
@@ -318,52 +384,135 @@ function buildWorld(): void {
     floorTex?.dispose();
   }
   const group = new THREE.Group();
-  // The painted floor: bases tinted by side, the sites with giant A and B.
-  floorTex = canvasTex(MW * 32, MH * 32, (g) => {
-    const P = 32;
-    g.fillStyle = '#7d705c'; g.fillRect(0, 0, MW * P, MH * P);
+  const isWall = (x: number, y: number): boolean => x < 0 || y < 0 || x >= MW || y >= MH || grid[idx(x, y)] === 0;
+  // The painted floor: concrete slabs laid in bond (no plain grid), speckle and wear, the bases tinted and striped by side, the sites ringed with giant A and B.
+  floorTex = canvasTex(MW * 40, MH * 40, (g) => {
+    const P = 40, tints: Record<number, number[]> = { 1: [240, 176, 122], 2: [150, 214, 204], 3: [212, 192, 150], 4: [212, 192, 150] };
+    g.fillStyle = '#6f6350'; g.fillRect(0, 0, MW * P, MH * P);
+    const edge = (x: number, y: number, dx: number, dy: number): boolean => { const nx = x + dx, ny = y + dy; return isWall(nx, ny) || zone[idx(nx, ny)] !== zone[idx(x, y)]; };
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       const i = idx(x, y);
       if (!grid[i]) continue;
-      g.fillStyle = zone[i] === 1 ? '#efb57c' : zone[i] === 2 ? '#93d6cc' : zone[i] >= 3 ? '#cdb68a' : ((x + y) % 2 ? '#dccba4' : '#d6c49c');
-      g.fillRect(x * P, y * P, P, P);
-      g.strokeStyle = 'rgba(80,60,30,0.18)'; g.lineWidth = 2; g.strokeRect(x * P + 1, y * P + 1, P - 2, P - 2);
-      if (isGate[i]) { g.fillStyle = 'rgba(40,40,40,0.35)'; for (let k = 0; k < 4; k++) g.fillRect(x * P + k * 8, y * P, 4, P); }
+      const base = tints[zone[i]] ?? [222, 208, 172];
+      for (let k = 0; k < 2; k++) { // two rows of slabs per cell, every other row shifted half a slab
+        const row = y * 2 + k, sh = (row & 1) * P / 2, y0 = y * P + k * P / 2;
+        for (const [a, b, sx] of sh ? [[0, sh, x - 1], [sh, P, x]] : [[0, P, x]]) {
+          const v = hash3(sx, row, 1) * 22 - 11;
+          g.fillStyle = rgbCss(base[0] + v, base[1] + v, base[2] + v * 1.2); g.fillRect(x * P + a, y0, b - a, P / 2);
+          g.fillStyle = 'rgba(70,55,35,0.28)'; g.fillRect(x * P + a, y0, 2, P / 2);
+        }
+        g.fillStyle = 'rgba(70,55,35,0.28)'; g.fillRect(x * P, y0, P, 2);
+      }
+      for (let s = 0; s < 14; s++) { g.fillStyle = hash3(x, y, 20 + s) > 0.5 ? 'rgba(70,55,35,0.22)' : 'rgba(255,250,235,0.3)'; g.fillRect(x * P + hash3(x, y, 40 + s) * P, y * P + hash3(x, y, 60 + s) * P, 2, 2); }
+      if (hash3(x, y, 7) > 0.93) { g.strokeStyle = 'rgba(70,55,35,0.4)'; g.lineWidth = 1.5; g.beginPath(); const cx = x * P + hash3(x, y, 8) * P, cy = y * P + hash3(x, y, 9) * P; g.moveTo(cx, cy); g.lineTo(cx + 9, cy + 7); g.lineTo(cx + 6, cy + 17); g.stroke(); } // a hairline crack
+      const side = zone[i] === 1 ? SIDE_CSS.att : zone[i] === 2 ? SIDE_CSS.def : zone[i] >= 3 ? '#d2452f' : '';
+      if (side) { // a painted border where the base or site ends: solid for a base, dashed red and white for a site
+        for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) if (edge(x, y, dx, dy)) {
+          const ex = dx === 0 ? x * P : (dx < 0 ? x * P : (x + 1) * P - 8), ey = dy === 0 ? y * P : (dy < 0 ? y * P : (y + 1) * P - 8);
+          g.fillStyle = side; g.fillRect(ex, ey, dx === 0 ? P : 8, dy === 0 ? P : 8);
+          if (zone[i] >= 3) { g.fillStyle = '#ffffff'; for (let t = 0; t < P; t += 16) g.fillRect(dx === 0 ? x * P + t + 8 : ex, dy === 0 ? y * P : ey + t + 8, dx === 0 ? 8 : 8, dy === 0 ? 8 : 8); }
+        }
+      }
+      if (isGate[i]) { // the doorway of a base: stripes in the side's colour
+        g.fillStyle = isGate[i] === 1 ? SIDE_CSS.att : SIDE_CSS.def; for (let k = 0; k < 5; k++) { g.globalAlpha = 0.75; g.fillRect(x * P + k * 8, y * P, 4, P); g.globalAlpha = 1; }
+      }
+    }
+    let cells = 0; for (let i = 0; i < MW * MH; i++) if (grid[i]) cells++;
+    for (let n = 0; n < cells * tune.scn_floor_wear; n++) { // soft worn patches
+      const cx = hash3(n, 1, 77) * MW * P, cy = hash3(n, 2, 77) * MH * P, r = 14 + hash3(n, 3, 77) * 30, gr = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+      if (!grid[idx(Math.min(MW - 1, cx / P | 0), Math.min(MH - 1, cy / P | 0))]) continue;
+      gr.addColorStop(0, 'rgba(80,62,40,0.22)'); gr.addColorStop(1, 'rgba(80,62,40,0)'); g.fillStyle = gr; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
     }
     for (const [k, s] of Object.entries(SITE)) {
       g.save(); g.translate((s.cx + 0.5) * P, (s.cy + 0.5) * P);
       g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.lineWidth = 10; g.strokeStyle = 'rgba(255,255,255,0.85)'; g.strokeText(k, 0, 6);
+      g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineJoin = 'round'; g.strokeText(k, 0, 6);
       g.fillStyle = '#d2452f'; g.fillText(k, 0, 6); g.restore();
     }
   });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(MW * CELL, MH * CELL), new THREE.MeshLambertMaterial({ map: floorTex }));
   floor.rotation.x = -Math.PI / 2; floor.position.set(MW * CELL / 2, 0, MH * CELL / 2); group.add(floor);
-  { // walls touching the floor, and the crates, as instanced boxes
-    const wallCells = [];
+  // Static decoration (props, posts, flags): parts are gathered per material, then joined into one mesh each.
+  const buckets = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[] }>();
+  const put = (key: string, mat: () => THREE.Material, geo: THREE.BufferGeometry, x: number, y: number, z: number, ry = 0, color?: number): void => {
+    const g = geo.clone(); g.rotateY(ry); g.translate(x, y, z);
+    if (color !== undefined) { const c = new THREE.Color(color), n = g.getAttribute('position').count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); }
+    const b = buckets.get(key); if (b) b.geos.push(g); else buckets.set(key, { mat: mat(), geos: [g] });
+  };
+  const propMat = (): THREE.Material => new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const bx = (w: number, h: number, d: number, x: number, y: number, z: number, color: number): void => put('props', propMat, new THREE.BoxGeometry(w, h, d), x, y, z, 0, color);
+  const cy = (r: number, h: number, x: number, y: number, z: number, color: number): void => put('props', propMat, new THREE.CylinderGeometry(r, r, h, 10), x, y, z, 0, color);
+  const kinds = new Map<number, string>(); for (const p of MAP.props ?? []) kinds.set(idx(p.cell[0], p.cell[1]), p.kind);
+  for (const [x, y] of CRATES) {
+    const kind = kinds.get(idx(x, y)), cx = center(x), cz = center(y), h = hash3(x, y, 4);
+    if (kind === 'barrel') { // four barrels and one on top, with dark bands and pale lids
+      for (const [ox, oz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) {
+        const col = BARREL_COL[(hash3(x + ox * 2, y + oz * 2, 5) * 4) | 0];
+        cy(0.62, 1.3, cx + ox, 0.65, cz + oz, col); cy(0.65, 0.1, cx + ox, 0.35, cz + oz, 0x2a2d33); cy(0.65, 0.1, cx + ox, 0.95, cz + oz, 0x2a2d33); cy(0.52, 0.05, cx + ox, 1.32, cz + oz, 0xcfd3d8);
+      }
+      cy(0.62, 1.3, cx, 1.95, cz, BARREL_COL[(h * 4) | 0]); cy(0.65, 0.1, cx, 1.65, cz, 0x2a2d33); cy(0.52, 0.05, cx, 2.62, cz, 0xcfd3d8);
+    } else if (kind === 'pallet') { // three pallets stacked, two wrapped cartons on top
+      for (let l = 0; l < 3; l++) {
+        const y0 = l * 0.3, wood = hash3(x, y, 10 + l) > 0.5 ? 0xb98a50 : 0xa57842;
+        for (const z of [-1.1, 0, 1.1]) bx(2.7, 0.12, 0.28, cx, y0 + 0.06, cz + z, 0x7a5430);
+        for (let i = 0; i < 7; i++) bx(0.3, 0.06, 2.7, cx - 1.2 + i * 0.4, y0 + 0.15, cz, wood);
+      }
+      for (const ox of [-0.68, 0.68]) { bx(1.25, 1.2, 2.3, cx + ox, 1.5, cz, 0xcaa066); bx(1.27, 0.12, 2.32, cx + ox, 1.6, cz, 0x6d8aa8); }
+    } else if (kind === 'sandbag') { // a wall of sandbags, five courses laid in bond
+      for (let r = 0; r < 5; r++) for (let i = 0; i < 4; i++) for (const oz of [-0.68, 0.68]) {
+        const ox = -1.05 + i * 0.7 + (r % 2) * 0.17, len = r % 2 && i === 3 ? 0.55 : 0.68;
+        bx(len, 0.3, 1.25, cx + ox + (r % 2 ? -0.17 : 0), 0.15 + r * 0.3, cz + oz, BAG_COL[(hash3(i + r * 5, oz > 0 ? 1 : 0, x * 31 + y) * 4) | 0]);
+      }
+    }
+  }
+  // Posts and flags at the room corners (a corner where two walls meet): low striped posts at a site and a base; tall flags on the first two.
+  const corners = (match: (x: number, y: number) => boolean): number[][] => {
+    const out: number[][] = [];
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (grid[idx(x, y)] === 1 && match(x, y)) for (const sx of [-1, 1]) for (const sy of [-1, 1])
+      if (isWall(x + sx, y) && isWall(x, y + sy)) out.push([center(x) + sx * (CELL / 2 - 0.3), center(y) + sy * (CELL / 2 - 0.3)]);
+    return out;
+  };
+  const flagGeo = new THREE.PlaneGeometry(2.4, 1.6), flagMat = (k: string) => (): THREE.Material => new THREE.MeshBasicMaterial({ map: FLAG_TEX[k], side: THREE.DoubleSide });
+  const mark = (key: string, spots: number[][], hex: number): void => {
+    spots.forEach(([px, pz], i) => {
+      bx(0.3, 0.9, 0.3, px, 0.45, pz, 0xf2f2f2); bx(0.32, 0.25, 0.32, px, 0.75, pz, hex);
+      if (i < 2) { // a tall flag: a pole and two crossed pennants, so it reads from any side
+        const H = tune.scn_flag_height; bx(0.12, H, 0.12, px, H / 2, pz, 0x2a2d33);
+        put('flag' + key, flagMat(key), flagGeo, px + 1.2, H - 0.8, pz); put('flag' + key, flagMat(key), flagGeo, px, H - 0.8, pz + 1.2, Math.PI / 2);
+      }
+    });
+  };
+  mark('A', corners((x, y) => zone[idx(x, y)] === 3), 0xd2452f); mark('B', corners((x, y) => zone[idx(x, y)] === 4), 0xd2452f);
+  mark('att', corners((x, y) => zone[idx(x, y)] === 1), SIDE_HEX.att); mark('def', corners((x, y) => zone[idx(x, y)] === 2), SIDE_HEX.def);
+  for (const b of buckets.values()) { const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat); m.matrixAutoUpdate = false; group.add(m); b.geos.forEach(g => g.dispose()); }
+  { // walls touching the floor, and the wooden crates (the rest of the crate cells are props), as instanced boxes
+    const wallCells = [], sideNear: number[] = [];
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       if (grid[idx(x, y)]) continue;
-      let near = false;
+      let near = false, side = 0;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const nx = x + dx, ny = y + dy;
-        if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) near = true;
+        if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) { near = true; const z = zone[idx(nx, ny)]; if (z === 1 || z === 2) side = z; }
       }
-      if (near) wallCells.push([x, y]);
+      if (near) { wallCells.push([x, y]); sideNear.push(side); }
     }
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), new THREE.MeshLambertMaterial({ map: wallTex }), wallCells.length);
-    const m = new THREE.Matrix4(), col = new THREE.Color();
+    const m = new THREE.Matrix4(), col = new THREE.Color(), tint = new THREE.Color();
     wallCells.forEach(([x, y], i) => {
       m.makeTranslation(center(x), WALL_H / 2, center(y)); walls.setMatrixAt(i, m);
       const v = ((x * 7 + y * 13) % 5) * 0.035;
-      col.setRGB(1 - v, 0.97 - v, 0.93 - v * 1.4); walls.setColorAt(i, col);
+      col.setRGB(1 - v, 0.97 - v, 0.93 - v * 1.4);
+      if (sideNear[i]) col.lerp(tint.setHex(sideNear[i] === 1 ? SIDE_HEX.att : SIDE_HEX.def), tune.scn_base_tint); // the walls round a base take its side's colour
+      walls.setColorAt(i, col);
     });
-    group.add(walls);
-    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), CRATES.length * 2);
-    CRATES.forEach(([x, y], i) => {
+    walls.matrixAutoUpdate = false; group.add(walls);
+    const wood = CRATES.filter(([x, y]) => !kinds.has(idx(x, y)));
+    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
+    wood.forEach(([x, y], i) => {
       m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
       m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), 1.65, center(y)); crates.setMatrixAt(i * 2 + 1, m);
     });
-    group.add(crates);
+    crates.matrixAutoUpdate = false; group.add(crates);
   }
   gates.length = 0;
   for (let i = 0; i < MW * MH; i++) if (isGate[i]) {

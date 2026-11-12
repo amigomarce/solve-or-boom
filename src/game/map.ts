@@ -26,6 +26,8 @@ export interface MapData {
   floor: { rect: number[]; zone?: string; note?: string }[];
   /** Crate cells: cover that stops bodies, sight and bullets. */
   crates: Cell[];
+  /** Optional dressing of crate cells (story 010): a kind (barrel, pallet or sandbag) per cell that is also in `crates`; the rest stay wooden crates. */
+  props?: { kind: string; cell: Cell }[];
   /** Spawn cells per side, one per player of the side. */
   spawns: { att: Cell[]; def: Cell[] };
   /** The cell the painted letter and the bomb carrier aim for, per site. */
@@ -128,6 +130,7 @@ export function mapProblems(id: string): string[] {
   if (out.length) return out;
   build(d);
   for (const [x, y] of d.crates) if (!inside(x, y) || !d.floor.some(f => x >= f.rect[0] && x <= f.rect[2] && y >= f.rect[1] && y <= f.rect[3])) out.push(`${id}: crate ${x},${y} is not on the floor`);
+  for (const p of d.props ?? []) if (!['barrel', 'pallet', 'sandbag'].includes(p.kind) || !d.crates.some(c => c[0] === p.cell[0] && c[1] === p.cell[1])) out.push(`${id}: prop ${p.kind} at ${p.cell} is not a known kind on a crate cell`);
   mapState.gatesClosed = false;
   const need = (c: Cell, what: string): boolean => {
     const ok = !!c && walkable(c[0], c[1]);

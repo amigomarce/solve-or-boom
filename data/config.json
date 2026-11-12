@@ -224,5 +224,11 @@
   "fx_mark_life": { "value": 1.5, "min": 0.2, "max": 5, "step": 0.1 },
   "fx_boom_screen_time": { "value": 0.12, "min": 0, "max": 1.2, "step": 0.01 },
   "fx_boom_screen_alpha": { "value": 0.45, "min": 0, "max": 1, "step": 0.05 },
-  "fx_boom_ball_time": { "value": 0.15, "min": 0.05, "max": 0.6, "step": 0.01 }
+  "fx_boom_ball_time": { "value": 0.15, "min": 0.05, "max": 0.6, "step": 0.01 },
+  "scn_clouds": { "value": 14, "min": 0, "max": 40, "step": 1 },
+  "scn_cloud_size": { "value": 16, "min": 4, "max": 40, "step": 1 },
+  "scn_sun_size": { "value": 6, "min": 0, "max": 20, "step": 0.5 },
+  "scn_floor_wear": { "value": 0.6, "min": 0, "max": 2, "step": 0.05 },
+  "scn_base_tint": { "value": 0.4, "min": 0, "max": 1, "step": 0.05 },
+  "scn_flag_height": { "value": 5.8, "min": 2, "max": 8, "step": 0.1 }
 }

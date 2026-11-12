@@ -22,6 +22,7 @@
     { "rect": [21, 16, 21, 17], "note": "side door into B" }
   ],
   "crates": [[24, 4], [26, 6], [23, 19], [26, 16], [11, 11], [17, 12], [25, 11], [14, 3], [14, 20], [27, 3], [27, 20]],
+  "props": [{ "kind": "barrel", "cell": [26, 6] }, { "kind": "pallet", "cell": [23, 19] }, { "kind": "sandbag", "cell": [26, 16] }, { "kind": "barrel", "cell": [17, 12] }, { "kind": "pallet", "cell": [25, 11] }, { "kind": "sandbag", "cell": [14, 3] }, { "kind": "barrel", "cell": [27, 3] }, { "kind": "pallet", "cell": [27, 20] }],
   "spawns": { "att": [[3, 11], [3, 12], [2, 10], [2, 13]], "def": [[32, 11], [32, 12], [33, 10], [33, 13]] },
   "sites": { "A": [25, 5], "B": [25, 18] },
   "routes": {
