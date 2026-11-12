@@ -9,12 +9,13 @@ import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { parseClientMessage, errorMessage, PROTOCOL_VERSION, WS_PATH, type ErrorCode, type ServerMessage, type ProtocolLimits } from '../net/protocol';
 import type { Rooms } from './rooms';
+import { createLobby } from './lobby';
 
 /** A page the server serves: its content type and bytes. The teacher screen (story 006) adds its own. */
 export interface Page { type: string; body: Buffer }
 /** The network limits (data/aula.json). */
 export interface NetLimits extends ProtocolLimits {
-  maxConnections: number; perSecond: number; burst: number; maxStrikes: number; pingIntervalS: number;
+  maxConnections: number; rejoinGraceS: number; lobbyTickMs: number; perSecond: number; burst: number; maxStrikes: number; pingIntervalS: number;
 }
 /** What the network side needs: the rooms, the pages by path, a clock in ms, and the logs. */
 export interface NetDeps {
@@ -26,13 +27,13 @@ export interface Net {
   /** The port it listens on (the asked one, or the next free one). */
   port: number;
   /** Connections open now, and messages dropped since start. */
-  counts(): { connections: number; dropped: number; accepted: number };
+  counts(): { students: number; connections: number; dropped: number; accepted: number };
   /** Closes every connection and the port. */
   close(): Promise<void>;
 }
 
 /** One connection's state: no name is kept beyond `named`, and no address at all. */
-interface Conn { id: number; named: boolean; tokens: number; lastT: number; strikes: number; alive: boolean; input: object | null }
+interface Conn { id: number; tokens: number; lastT: number; strikes: number; alive: boolean; input: object | null }
 
 /**
  * Listens on `port` on every interface (the next free port when it is busy, up to `tries` ports), serving
@@ -68,14 +69,22 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
     if (c.strikes >= lim.maxStrikes) { deps.log(`Conexión ${c.id} cerrada: demasiados mensajes descartados`); ws.close(1008, 'demasiados mensajes no válidos'); return; }
     if (code !== 'rate_limited' || c.strikes % 10 === 1) send(ws, errorMessage(code));
   };
+  const byId = new Map<number, WebSocket>();
+  const lobby = createLobby({ rejoinGraceS: lim.rejoinGraceS, maxName: lim.maxName }, {
+    rooms: deps.rooms, clockMs: deps.clockMs, log: deps.log,
+    send: (id, msg) => { const ws = byId.get(id); if (ws) send(ws, msg); },
+    isAlive: id => { const ws = byId.get(id); return !!ws && !!conns.get(ws)?.alive; },
+    close: id => { byId.get(id)?.close(4000, 'sesión recuperada desde otra conexión'); },
+  });
+  const lobbyTimer = setInterval(lobby.tick, lim.lobbyTickMs);
   wss.on('error', e => deps.warn('ws', `Error WebSocket: ${e.message}`));
   wss.on('connection', ws => {
-    const c: Conn = { id: ++made, named: false, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, alive: true, input: null };
+    const c: Conn = { id: ++made, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, alive: true, input: null };
     ws.on('error', e => deps.warn('ws-conn', `Conexión ${c.id}: ${e.message}`)); // a frame over maxPayload lands here, then the socket closes
     if (conns.size >= lim.maxConnections) { send(ws, errorMessage('server_full')); ws.close(1013, 'lleno'); return; }
-    conns.set(ws, c);
+    conns.set(ws, c); byId.set(c.id, ws);
     ws.on('pong', () => { c.alive = true; });
-    ws.on('close', () => { conns.delete(ws); });
+    ws.on('close', () => { conns.delete(ws); if (byId.get(c.id) === ws) byId.delete(c.id); lobby.dropped(c.id); });
     ws.on('message', (data, isBinary) => {
       if (c.strikes >= lim.maxStrikes) return; // closing: the frames still buffered are not read
       const now = deps.clockMs();
@@ -87,8 +96,9 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       if (!parsed.ok) { refuse(ws, c, parsed.code); return; }
       const msg = parsed.msg;
       if (msg.t === 'ping') { accepted++; send(ws, { v: PROTOCOL_VERSION, t: 'pong' }); return; }
-      if (msg.t === 'hello') { accepted++; c.named = true; send(ws, { v: PROTOCOL_VERSION, t: 'welcome', rooms: deps.rooms.list() }); return; }
-      if (!c.named) { refuse(ws, c, 'need_hello'); return; }
+      if (msg.t === 'hello') { accepted++; lobby.hello(c.id, msg.name, msg.rejoin === true); return; }
+      if (msg.t === 'leave') { accepted++; lobby.leave(c.id); return; }
+      if (!lobby.has(c.id)) { refuse(ws, c, 'need_hello'); return; }
       accepted++; c.input = msg.input; // held, not yet played: seating and inputs into a match are story 005
     });
   });
@@ -101,9 +111,9 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
 
   return {
     port: at,
-    counts: () => ({ connections: conns.size, dropped, accepted }),
+    counts: () => ({ students: lobby.count(), connections: conns.size, dropped, accepted }),
     close: () => new Promise(done => {
-      clearInterval(pinger);
+      clearInterval(pinger); clearInterval(lobbyTimer);
       for (const ws of conns.keys()) ws.close(1001, 'servidor detenido');
       wss.close();
       http.close(() => done());

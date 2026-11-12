@@ -18,7 +18,17 @@ export const SEATS = 8;
 export const SEATS_PER_TEAM = 4;
 
 /** Client to server: who is connecting. The name is kept in memory only, never logged or stored. */
-export interface HelloMessage { v: number; t: 'hello'; name: string }
+export interface HelloMessage {
+  v: number; t: 'hello'; name: string;
+  /**
+   * Optional. True when the page is re-entering after losing its connection (client.ts sets it on automatic
+   * retries): if the server still thinks the old connection is open but it stopped answering pings, the seat
+   * is taken over. Typed names never set it.
+   */
+  rejoin?: boolean;
+}
+/** Client to server: the student leaves for good; the seat becomes a bot at once (no grace). */
+export interface LeaveMessage { v: number; t: 'leave' }
 /**
  * Client to server: the controls of one step, as src/game/player.ts reads them. Every field is optional
  * (a missing one is idle). The answer to a question card is the `answer` field (0..3, -1 for none) and a
@@ -28,7 +38,7 @@ export interface InputMessage { v: number; t: 'input'; input: Partial<PlayerInpu
 /** Client to server: a line check; the server answers pong. */
 export interface PingMessage { v: number; t: 'ping' }
 /** Every message a client may send. */
-export type ClientMessage = HelloMessage | InputMessage | PingMessage;
+export type ClientMessage = HelloMessage | InputMessage | PingMessage | LeaveMessage;
 
 /** A seat's state: a bot plays it, a student plays it, or it waits for a student. */
 export type SeatKind = 'bot' | 'human' | 'open';
@@ -38,18 +48,34 @@ export interface RoomInfo {
   seats: number; humans: number; bots: number; open: number;
   round: number; score: number[];
 }
-/** Server to client: the hello was accepted; the rooms there are. */
+/** A room's state as students see it. Rooms start 'running'; 'waiting' and 'paused' are reserved for the teacher screen (story 006). */
+export type RoomState = 'waiting' | 'running' | 'paused' | 'ended';
+/** One seat as students see it. Open seats are shown as bots. `name` is a student's name or the bot's ("Bot 3"); display only. */
+export interface SeatView { index: number; team: number; kind: 'human' | 'bot'; name: string }
+/** A room's seating: who sits where. Seats are always 8, in index order (0-3 team 0, 4-7 team 1). */
+export interface RoomView { roomId: string; state: RoomState; seats: SeatView[] }
+/** Who the student is on the server: the name they got (made unique), their room, seat and team. */
+export interface You { name: string; room: string; seat: number; team: number }
+/** Server to client: the answer to a hello that got a seat (or got its old seat back). */
+export interface JoinedMessage { v: number; t: 'joined'; you: You; room: RoomView }
+/** Server to client: the seating of the student's room changed (someone joined or left, or the room's state changed). */
+export interface RoomMessage extends RoomView { v: number; t: 'room' }
+/**
+ * Server to client: the rooms there are. Not sent since story 004 (a hello is answered by `joined`); kept
+ * for the teacher screen (story 006).
+ */
 export interface WelcomeMessage { v: number; t: 'welcome'; rooms: RoomInfo[] }
 /** Server to client: the answer to a ping. */
 export interface PongMessage { v: number; t: 'pong' }
 /** Server to client: why a message was dropped (ERROR_TEXT has the sentence the page shows). */
 export interface ErrorMessage { v: number; t: 'error'; code: ErrorCode; text: string }
 /** Every message the server may send. */
-export type ServerMessage = WelcomeMessage | PongMessage | ErrorMessage;
+export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongMessage | ErrorMessage;
 
 /** Why a message was refused. */
 export type ErrorCode = 'too_big' | 'not_text' | 'not_json' | 'bad_shape' | 'bad_version' | 'bad_type' | 'bad_field' | 'bad_name'
-  | 'rate_limited' | 'need_hello' | 'server_full';
+  | 'rate_limited' | 'need_hello' | 'server_full'
+  | 'name_empty' | 'sin_cupo';
 /** The sentence a page shows for each error, in Spanish. */
 export const ERROR_TEXT: Record<ErrorCode, string> = {
   too_big: 'Mensaje demasiado grande.',
@@ -59,10 +85,12 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   bad_version: 'Versión distinta: recarga la página del juego.',
   bad_type: 'Tipo de mensaje desconocido.',
   bad_field: 'Un campo del mensaje no es válido.',
-  bad_name: 'El nombre no es válido: usa letras, números y espacios.',
+  bad_name: 'El nombre no es válido: usa letras, números y espacios (máximo 20 caracteres).',
   rate_limited: 'Demasiados mensajes: más despacio.',
   need_hello: 'Primero hay que presentarse (hello).',
   server_full: 'El servidor está lleno.',
+  name_empty: 'Escribe tu nombre para entrar.',
+  sin_cupo: 'No queda ningún sitio libre en las salas. Avisa al profesor.',
 };
 
 /** The limits parseClientMessage() applies (data/aula.json). */
@@ -86,8 +114,8 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   closeShop: isBool, closeCard: isBool, spectate: isBool, spectateKey: isBool,
 };
 /** The keys each message type may carry; any other key refuses the message. */
-const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name'], input: ['v', 't', 'input'], ping: ['v', 't'] };
-const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u;
+const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin'], input: ['v', 't', 'input'], ping: ['v', 't'], leave: ['v', 't'] };
+const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]*$/u;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
@@ -103,13 +131,17 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
   if (!isObject(raw)) return { ok: false, code: 'bad_shape' };
   if (raw.v !== PROTOCOL_VERSION) return { ok: false, code: 'bad_version' };
   const t = raw.t;
-  if (t !== 'hello' && t !== 'input' && t !== 'ping') return { ok: false, code: 'bad_type' };
+  if (t !== 'hello' && t !== 'input' && t !== 'ping' && t !== 'leave') return { ok: false, code: 'bad_type' };
   if (Object.keys(raw).some(k => !KEYS[t].includes(k))) return { ok: false, code: 'bad_shape' };
   if (t === 'ping') return { ok: true, msg: { v: PROTOCOL_VERSION, t } };
+  if (t === 'leave') return { ok: true, msg: { v: PROTOCOL_VERSION, t } };
   if (t === 'hello') {
-    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-    if (!name || name.length > lim.maxName || !NAME.test(name)) return { ok: false, code: 'bad_name' };
-    return { ok: true, msg: { v: PROTOCOL_VERSION, t, name } };
+    // Trimmed, and runs of spaces become one, so "Ana  M" and "Ana M" are the same name.
+    const name = typeof raw.name === 'string' ? raw.name.trim().replace(/ {2,}/g, ' ') : '';
+    if (!name) return { ok: false, code: 'name_empty' };
+    if (name.length > lim.maxName || !NAME.test(name)) return { ok: false, code: 'bad_name' };
+    if (raw.rejoin !== undefined && typeof raw.rejoin !== 'boolean') return { ok: false, code: 'bad_field' };
+    return { ok: true, msg: raw.rejoin ? { v: PROTOCOL_VERSION, t, name, rejoin: true } : { v: PROTOCOL_VERSION, t, name } };
   }
   if (!isObject(raw.input)) return { ok: false, code: 'bad_shape' };
   const input: Record<string, unknown> = {};
@@ -124,4 +156,45 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
 /** The error message for a code, ready to send. */
 export function errorMessage(code: ErrorCode): ErrorMessage {
   return { v: PROTOCOL_VERSION, t: 'error', code, text: ERROR_TEXT[code] };
+}
+
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+const isSeatView = (s: unknown): s is SeatView =>
+  isObject(s) && isInt(s.index) && isInt(s.team) && (s.kind === 'human' || s.kind === 'bot') && isStr(s.name);
+const isRoomView = (r: unknown): r is RoomView =>
+  isObject(r) && isStr(r.roomId) && (r.state === 'waiting' || r.state === 'running' || r.state === 'paused' || r.state === 'ended')
+  && Array.isArray(r.seats) && r.seats.length === SEATS && r.seats.every(isSeatView);
+const isRoomInfo = (r: unknown): r is RoomInfo =>
+  isObject(r) && isStr(r.id) && (r.status === 'running' || r.status === 'ended' || r.status === 'failed') && isStr(r.map)
+  && isInt(r.seats) && isInt(r.humans) && isInt(r.bots) && isInt(r.open) && isInt(r.round)
+  && Array.isArray(r.score) && r.score.every(n => typeof n === 'number');
+
+/**
+ * The browser's door in: checks one text frame from the server and returns the message, or null when it
+ * is not JSON, has another version, an unknown type, or a field of the wrong type. The browser trusts
+ * nothing it did not get through here. Returns copies built field by field.
+ * @example parseServerMessage('{"v":1,"t":"pong"}') // { v: 1, t: 'pong' }
+ */
+export function parseServerMessage(text: string): ServerMessage | null {
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return null; }
+  if (!isObject(raw) || raw.v !== PROTOCOL_VERSION) return null;
+  const v = PROTOCOL_VERSION;
+  switch (raw.t) {
+    case 'pong': return { v, t: 'pong' };
+    case 'error':
+      return isStr(raw.code) && Object.hasOwn(ERROR_TEXT, raw.code) && isStr(raw.text) ? { v, t: 'error', code: raw.code as ErrorCode, text: raw.text } : null;
+    case 'room':
+      return isRoomView(raw) ? { v, t: 'room', roomId: raw.roomId, state: raw.state, seats: raw.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } : null;
+    case 'joined': {
+      const y = raw.you;
+      if (!isObject(y) || !isStr(y.name) || !isStr(y.room) || !isInt(y.seat) || !isInt(y.team) || !isRoomView(raw.room)) return null;
+      const r = raw.room;
+      return { v, t: 'joined', you: { name: y.name, room: y.room, seat: y.seat, team: y.team },
+        room: { roomId: r.roomId, state: r.state, seats: r.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } };
+    }
+    case 'welcome': return Array.isArray(raw.rooms) && raw.rooms.every(isRoomInfo) ? { v, t: 'welcome', rooms: raw.rooms.map(r => ({ ...r })) } : null;
+    default: return null;
+  }
 }

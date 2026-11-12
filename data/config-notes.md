@@ -110,6 +110,8 @@ holds no comments. The values themselves are in `data/config.json`.
 - `max_catchup_steps`: most fixed steps one room runs in one tick (it catches up after a late tick)
 - `max_backlog_steps`: a room more than this many steps behind drops the rest (counted and logged), instead of racing to catch up
 - `empty_grace_s`: seconds a room that had human players keeps running after the last one leaves, before it is closed
+- `rejoin_grace_s`: seconds a student's seat is held after their connection drops (a reload or a Wi-Fi drop); when it runs out the seat is a bot again (--gracia N overrides; 0 = at once)
+- `lobby_tick_ms`: ms between the lobby's checks (grace expiry, closed rooms); the grace is accurate to about this
 - `max_connections`: connections beyond this are refused
 - `max_message_bytes`: a message longer than this is dropped
 - `max_messages_per_second`, `message_burst`: a connection's allowance (a token bucket); messages beyond it are dropped

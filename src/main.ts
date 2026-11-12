@@ -23,6 +23,70 @@ import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
+import { connect, savedName, type Connection } from './net/client';
+import type { RoomView, You } from './net/protocol';
+
+// ---- Class mode ------------------------------------------------------------------------
+/** Served by the classroom server (npm run aula), which adds <meta name="aula"> to the page: the page opens on the join screen. */
+const CLASS_MODE = !!document.querySelector('meta[name="aula"]');
+/** The scene the page opens on. Story 007's main menu replaces this one decision. */
+const FIRST_SCENE = CLASS_MODE ? 'join' : 'title';
+/** The longest name the join screen lets the student type (the server's max_name_length). */
+const NAME_MAX = 20;
+/** One character a name may hold: a letter (á, ñ, ü...), a digit, a space or . _ - ( ). */
+const NAME_CHAR = /^[\p{L}\p{N} ._()-]$/u;
+/**
+ * The class session as the student sees it: the typed name, the message under it, whether a connection is
+ * being opened, the live connection, who the server says the student is, the room's seating and the
+ * reconnecting line. `gen` tells a current connection's callbacks from an old one's.
+ */
+const aula = { name: '', error: '', busy: false, conn: null as Connection | null, you: null as You | null, room: null as RoomView | null, retry: '', gen: 0 };
+/**
+ * The join screen's name field: an invisible text input that holds the typed name while the canvas draws
+ * it, so accents typed with dead keys, an IME, a paste and a tablet's on-screen keyboard all work.
+ */
+const nameInput = Object.assign(document.createElement('input'), { type: 'text', maxLength: NAME_MAX * 2, autocomplete: 'off', spellcheck: false });
+nameInput.setAttribute('aria-label', 'Tu nombre');
+nameInput.setAttribute('autocapitalize', 'words');
+nameInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0';
+document.body.append(nameInput);
+// Only the characters a name may hold, no leading or double spaces, at most NAME_MAX; the caret stays at the end.
+nameInput.addEventListener('input', () => {
+  const name = [...nameInput.value].filter(ch => NAME_CHAR.test(ch)).join('').replace(/^ +/, '').replace(/ {2,}/g, ' ');
+  aula.name = [...name].slice(0, NAME_MAX).join(''); aula.error = '';
+  nameInput.value = aula.name; nameInput.setSelectionRange(aula.name.length, aula.name.length);
+});
+/** The room states in words. */
+const ROOM_STATE: Record<RoomView['state'], [string, string]> = {
+  waiting: ['Esperando a que empiece la partida', '#f2f5fb'],
+  running: ['La partida ya está en marcha', '#9ff08a'],
+  paused: ['Pausa del profesor', '#ffe28a'],
+  ended: ['La sala terminó', '#ff9a8a'],
+};
+/**
+ * Sends the typed name to the classroom server; a blank one is refused here without connecting. The
+ * connection's callbacks move the page between the join and waiting screens.
+ */
+function joinClass(): void {
+  if (aula.busy) return;
+  if (!aula.name.trim()) { aula.error = 'Escribe tu nombre para entrar.'; return; }
+  const gen = ++aula.gen;
+  Object.assign(aula, { error: '', busy: true, retry: '' });
+  aula.conn = connect({
+    name: aula.name,
+    onJoined: m => { if (gen !== aula.gen) return; nameInput.blur(); Object.assign(aula, { busy: false, you: m.you, room: m.room, retry: '', error: '' }); scene = 'waiting'; },
+    onRoom: m => { if (gen === aula.gen) aula.room = { roomId: m.roomId, state: m.state, seats: m.seats }; },
+    onError: e => { if (gen === aula.gen) aula.error = e.text; },
+    onReconnecting: (a, max) => { if (gen === aula.gen) aula.retry = `Reconectando… (intento ${a} de ${max})`; },
+    onClosed: c => {
+      if (gen !== aula.gen) return;
+      Object.assign(aula, { busy: false, conn: null, you: null, room: null, retry: '' });
+      if (c.reason === 'unreachable') aula.error = 'No se pudo conectar con el servidor del aula.';
+      if (c.reason === 'gave_up') aula.error = 'Se perdió la conexión con el servidor del aula. Pulsa Entrar para volver.';
+      scene = 'join';
+    },
+  });
+}
 
 // ---- Built to be checked ----------------------------------------------------------------
 const TITLE = 'Solve or Boom';
@@ -35,7 +99,7 @@ addEventListener('keydown', e => {
   startAudio();
   if (!e.repeat) { down.add(e.code); hit.add(e.code); }
   if (e.code === 'KeyU' && scene === 'title') csvInput.click();
-  if (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'Tab') e.preventDefault();
+  if ((e.code === 'Space' && e.target !== nameInput) || e.code.startsWith('Arrow') || e.code === 'Tab') e.preventDefault();
 });
 addEventListener('keyup', e => down.delete(e.code));
 addEventListener('blur', () => down.clear());
@@ -60,6 +124,7 @@ canvas.addEventListener('pointerdown', e => {
   const code = e.button === 2 ? 'Mouse2' : 'Mouse0';
   down.add(code); hit.add(code);
 });
+canvas.addEventListener('click', () => { if (scene === 'join') nameInput.focus({ preventScroll: true }); });
 addEventListener('pointerup', e => down.delete(e.button === 2 ? 'Mouse2' : 'Mouse0'));
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
@@ -604,6 +669,26 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
     },
     draw() { drawWorld(); drawResults(); },
   },
+  join: {
+    update(dt) {
+      titleT += dt;
+      const act = clicks.shift();
+      nameInput.readOnly = aula.busy;
+      if (nameInput.value !== aula.name) nameInput.value = aula.name;
+      if (document.activeElement !== nameInput) nameInput.focus({ preventScroll: true });
+      if (pressed('Enter') || act === 'enter') joinClass();
+    },
+    draw() { drawJoin(); },
+  },
+  waiting: {
+    update(dt) {
+      titleT += dt;
+      const act = clicks.shift();
+      if (!aula.conn) { scene = 'join'; return; }
+      if (act === 'leave' || (aula.room?.state === 'ended' && (act === 'again' || pressed('Enter')))) aula.conn.leave();
+    },
+    draw() { drawWaiting(); },
+  },
 };
 /** The Controles screen: the selected row, whether it waits for a key, the last change, and the scene to go back to. */
 const ctl = { sel: 0, capture: false, note: '', from: 'title' };
@@ -994,17 +1079,97 @@ function flyover() {
   for (const g of Object.values(viewGuns)) g.group.visible = false;
   renderer.clear(); renderer.render(world, camera);
 }
+/** The game's name in its three colours, centred on y. */
+function drawLogo(y: number, size: number): void {
+  ctx.font = `bold ${size}px ${FONT}`;
+  const tw1 = ctx.measureText('SOLVE ').width, tw2 = ctx.measureText('OR ').width, tw3 = ctx.measureText('BOOM').width;
+  let tx = W / 2 - (tw1 + tw2 + tw3) / 2;
+  text('SOLVE', tx, y, size, SIDE_CSS.def, 'left'); tx += tw1;
+  text('OR', tx, y, size, '#ffffff', 'left'); tx += tw2;
+  text('BOOM', tx, y, size, SIDE_CSS.att, 'left');
+}
+/** The join screen: the name field, Entrar, the refusal or connecting line, and the privacy line, over the map flyover. */
+function drawJoin() {
+  flyover();
+  buttons.length = 0;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(12,16,28,0.55)'; ctx.fillRect(0, 0, W, H);
+  drawLogo(74, 76);
+  text('Modo clase: entra con tu nombre', W / 2, 132, 24, '#f2f5fb');
+  rr(340, 180, 600, 420, 16, 'rgba(14,19,30,0.92)', null);
+  text('Tu nombre', 380, 222, 24, '#ffd06a', 'left');
+  rr(380, 250, 520, 64, 10, '#0d1220', aula.busy ? '#5a6478' : '#ffd06a', 3);
+  ctx.font = `bold 30px ${FONT}`;
+  const nw = Math.min(480, ctx.measureText(aula.name).width);
+  text(clip(aula.name, 480, 30), 400, 283, 30, '#fff', 'left');
+  if (!aula.name) text('Escribe aquí tu nombre', 414, 283, 22, '#6f7a8e', 'left', 'normal');
+  if (!aula.busy && titleT % 1 < 0.55) { ctx.fillStyle = '#ffd06a'; ctx.fillRect(402 + nw, 266, 3, 34); } // the blinking caret
+  text('Letras, números, espacios y . _ - ( )', 380, 336, 15, '#aab4c8', 'left', 'normal');
+  text(`${[...aula.name].length} / ${NAME_MAX}`, 900, 336, 15, '#aab4c8', 'right', 'normal');
+  if (aula.error) wrapText(aula.error, 520, 18).slice(0, 2).forEach((l, i) => text(l, 380, 374 + i * 24, 18, '#ff9a8a', 'left'));
+  if (aula.busy) button(380, 432, 520, 64, 'Conectando…', null, { size: 26, fill: '#3a4258', color: '#c8d2e6' });
+  else button(380, 432, 520, 64, 'Entrar (Enter)', 'enter', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  // a small padlock before the privacy line
+  const lx = 380, ly = 552;
+  ctx.strokeStyle = '#aab4c8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(lx + 8, ly - 4, 5, Math.PI, 0); ctx.stroke();
+  rr(lx + 1, ly - 4, 14, 11, 2, '#aab4c8', null);
+  text('Solo se pide tu nombre: no se guarda ningún dato personal.', lx + 26, ly, 16, '#c8d2e6', 'left', 'normal');
+  text('Escribe tu nombre y pulsa Enter para sentarte en una sala.', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
+}
+/** The waiting screen: who and where the student is, the room's two teams seat by seat, the room's state, and Salir. */
+function drawWaiting() {
+  flyover();
+  buttons.length = 0;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(12,16,28,0.6)'; ctx.fillRect(0, 0, W, H);
+  drawLogo(62, 60);
+  const you = aula.you, room = aula.room;
+  if (!you || !room) return;
+  const [words, colour] = ROOM_STATE[room.state];
+  text(words, W / 2, 116, 26, colour);
+  // who and where
+  rr(40, 146, 1200, 84, 16, 'rgba(14,19,30,0.92)', null);
+  const roomNo = room.roomId.replace(/^sala-/, '');
+  ([['Tu nombre', you.name, 80], ['Sala', `Sala ${roomNo}`, 560], ['Tu equipo', `Equipo ${you.team + 1}`, 900]] as const).forEach(([k, v, x]) => {
+    text(k, x, 172, 15, '#aab4c8', 'left', 'normal');
+    text(clip(v, 420, 26), x, 204, 26, x === 80 ? '#ffd06a' : '#fff', 'left');
+  });
+  // the two teams, 4 seats each
+  for (let t = 0; t < 2; t++) {
+    const px = 40 + t * 610;
+    rr(px, 246, 590, 314, 16, 'rgba(14,19,30,0.92)', null);
+    text(`Equipo ${t + 1}`, px + 24, 276, 24, '#ffd06a', 'left');
+    if (t === you.team) text('tu equipo', px + 566, 276, 16, '#aab4c8', 'right', 'normal');
+    room.seats.filter(s => s.team === t).forEach((s, i) => {
+      const y = 306 + i * 62, me = s.index === you.seat, human = s.kind === 'human';
+      rr(px + 20, y, 550, 52, 10, me ? 'rgba(255,208,106,0.18)' : 'rgba(255,255,255,0.05)', me ? '#ffd06a' : null, 2);
+      const ix = px + 50, iy = y + 26, c = human ? (me ? '#ffd06a' : '#e4e9f4') : '#6f7a8e';
+      ctx.fillStyle = c;
+      if (human) { // a person: head and shoulders
+        ctx.beginPath(); ctx.arc(ix, iy - 7, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ix, iy + 15, 13, Math.PI, 0); ctx.fill();
+      } else { // a bot: a square head with two eyes and an aerial
+        rr(ix - 11, iy - 9, 22, 20, 4, c, null);
+        ctx.fillStyle = '#1b2232'; ctx.fillRect(ix - 6, iy - 3, 4, 4); ctx.fillRect(ix + 2, iy - 3, 4, 4);
+        ctx.fillStyle = c; ctx.fillRect(ix - 1, iy - 16, 2, 7);
+      }
+      text(human ? clip(s.name, 420, 22) : 'Bot', px + 80, iy, 22, human ? '#fff' : '#8a93a3', 'left', human ? 'bold' : 'normal');
+      if (me) text('Tú', px + 552, iy, 18, '#ffd06a', 'right');
+    });
+  }
+  if (aula.retry) {
+    rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
+    text(aula.retry, W / 2, 598, 20, '#ffe28a');
+  } else text('Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
+  button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
+  if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
+}
 function drawTitle() {
   flyover();
   buttons.length = 0;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(12,16,28,0.55)'; ctx.fillRect(0, 0, W, H);
-  ctx.font = `bold 76px ${FONT}`;
-  const tw1 = ctx.measureText('SOLVE ').width, tw2 = ctx.measureText('OR ').width, tw3 = ctx.measureText('BOOM').width;
-  let tx = W / 2 - (tw1 + tw2 + tw3) / 2;
-  text('SOLVE', tx, 74, 76, SIDE_CSS.def, 'left'); tx += tw1;
-  text('OR', tx, 74, 76, '#ffffff', 'left'); tx += tw2;
-  text('BOOM', tx, 74, 76, SIDE_CSS.att, 'left');
+  drawLogo(74, 76);
   text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
   button(1060, 24, 180, 48, 'Controles', 'controls', { size: 22 });
   const custom = session.subject === QUESTIONS.CUSTOM;
@@ -1132,7 +1297,7 @@ function drawFigures() {
 
 // ---- Loop: fixed step, frame time clamped ---------------------------------------------
 function step() {
-  if (scene !== 'controls' && pressed(bind.mute)) { setMuted(!isMuted()); hit.delete(bind.mute); }
+  if (scene !== 'controls' && scene !== 'join' && pressed(bind.mute)) { setMuted(!isMuted()); hit.delete(bind.mute); }
   scenes[scene].update(STEP); hit.clear();
   if (clicks.length > 4) clicks.length = 0;
 }
@@ -1167,7 +1332,8 @@ addEventListener('tune', e => {
 });
 useMap(session.map);
 state = blankMatch(seedFrom(CONFIG.seed));
-scene = params.get('scene') || 'title';
+aula.name = savedName();
+scene = params.get('scene') || FIRST_SCENE;
 if (scene === 'play' || scene === 'pause' || scene === 'results') startMatch();
 last = clock.now();
 if (manual) drawFrame();

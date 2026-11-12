@@ -1,0 +1,9 @@
+Reviewed-Content-Hash: src/main.ts d89eb131d891c14887e2930d9db870ab05bd49f4
+Reviewed-Content-Hash: src/net/protocol.ts 55754c6e5944b2a3f5c71cfd02efb8efeff11969
+Reviewed-Content-Hash: src/net/client.ts a7eb9c0e28792e376f3b21c453bf865b74e23a91
+Reviewed-Content-Hash: src/server/lobby.ts a9d4f164400115cace5585f7e73bfdad66bcfd0b
+Reviewed-Content-Hash: src/server/room.ts 5e3d63b7b5db776441f248e25bd75f1c9f44158d
+Reviewed-Content-Hash: src/server/net.ts 3c340dd0dae4370c45e731342d9b39a3a989be37
+Reviewed-Content-Hash: src/server/aula.ts 8c98ece063db4ebbc485248d0ced0aa4be40c56e
+Reviewed-Content-Hash: data/aula.json 7af32cbf576b235b2fa197e649d0830a2f2499f8
+Reviewed-Content-Hash: tsconfig.server.json f91ecd7be53a3bc250a4816d7e1c4b961f8dbc90

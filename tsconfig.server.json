@@ -8,6 +8,7 @@
   },
   "include": ["src/server", "src/net", "src/game", "src/questions.ts"],
   // The base config excludes src/server (the browser build must not see Node code); reset it here,
-  // or this check would silently skip every server file.
-  "exclude": []
+  // or this check would silently skip every server file. client.ts is the one browser-only file in src/net
+  // (WebSocket, location, localStorage): the base config checks it, this one has no DOM.
+  "exclude": ["src/net/client.ts"]
 }

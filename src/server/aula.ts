@@ -4,6 +4,7 @@
 //
 //   npm run aula                         the server and data/aula.json's demo_rooms rooms of bots
 //   npm run aula -- --salas 3            three demo rooms (0 = none)
+//   npm run aula -- --gracia 5           seconds a dropped student's seat is held (default rejoin_grace_s)
 //   npm run aula -- --puerto 8080        another port (or AULA_PORT=8080)
 //   npm run aula -- --carga --segundos 60   the load check: load_rooms rooms of bots, no network, then a report
 //
@@ -78,11 +79,12 @@ if (args.includes('--carga')) {
   }
   const port = flag('--puerto') ?? (process.env.AULA_PORT ? Number(process.env.AULA_PORT) : aula.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) { console.error(`Puerto no válido: ${port}`); process.exit(2); }
-  const html = { type: 'text/html; charset=utf-8', body: page };
+  // The marker that tells the page it was served by the classroom server, so it opens on the join screen (src/main.ts CLASS_MODE).
+  const html = { type: 'text/html; charset=utf-8', body: Buffer.from(page.toString('utf8').replace('<head>', '<head><meta name="aula" content="1">')) };
   try {
     net = await startNet(port, aula.port_tries, {
       maxChars: aula.max_message_bytes, maxName: aula.max_name_length, maxLook: aula.max_look_per_message,
-      maxConnections: aula.max_connections, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
+      maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
       maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s,
     }, { rooms, pages: new Map([['/', html], ['/index.html', html]]), clockMs, log, warn });
   } catch (e) {
@@ -100,6 +102,6 @@ if (args.includes('--carga')) {
   console.log('Para detenerlo: pulsa Ctrl+C en esta ventana.\n');
   if (aula.status_every_s > 0) setInterval(() => {
     const c = net!.counts(), list = rooms.list();
-    log(`${list.length} salas en marcha (${list.map(r => `${r.id} ronda ${r.round} ${r.score.join('-')}`).join(', ')}); ${c.connections} conexiones; ${c.accepted} mensajes aceptados, ${c.dropped} descartados`);
+    log(`${list.length} salas en marcha (${list.map(r => `${r.id} ronda ${r.round} ${r.score.join('-')}`).join(', ')}); ${c.students} alumnos, ${c.connections} conexiones; ${c.accepted} mensajes aceptados, ${c.dropped} descartados`);
   }, aula.status_every_s * 1000);
 }

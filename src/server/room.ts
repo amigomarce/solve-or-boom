@@ -8,7 +8,8 @@ import { createMatch, step, STEP, type Match, type MatchOptions } from '../game/
 import { SEATS, SEATS_PER_TEAM, type RoomInfo, type SeatKind } from '../net/protocol';
 
 /** One of the 8 seats. `owner` is a connection id while a student sits there (never a name). */
-export interface Seat { index: number; team: number; kind: SeatKind; owner: number | null }
+/** `name` is the student's name while one sits there (memory only, display only, never logged), else null. */
+export interface Seat { index: number; team: number; kind: SeatKind; owner: number | null; name: string | null }
 
 /** How to build a room. */
 export interface RoomSpec {
@@ -48,7 +49,7 @@ export interface Room {
  */
 export function newRoom(id: string, spec: RoomSpec, nowS: number): Room {
   const seats: Seat[] = Array.from({ length: SEATS }, (_, index) => ({
-    index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null,
+    index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null,
   }));
   return {
     id, spec, seats, match: createMatch({ ...spec.match, seed: spec.seed }), matches: 0, status: 'running', reason: '',
@@ -72,17 +73,30 @@ export function stepRoom(room: Room, clockMs: () => number): void {
   else { room.status = 'ended'; room.reason = 'partida terminada'; }
 }
 
-/** Seats a connection in an open seat (the first free one, or `index`); returns the seat or null. */
-export function takeSeat(room: Room, owner: number, index?: number): Seat | null {
-  const seat = room.seats.find(s => s.kind === 'open' && (index === undefined || s.index === index));
-  if (!seat || room.status !== 'running') return null;
-  seat.kind = 'human'; seat.owner = owner; room.emptySince = -1;
+/**
+ * Seats a student in a seat no student holds (a bot's or an open one; the bot hands the seat over).
+ * Without `index` the team with fewer students is filled first (a tie goes to team 0), at its lowest
+ * free seat, or the other team's when that one has none. Returns the seat, or null when the room is not
+ * running or every seat is a student's.
+ * @example const seat = takeSeat(room, connId, 'Ana'); // seat.team is 0 in an empty room
+ */
+export function takeSeat(room: Room, owner: number, name: string, index?: number): Seat | null {
+  if (room.status !== 'running') return null;
+  const free = room.seats.filter(s => s.kind !== 'human' && (index === undefined || s.index === index));
+  const humans = (team: number): number => room.seats.filter(s => s.kind === 'human' && s.team === team).length;
+  const first = humans(1) < humans(0) ? 1 : 0;
+  const seat = free.find(s => s.team === first) ?? free[0];
+  if (!seat) return null;
+  seat.kind = 'human'; seat.owner = owner; seat.name = name; room.emptySince = -1;
   return seat;
 }
 
-/** Frees the seat a connection holds; the room starts its empty countdown when it was the last student. */
+/**
+ * Frees the seat a connection holds: it goes back to what it was before (a bot, or an open seat when the
+ * room was built with it open). The room starts its empty countdown when it was the last student.
+ */
 export function leaveSeat(room: Room, owner: number, nowS: number): void {
-  for (const s of room.seats) if (s.owner === owner) { s.kind = 'open'; s.owner = null; }
+  for (const s of room.seats) if (s.owner === owner) { s.kind = room.spec.openSeats.includes(s.index) ? 'open' : 'bot'; s.owner = null; s.name = null; }
   if (!room.seats.some(s => s.kind === 'human')) room.emptySince = nowS;
 }
 
