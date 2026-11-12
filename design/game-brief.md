@@ -61,7 +61,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Layered gun sounds per weapon (bots positional by direction and distance, reload in steps, a limiter) and smarter bots: they take cover and peek, flank in two groups and enter together, hear your footsteps and shots and investigate, vary routes, check corners and keep apart
 - [x] Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong
 - [x] Simulation split from drawing: the match runs without a screen (so a server can run it), the single-player game plays exactly as before
-- [ ] Classroom server: a program the teacher opens on their PC (`npm run aula`) that serves the game on the school network, shows the address to join, and runs several 4 v 4 rooms at once with the server as the authority
+- [x] Classroom server: a program the teacher opens on their PC (`npm run aula`) that serves the game on the school network, shows the address to join, and runs several 4 v 4 rooms at once with the server as the authority
 - [ ] Student join: a student types a name, enters the room the teacher assigned and sees their team; empty seats are filled with bots
 - [ ] Networked play: each student sends their inputs and gets the match state back; each student answers their own buy and defuse questions, the server checks the answers and keeps the money
 - [ ] Teacher screen: set up the session (subject, level, contents or CSV, map), split the class into rooms and teams, and start, pause and end each room

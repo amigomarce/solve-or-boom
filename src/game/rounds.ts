@@ -11,7 +11,7 @@ export function startRound(match: Match) {
   match.round++;
   match.phase = 'buy'; match.phaseT = tune.buy_time; match.roundT = MAP.round_time;
   match.menu = false; closeCard(match, true); match.alert = null; match.banner = null; match.plantT = 0;
-  mapState.gatesClosed = true; match.gateT = 0;
+  mapState.gatesClosed = match.gatesClosed = true; match.gateT = 0;
   Object.assign(match.me, freshStance());
   const sides: Record<string, number> = { att: 0, def: 0 };
   for (const p of match.players) {

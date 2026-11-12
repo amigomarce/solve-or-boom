@@ -127,7 +127,7 @@ export function blankMatch(seed: number): Match {
     players: ROSTER.map(newPlayer), human: null, lossStreak: [0, 0],
     bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
-    wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, rtrT: 0, bombSeen: false,
+    wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, gatesClosed: true, rtrT: 0, bombSeen: false,
     events: [], me: freshStance(), rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
   };
   match.human = match.players[0];

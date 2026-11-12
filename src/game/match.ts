@@ -38,11 +38,13 @@ export function createMatch(opts: MatchOptions): Match {
 /**
  * One fixed step of the match (dt seconds, normally STEP): the human's inputs, the phase clock, every player,
  * the bomb and the round's end, then the timers. `inputs` holds each human player's snapshot by player id; a
- * missing one is an idle input. What happened is pushed to match.events, for the caller to read and empty.
+ * missing one is an idle input. The match's map and gates are loaded first, so several matches can take turns in one process. What happened is pushed to match.events, for the caller to read and empty.
  * @example step(m, { [m.human.id]: { ...idleInput(), fire: true } }, STEP);
  */
 export function step(match: Match, inputs: Record<number, PlayerInput>, dt: number): void {
   if (match.over) return;
+  if (MAP_ID !== match.opts.map) loadMap(match.opts.map); // another room may have left its map loaded
+  mapState.gatesClosed = match.gatesClosed;
   const inp = inputs[match.human.id] ?? idleInput(), human = match.human;
   if (inp.lookYaw || inp.lookPitch) { // the aim answers the hand at once: no smoothing
     human.yaw += inp.lookYaw;
@@ -63,7 +65,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
         if (match.card.okT > 0) grant(match, human, match.card.item);
         closeCard(match, true);
       }
-      match.phase = 'live'; mapState.gatesClosed = false; match.gateT = 0.01; match.events.push({ type: 'gate' });
+      match.phase = 'live'; mapState.gatesClosed = match.gatesClosed = false; match.gateT = 0.01; match.events.push({ type: 'gate' });
       say(match, sideOf(match, human) === 'att' ? '¡Puertas abiertas: adelante!' : '¡Puertas abiertas: defiende los sitios!', 2.5);
     }
   } else if (match.phase === 'live') {

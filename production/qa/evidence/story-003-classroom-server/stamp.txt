@@ -1,0 +1,15 @@
+Reviewed-Content-Hash: src/server/aula.ts eaacc1f1189fe09ef45078b03c6c3d6bdff51a2f
+Reviewed-Content-Hash: src/server/settings.ts 5fecc80ece6d386ea591860c8e33a16359d6d483
+Reviewed-Content-Hash: src/server/log.ts 3ec85750ebd6c6478d93b48556ff74cfa67b4bd5
+Reviewed-Content-Hash: src/server/room.ts 82b4832351fa62fea20be00ccd4ae1d555436d55
+Reviewed-Content-Hash: src/server/rooms.ts 5ffc995f6b69f56ab84ed08d2f2b043454cf26bc
+Reviewed-Content-Hash: src/server/net.ts cb9f85bf7c8a178b7a65eab7fc0c80bf5c3357d5
+Reviewed-Content-Hash: src/net/protocol.ts caa6924ed33a0f60ce522d49ce62969c2187eec5
+Reviewed-Content-Hash: src/game/map.ts 33f323f40919c36c3082041df013ed51a4d9b1fd
+Reviewed-Content-Hash: src/game/match.ts 15c842d85e001238461ef28b1457e3dcfbaa13be
+Reviewed-Content-Hash: src/game/rounds.ts dd43af0453a937dca872598b4f938a17175708c0
+Reviewed-Content-Hash: src/game/state.ts a73015db90b66f9e21cc63669b996fb7a24de195
+Reviewed-Content-Hash: data/aula.json e7d1a78f15710780a9d9d4aed3a1a84f0e760789
+Reviewed-Content-Hash: package.json 29ffd200382da25eb32d9000707248c32374c0d8
+Reviewed-Content-Hash: tsconfig.server.json 7888bbf3a02c762d72b8c918227afcf6e4f9afd3
+Reviewed-Content-Hash: vite.config.ts 8883136f7fdd62cbe7de536a34735fb3f27d8bb2

@@ -1,6 +1,8 @@
 // npm run build        -> dist/: the folder build, for shipping (itch.io, a website)
 // npm run build:single -> dist-single/index.html: one file with everything
 //                         inlined, which every check opens from disk
+// vite build --mode server -> dist-server/aula.js: the classroom server (npm run aula)
+//                         for plain node; ws stays a package, the rest is inlined
 // Vitest reads the test block; Playwright has its own config.
 import { defineConfig } from 'vitest/config';
 import { viteSingleFile } from 'vite-plugin-singlefile';
@@ -16,10 +18,9 @@ export default defineConfig(({ mode }) => ({
   // The game's page only: other pages in the project (one-shots in prototypes/)
   // are not scanned for packages.
   optimizeDeps: { entries: ['index.html'] },
-  build: {
-    outDir: mode === 'single' ? 'dist-single' : 'dist',
-    emptyOutDir: true,
-  },
+  build: mode === 'server'
+    ? { ssr: 'src/server/aula.ts', outDir: 'dist-server', emptyOutDir: true, target: 'node22' }
+    : { outDir: mode === 'single' ? 'dist-single' : 'dist', emptyOutDir: true },
   test: {
     include: ['tests/unit/**/*.test.ts'],
   },

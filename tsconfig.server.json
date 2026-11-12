@@ -1,0 +1,13 @@
+{
+  // The classroom server (npm run aula): Node's types, no DOM. The rules (src/game/), the questions and the
+  // wire format (src/net/) are checked here too, which proves they need no browser.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src/server", "src/net", "src/game", "src/questions.ts"],
+  // The base config excludes src/server (the browser build must not see Node code); reset it here,
+  // or this check would silently skip every server file.
+  "exclude": []
+}

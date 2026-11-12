@@ -176,5 +176,6 @@ $RECYCLE.BIN/
 
 # === Web: Vite, Vitest and Playwright output ===
 dist-single/
+dist-server/
 .vitest/
 /playwright-report/

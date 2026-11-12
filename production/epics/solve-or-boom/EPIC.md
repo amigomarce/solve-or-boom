@@ -18,7 +18,7 @@ Build order from the brief:
 |---|-------|------|--------|-----|
 | 001 | Extensive question bank per subject | Integration | Complete | N/A |
 | 002 | Simulation split from drawing | Integration | Complete | N/A |
-| 003 | Classroom server | Integration | Ready | N/A |
+| 003 | Classroom server | Integration | Complete | N/A |
 | 004 | Student join | UI | Ready | N/A |
 | 005 | Networked play | Integration | Ready | N/A |
 | 006 | Teacher screen | UI | Ready | N/A |

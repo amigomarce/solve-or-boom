@@ -89,12 +89,21 @@ function build(d: MapData): void {
   }
 }
 
-/** Makes the map with this id the one every helper reads. Throws on an unknown id. */
+/** Everything build() makes for one map: kept, so a second match on the same map (or rooms on different maps) switch maps without rebuilding. */
+interface Built { MW: number; MH: number; grid: typeof grid; zone: typeof zone; isGate: typeof isGate; CRATES: Cell[]; SITE: typeof SITE; siteCells: typeof siteCells; bfsPrev: typeof bfsPrev }
+const built: Record<string, Built> = {};
+
+/**
+ * Makes the map with this id the one every helper reads. Throws on an unknown id. The grid of each map is built
+ * once and kept; switching back to it is only a swap of the module's references, so the classroom server (many
+ * rooms, several maps, one process) switches to a match's map at the start of each of its steps.
+ */
 export function loadMap(id: string): void {
   const d = MAPS[id];
   if (!d) throw new Error(`No map "${id}": the maps are ${MAP_IDS.join(', ')}`);
   MAP_ID = id; MAP = d;
-  build(d);
+  if (!built[id]) { build(d); built[id] = { MW, MH, grid, zone, isGate, CRATES, SITE, siteCells, bfsPrev }; return; }
+  ({ MW, MH, grid, zone, isGate, CRATES, SITE, siteCells, bfsPrev } = built[id]);
 }
 
 /**
@@ -161,7 +170,7 @@ function restore(id: string, closed: boolean): void {
   if (id) build(MAPS[id]);
 }
 
-/** Mutable map state: the base gates close during buy time. */
+/** Mutable map state: the base gates close during buy time. The match keeps its own copy (match.gatesClosed); step() loads it. */
 export const mapState = { gatesClosed: true };
 export const center = (c: number): number => (c + 0.5) * CELL;
 export const cellOf = (v: number): number => Math.floor(v / CELL);

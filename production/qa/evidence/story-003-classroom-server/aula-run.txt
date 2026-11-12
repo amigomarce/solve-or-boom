@@ -1,0 +1,29 @@
+Story 003 — classroom server, run from the repository on 2026-11-11 (after applying the change).
+
+1) Load check: npm run aula -- --carga --segundos 20
+
+Resultado tras 20 s (se esperaban unos 1200 pasos por sala):
+sala      mapa       estado     pasos   descartados  partidas  ronda  media ms  máx ms
+sala-1    pequeno    running      1200            0         0      1     0.043    0.25
+sala-2    grande     running      1200            0         0      1     0.046   14.89
+sala-3    patio      running      1200            0         0      1     0.033    0.42
+sala-4    pasillos   running      1200            0         0      1     0.036    1.33
+Sin errores.
+
+2) Server start: node dist-server/aula.js --salas 2, then GET / from this PC, then SIGINT
+
+[23:20:33] Sala sala-1 creada: mapa pequeno, semilla 537346448, 8 bots
+[23:20:33] Sala sala-2 creada: mapa grande, semilla 1359743093, 8 bots
+
+=== Servidor del aula en marcha ===
+Los alumnos abren en su navegador (misma red del colegio):
+   http://192.168.1.87:3000
+En este PC: http://localhost:3000
+Salas de prueba (solo bots): 2. No hace falta internet.
+Para detenerlo: pulsa Ctrl+C en esta ventana.
+
+[check] GET / -> 200, 695496 bytes, has canvas: true
+[23:20:33] Sala sala-1 terminada: servidor detenido (Ctrl+C); 0 partidas, 4 pasos
+[23:20:33] Sala sala-2 terminada: servidor detenido (Ctrl+C); 0 partidas, 4 pasos
+
+Not run here: the second-device check (a phone or PC on the same network opening the LAN address) and the full 5-minute load check (npm run aula -- --carga).

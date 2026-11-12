@@ -100,3 +100,23 @@ holds no comments. The values themselves are in `data/config.json`.
 - `sfx_pan_strength`: how far left or right a bot's shot sits from its direction to the camera (0 = centred, 1 = full)
 - `sfx_near_cutoff`, `sfx_far_cutoff`, `sfx_far_dist`: a bot's shot is low-passed from near_cutoff Hz (beside you) to far_cutoff Hz at far_dist metres and beyond; your own gun is never dulled
 - `sfx_reload_level`, `sfx_empty_level`: the reload (mag out, mag in, slide or bolt, spread over reload_time) and the dry trigger click
+
+---- Classroom server (data/aula.json; npm run aula) -------------------------------
+- `port`: the port students open; the AULA_PORT variable or --puerto N overrides it
+- `port_tries`: when the port is busy, how many next ports to try before giving up
+- `demo_rooms`: bots-only rooms `npm run aula` starts so there is something to see; --salas N overrides (0 = none)
+- `tick_ms`: ms between the server's timer ticks; each tick runs the fixed steps that are due
+- `tick_budget_ms`: most ms one tick may spend stepping rooms; the rooms left over wait for the next tick, so one slow room cannot starve the others
+- `max_catchup_steps`: most fixed steps one room runs in one tick (it catches up after a late tick)
+- `max_backlog_steps`: a room more than this many steps behind drops the rest (counted and logged), instead of racing to catch up
+- `empty_grace_s`: seconds a room that had human players keeps running after the last one leaves, before it is closed
+- `max_connections`: connections beyond this are refused
+- `max_message_bytes`: a message longer than this is dropped
+- `max_messages_per_second`, `message_burst`: a connection's allowance (a token bucket); messages beyond it are dropped
+- `max_strikes`: dropped or invalid messages a connection may send before the server closes it
+- `max_name_length`: longest name a student can give (kept in memory only, never logged)
+- `max_look_per_message`: radians, the most one input message may turn the aim in yaw or pitch
+- `ping_interval_s`: seconds between the server's pings; a connection that did not answer the last one is closed
+- `log_repeat_s`: the same kind of log line is printed at most once per this many seconds
+- `status_every_s`: seconds between the one-line room summary in the terminal (0 = never)
+- `load_rooms`, `load_seconds`: the load check (npm run aula -- --carga): rooms of bots, and how long; --segundos N overrides

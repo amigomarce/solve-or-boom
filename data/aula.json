@@ -1,0 +1,22 @@
+{
+  "port": { "value": 3000, "min": 1024, "max": 65535, "step": 1 },
+  "port_tries": { "value": 20, "min": 1, "max": 100, "step": 1 },
+  "demo_rooms": { "value": 2, "min": 0, "max": 16, "step": 1 },
+  "tick_ms": { "value": 8, "min": 1, "max": 20, "step": 1 },
+  "tick_budget_ms": { "value": 12, "min": 2, "max": 100, "step": 1 },
+  "max_catchup_steps": { "value": 6, "min": 1, "max": 30, "step": 1 },
+  "max_backlog_steps": { "value": 30, "min": 2, "max": 600, "step": 1 },
+  "empty_grace_s": { "value": 30, "min": 0, "max": 600, "step": 1 },
+  "max_connections": { "value": 200, "min": 1, "max": 2000, "step": 1 },
+  "max_message_bytes": { "value": 2048, "min": 256, "max": 65536, "step": 256 },
+  "max_messages_per_second": { "value": 120, "min": 10, "max": 1000, "step": 10 },
+  "message_burst": { "value": 60, "min": 1, "max": 1000, "step": 1 },
+  "max_strikes": { "value": 30, "min": 1, "max": 1000, "step": 1 },
+  "max_name_length": { "value": 20, "min": 3, "max": 40, "step": 1 },
+  "max_look_per_message": { "value": 3.2, "min": 0.1, "max": 7, "step": 0.1 },
+  "ping_interval_s": { "value": 15, "min": 2, "max": 120, "step": 1 },
+  "log_repeat_s": { "value": 5, "min": 1, "max": 300, "step": 1 },
+  "status_every_s": { "value": 30, "min": 0, "max": 600, "step": 1 },
+  "load_rooms": { "value": 4, "min": 1, "max": 16, "step": 1 },
+  "load_seconds": { "value": 300, "min": 5, "max": 3600, "step": 5 }
+}
