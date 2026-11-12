@@ -4,7 +4,7 @@
 import { parseCSV, type ParsedQuestion } from './game/csv';
 import { createDeck, type Deck, type Question, type RawQuestion } from './game/deck';
 import { LEVELS, type Level } from './game/types';
-import { tune } from './config';
+import { tune } from './game/tune';
 
 export type { Question, Deck, Level };
 /** A subject: its name and its topics by id. */

@@ -12,6 +12,7 @@ Develop a shooter game, in the style of Counter-Strike, where one team defends a
 7. How hard: you pick
 8. Scope: you pick
 After play: the bomb does not appear in the game
+After play: este juego tiene un fin multiplayer para jugar en un curso completo (red del aula con el PC del profesor como servidor; varias salas de 4 contra 4; el profesor configura la sesión, ve resultados por estudiante y controla la partida; también debe existir el modo single player para jugar contra bots; los estudiantes entran solo con un nombre)
 
 **Pitch:** A team bomb shooter where every gun, every ammo clip and every defuse costs one right answer.
 
@@ -59,6 +60,12 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] The whole interface in Spanish: HUD, hints, messages, kill feed, round ends, pause, results, roles, weapons and shop (the game keeps its name, Solve or Boom)
 - [x] Layered gun sounds per weapon (bots positional by direction and distance, reload in steps, a limiter) and smarter bots: they take cover and peek, flank in two groups and enter together, hear your footsteps and shots and investigate, vary routes, check corners and keep apart
 - [x] Round flow: buy phase, round timer, plant/defuse, money rewards, halftime swap, final score with each player's questions right/wrong
+- [x] Simulation split from drawing: the match runs without a screen (so a server can run it), the single-player game plays exactly as before
+- [ ] Classroom server: a program the teacher opens on their PC (`npm run aula`) that serves the game on the school network, shows the address to join, and runs several 4 v 4 rooms at once with the server as the authority
+- [ ] Student join: a student types a name, enters the room the teacher assigned and sees their team; empty seats are filled with bots
+- [ ] Networked play: each student sends their inputs and gets the match state back; each student answers their own buy and defuse questions, the server checks the answers and keeps the money
+- [ ] Teacher screen: set up the session (subject, level, contents or CSV, map), split the class into rooms and teams, and start, pause and end each room
+- [ ] Results per student: right and wrong answers per student and per topic, exportable to CSV, kept only on the teacher's PC; the main menu offers "Un jugador (contra bots)" and "Clase (multijugador)"
 
 ## Your systems
 - buying weapons and ammo with answers · in the slice
@@ -67,6 +74,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - subjects and contents to pick · in the slice
 - extensive question bank per subject · thin stand-in *(guessed)*
 - upload custom questions (CSV files) · in the slice
+- classroom multiplayer on the school network, the teacher's PC as the server · in the slice
 
 ## Keep
 -
@@ -76,7 +84,8 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - A wrong answer keeping the same question (a wrong answer must change the question)
 
 ## Out of scope
-- Online matches with real players: needs a server, so not built; built instead: you plus bot teammates and bot enemies, named as bots
+- Online play over the internet (from home): needs a hosted server and a monthly cost; built instead: classroom play on the school's local network (LAN), the teacher's PC as the server
+- Student accounts and passwords: students enter with a name only, and no personal data is stored
 - More maps and a campaign: grow it
 - Weapon upgrades and mods: add it as a feature
 - Sound shaped by walls and rooms: add it as a feature
@@ -86,6 +95,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 1. The slice: one full match on one map — session screen (subject/contents or CSV) → buy with questions → fight bots → plant / defuse with a question → halftime swap → first to 4 round wins, final score.
 2. Grow the built-in question banks per subject and content.
 3. Feel pass: gun sounds, hit feedback, smarter bot routes.
+4. Classroom multiplayer, in this order: simulation split from drawing → classroom server → student join → networked play → teacher screen → results per student (single player against bots stays).
 
 ---
 **Kill condition:** if players skip buying to avoid questions, or the defuse question feels like a pause instead of tension, after two tuning rounds. *(guessed)*

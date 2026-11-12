@@ -14,28 +14,20 @@ import {
   center, cellOf, walkable, solidSight, hitsWall, moveBody, losClear, walkClear, bfs,
   MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell,
 } from './game/map';
-import { yawTo, angDiff, lerp, levelFor, roundPay, hitChance, armourHit, fmtTime } from './game/rules';
+import { lerp, angDiff, fmtTime } from './game/rules';
+import {
+  createMatch, blankMatch, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel,
+  ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
+} from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 
 // ---- Built to be checked ----------------------------------------------------------------
-const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
 const TITLE = 'Solve or Boom';
 const CHEAP = params.get('render') === 'cheap'; // a headless shot or check: 3D draws cheap; players never see it
-let seed: number;
-/** mulberry32; every gameplay random call reads this, never Math.random. */
-function rng(): number {
-  seed = (seed + 0x6D2B79F5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
 const events: Loose[] = []; // window.game.events: anything the game wants a run to see
-/** The human's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
- *  Kept off the player and off `state` so a run that never uses them plays exactly as before. */
-const me = { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false };
 
 // ---- Input listeners ------------------------------------------------------------------
 let locked = false, lockedBefore = false;
@@ -64,7 +56,7 @@ canvas.addEventListener('pointerdown', e => {
   }
   if (scene === 'pause') { clicks.push('resume'); requestLock(); return; }
   if (scene === 'play' && state.human && !state.human.alive) { clicks.push('spec'); return; }
-  if (scene === 'play' && !locked && !uiOpen()) { requestLock(); return; }
+  if (scene === 'play' && !locked && !uiOpen(state)) { requestLock(); return; }
   const code = e.button === 2 ? 'Mouse2' : 'Mouse0';
   down.add(code); hit.add(code);
 });
@@ -73,13 +65,12 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) lockedBefore = true;
-  else if (lockedBefore && scene === 'play' && !uiOpen() && state.human && state.human.alive) scene = 'pause';
+  else if (lockedBefore && scene === 'play' && !uiOpen(state) && state.human && state.human.alive) scene = 'pause';
 });
 addEventListener('mousemove', e => { // the aim answers the hand at once: no smoothing
-  if (!locked || scene !== 'play' || !state.human || !state.human.alive || uiOpen()) return;
-  const p = state.human, k = 0.0022 * tune.mouse_sens * (p.scoped ? 0.3 : 1);
-  p.yaw -= e.movementX * k;
-  p.pitch = Math.max(-1.4, Math.min(1.4, p.pitch - e.movementY * k));
+  if (!locked || scene !== 'play' || !state.human || !state.human.alive || uiOpen(state)) return;
+  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? 0.3 : 1);
+  lookYaw -= e.movementX * k; lookPitch -= e.movementY * k; // the next step turns the aim
 });
 
 // ---- Custom questions: CSV upload or drop ----------------------------------------------
@@ -386,13 +377,8 @@ function spark(x: number, y: number, z: number): void { const s = sparks[sparkI+
 const boomMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.8 }));
 boomMesh.visible = false; world.add(boomMesh);
 
-// ---- The roster: you plus 3 bot teammates against 4 bots ---------------------------------
-const ROSTER = [
-  { name: 'You', role: 'rifleman', squad: 0, human: true },
-  { name: 'Kira', role: 'rusher', squad: 0 }, { name: 'Tomas', role: 'rifleman', squad: 0 }, { name: 'Ana', role: 'sniper', squad: 0 },
-  { name: 'Rex', role: 'rusher', squad: 1 }, { name: 'Mila', role: 'rifleman', squad: 1 }, { name: 'Iker', role: 'rifleman', squad: 1 }, { name: 'Sol', role: 'sniper', squad: 1 },
-];
-const ROLE_NAME: Record<string, string> = { rusher: 'Asaltante', rifleman: 'Fusilero', sniper: 'Francotirador' };
+
+// ---- The roster's figures ----------------------------------------------------------------
 const models = ROSTER.map(r => { const s = makeSoldier(r.role); world.add(s.group); if (r.human) s.group.visible = false; return s; });
 const bombModel = makeBomb(); bombModel.group.visible = false; bombModel.group.scale.setScalar(1.7); world.add(bombModel.group);
 const beacon = makeBeacon(); world.add(beacon.group);
@@ -404,19 +390,6 @@ const backBombs = models.map(m => {
 // In first person the bomb is in your hands while you plant it.
 const viewBomb = makeBomb(); viewBomb.group.visible = false; viewBomb.group.scale.setScalar(0.55); viewBomb.group.position.set(0.02, -0.3, -0.55);
 viewBomb.group.rotation.set(0.5, 0.3, 0); gunScene.add(viewBomb.group);
-const WEAPON: Record<string, { name: string; auto: boolean; range: number; botAcc: number }> = {
-  pistol: { name: 'Pistola', auto: false, range: 35, botAcc: 0.8 },
-  smg: { name: 'Subfusil', auto: true, range: 30, botAcc: 0.85 },
-  rifle: { name: 'Rifle', auto: true, range: 60, botAcc: 1 },
-  sniper: { name: 'Francotirador', auto: false, range: 120, botAcc: 1.5 },
-};
-const SHOP: { id: string; name: string; price: string; desc: string }[] = [
-  { id: 'smg', name: 'Subfusil', price: 'price_smg', desc: 'Dispara rápido, mejor de cerca' },
-  { id: 'rifle', name: 'Rifle', price: 'price_rifle', desc: 'Fuerte a cualquier distancia' },
-  { id: 'sniper', name: 'Francotirador', price: 'price_sniper', desc: 'Mata de un tiro, lento. Clic derecho: mira' },
-  { id: 'armor', name: 'Blindaje', price: 'price_armor', desc: 'Absorbe la mitad de cada impacto' },
-  { id: 'ammo', name: 'Munición', price: 'price_ammo', desc: 'Rellena tu munición de reserva' },
-];
 
 // ---- Session: what the person creating the match picked (kept between matches) ------------
 const session = {
@@ -436,829 +409,72 @@ const session = {
   },
 };
 const SUBJECT_LIST = ['matematicas', 'ciencias', 'geografia', 'lengua', QUESTIONS.CUSTOM];
-
-// ---- State ----------------------------------------------------------------------------
-/** The match state: built field by field in reset(); typing still to do. */
-interface MatchState { players: Loose[]; feed: Loose[]; hurt: Loose[]; [k: string]: Loose }
-let scene: string, state: MatchState;
-/** The bot-only AI fields, fresh for a round (never on the human): cover and peeking, the staging wait,
- *  the pack rotation, a heard noise, the corner check and the stuck re-path. */
-function botFresh(): Loose {
-  return {
-    coverT: 0, cover: null, peek: null, peekT: 0, peekOut: false, plan: [], threatX: 0, threatZ: 0, wantCover: false, coverTry: -99,
-    after: [], waitT: 0, rotating: false, rotT: 0, noiseX: 0, noiseZ: 0, noiseNew: false, investigating: false,
-    cleared: false, looks: [], lookT: 0, strictT: -99,
-  };
-}
-function newPlayer(r: Loose, i: number): Loose {
-  return {
-    id: i, name: r.human ? 'Tú' : 'Bot ' + r.name, role: r.role, squad: r.squad, human: !!r.human,
-    x: 0, z: 0, px: 0, pz: 0, yaw: 0, pitch: 0, recoil: 0, hp: 100, armor: 0, alive: true,
-    money: tune.start_money, primary: null, cur: 'pistol', ammo: {}, cool: 0, reloadT: 0, scoped: false,
-    kills: 0, deaths: 0, right: 0, wrong: 0, moving: false, spotT: -99,
-    target: null, reactT: 0, scanT: 0, path: [], pathI: 0, wps: [], arrived: false, holdYaw: 0, holdT: 0,
-    routeKind: '', anchor: '', strafe: 1, strafeT: 0, alertT: 0, alertYaw: 0, lastX: 0, lastZ: 0, lastSeenT: -99,
-    defusing: false, thinkT: 0, defuseRight: 0, plantT: 0, deadT: 0, walkPh: 0, flashT: 0, stuckT: 0, rotated: false,
-    ...(r.human ? {} : botFresh()),
-  };
-}
-function resetGuns(p: Loose): void {
-  p.primary = null; p.cur = 'pistol'; p.armor = 0; p.scoped = false;
-  p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
-}
-function reset() {
-  seed = seedFrom(CONFIG.seed);
-  state = {
-    t: 0, score: [0, 0], gained: '', round: 0, attSquad: 0, phase: 'buy', phaseT: 0, roundT: 0,
-    players: ROSTER.map(newPlayer), human: null, lossStreak: [0, 0],
-    bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
-    attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
-    wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, rtrT: 0, bombSeen: false,
-  };
-  state.human = state.players[0];
-  state.players.forEach(resetGuns);
-}
-const sideOf = (p: Loose): string => (p.squad === state.attSquad ? 'att' : 'def');
-const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
-const uiOpen = () => !!(state && (state.menu || state.card));
-const level = (): number => levelFor(state.round, tune.ramp_rounds);
-function say(m: string, t = 3.5): void { state.msg = m; state.msgT = t; }
-function feed(s: string, mine: boolean): void { state.feed.unshift({ s, t: 6, mine }); state.feed.length = Math.min(state.feed.length, 5); }
-/** The loaded map's spawn cells for a side (data/maps/). */
-function spawnSpots(side: string): Cell[] {
-  return side === 'att' ? MAP.spawns.att : MAP.spawns.def;
-}
-
-function startMatch() {
+// ---- The match: the rules run in src/game/; this screen only sends inputs and reads state and events ----
+/** The match (src/game/match.ts); window.game shows it as `state`. */
+let scene: string, state: Match;
+/** The events a run's check reads on window.game.events: the ones the game logged before the split. */
+const LOG = new Set(['match', 'round', 'kill', 'plant', 'roundEnd', 'answer', 'buy', 'matchEnd']);
+/** Mouse turning since the last step, in radians: the next step adds it to the aim. */
+let lookYaw = 0, lookPitch = 0;
+function startMatch(): void {
   useMap(session.map);
-  reset();
-  const topics = session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject];
-  state.deck = QUESTIONS.deck(session.subject, topics, session.level, session.custom, rng);
-  state.subjectLabel = session.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${session.customName})`
-    : `${QUESTIONS.SUBJECTS[session.subject].name}: ${topics.map(t => QUESTIONS.SUBJECTS[session.subject].topics[t]).join(', ')}`;
-  startRound();
-  events.push({ type: 'match', subject: session.subject });
-}
-function startRound() {
-  state.round++;
-  state.phase = 'buy'; state.phaseT = tune.buy_time; state.roundT = MAP.round_time;
-  state.menu = false; closeCard(true); state.alert = null; state.banner = null; state.plantT = 0;
-  mapState.gatesClosed = true; state.gateT = 0;
-  Object.assign(me, { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false });
-  const sides: Record<string, number> = { att: 0, def: 0 };
-  for (const p of state.players) {
-    if (!p.alive) resetGuns(p);
-    const side = sideOf(p), spot = spawnSpots(side)[sides[side]++];
-    p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]);
-    p.yaw = side === 'att' ? -Math.PI / 2 : Math.PI / 2; p.pitch = 0; p.recoil = 0; p.scoped = false;
-    p.target = null; p.path = []; p.wps = []; p.arrived = false; p.defusing = false; p.plantT = 0;
-    p.deadT = 0; p.alertT = 0; p.rotated = false; p.guarding = false; p.fetching = false; p.chasing = false; p.reloadT = 0; p.cool = 0; p.lastSeenT = -99;
-    if (!p.human && !p.cur) p.cur = 'pistol';
-    if (!p.human) Object.assign(p, botFresh());
-    models[p.id].team.color.setHex(SIDE_HEX[side]);
-    models[p.id].group.rotation.set(0, p.yaw, 0);
-  }
-  for (const gm of gates) { gm.position.y = 1.5; gm.visible = true; }
-  // The bomb: you carry it when you attack; otherwise a bot does.
-  const attackers = state.players.filter(p => sideOf(p) === 'att');
-  const human = state.human;
-  let carrier = sideOf(human) === 'att' ? human : null;
-  if (!carrier) { const c = attackers.filter(p => p.role !== 'sniper'); carrier = c[Math.floor(rng() * c.length)]; }
-  Object.assign(state.bomb, { state: 'carried', carrier, timer: tune.bomb_time, defuser: null, panicT: 0, beepT: 0 });
-  bombModel.group.visible = false;
-  for (const p of state.players) if (!p.human) botBuy(p);
-  planRound();
-  const side = sideOf(human);
-  say(side === 'att' ? `Ronda ${state.round}: ATAQUE. Compra y planta la bomba en A o B` :
-    `Ronda ${state.round}: DEFENSA. Evita que planten o responde para desactivar`, 5);
-  events.push({ type: 'round', round: state.round, side });
-}
-function botBuy(b: Loose): void {
-  const firstOfHalf = state.round === 1 || state.round === tune.halftime_after + 1;
-  if (firstOfHalf) return; // pistol rounds for the bots: round 1 is fair
-  const ask = () => { // a bot answers like a student: sometimes wrong, then a new question
-    for (let k = 0; k < 6; k++) { if (rng() < tune.bot_answer_right) { b.right++; return true; } b.wrong++; }
-    return false;
-  };
-  const want = b.role === 'sniper' ? ['sniper', 'rifle', 'smg'] : b.role === 'rusher' ? ['smg'] : ['rifle', 'smg'];
-  if (!b.primary) for (const w of want) {
-    if (b.money >= tune['price_' + w] + (w === 'smg' ? 0 : 300) && ask()) {
-      b.money -= tune['price_' + w]; b.primary = w; b.cur = w;
-      b.ammo[w] = { mag: tune[w + '_mag'], res: tune[w + '_reserve'] }; break;
-    }
-  }
-  if (b.primary) b.cur = b.primary;
-  if (b.armor < 50 && b.money >= tune.price_armor && ask()) { b.money -= tune.price_armor; b.armor = 100; }
-}
-
-// ---- Bot plans ------------------------------------------------------------------------
-function siteSpot(S: string): number[] { const c = siteCells[S]; return c[Math.floor(rng() * c.length)]; }
-function routeTo(b: Loose, kind: string): void {
-  const S = state.attackSite;
-  const copy = (c: Cell): Cell => [c[0], c[1]];
-  const r = S === 'A' ? MAP.routes.A : MAP.routes.B, lane = r.lane.map(copy), mid = r.mid.map(copy);
-  b.routeKind = kind; b.arrived = false; b.path = []; b.after = []; b.coverT = 0; b.plan = [];
-  if (kind === 'lane') b.wps = [...lane, siteSpot(S)];
-  else if (kind === 'mid') b.wps = [...mid, siteSpot(S)];
-  else if (kind === 'hold') { b.wps = [[MAP.attack_hold[0], MAP.attack_hold[1]]]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
-  else b.wps = [siteSpot(S)];
-  if (kind !== 'hold') b.holdYaw = -Math.PI / 2;
-  if (state.bomb.carrier === b) b.wps[b.wps.length - 1] = [SITE[S].cx + (rng() < 0.5 ? -1 : 1), SITE[S].cy];
-}
-function anchorTo(b: Loose, a: string): void {
-  b.anchor = a; b.arrived = false; b.path = []; b.holdYaw = Math.PI / 2;
-  if (a === 'mid') b.wps = [[MAP.anchors.mid[0], MAP.anchors.mid[1]]];
-  else if (a === 'conn') { const conn = MAP.anchors.conn[Math.floor(rng() * MAP.anchors.conn.length)]; b.wps = [[conn[0], conn[1]]]; }
-  else b.wps = [siteSpot(a)];
-}
-/** A copy of the list in an order drawn with the seeded rng (Fisher-Yates). */
-function shuffled<T>(a: T[]): T[] {
-  const r = a.slice();
-  for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; }
-  return r;
-}
-/** Each round's bot plans, drawn with the seeded rng. Attackers: the sniper holds first; the others split into
- *  two groups, lane and mid, and each stops at its route's last waypoint before the site (its staging point,
- *  the site spot kept in `after`) until the group is there. Defenders: the sniper holds mid; the others draw
- *  the anchors A, B and the connector (a site anchor is a random cell of the site). */
-function planRound() {
-  state.attackSite = rng() < 0.5 ? 'A' : 'B';
-  const bots = state.players.filter(p => !p.human);
-  const first = rng() < 0.5 ? 'lane' : 'mid', second = first === 'lane' ? 'mid' : 'lane';
-  shuffled(bots.filter(b => sideOf(b) === 'att' && b.role !== 'sniper')).forEach((b, i) => {
-    routeTo(b, i % 2 === 0 ? first : second);
-    b.after = [b.wps.pop()];
+  state = createMatch({
+    seed: seedFrom(CONFIG.seed), subject: session.subject, level: session.level, map: session.map,
+    topics: session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject], custom: session.custom, customName: session.customName,
   });
-  const anchors = shuffled(['A', 'B', 'conn']);
-  bots.filter(b => sideOf(b) === 'def' && b.role !== 'sniper').forEach((b, i) => anchorTo(b, anchors[i % anchors.length]));
-  for (const b of bots) {
-    if (b.role !== 'sniper') continue;
-    if (sideOf(b) === 'att') routeTo(b, 'hold'); else anchorTo(b, 'mid');
-  }
+  playEvents();
 }
-
-// ---- Shooting and damage ----------------------------------------------------------------
-function applyDamage(t: Loose, dmg: number, from: Loose): void {
-  if (!t.alive) return;
-  { const r = armourHit(dmg, t.armor, tune.armor_absorb); t.armor = r.armor; dmg = r.dmg; }
-  t.hp -= dmg;
-  if (t.human) {
-    state.flashT = 0.35; SFX.hurt();
-    state.hurt.push({ yaw: yawTo(from.x - t.x, from.z - t.z), t: 1.0 });
-    if (state.card && state.card.kind === 'defuse') { /* you keep answering: the clock does not stop */ }
-  } else {
-    t.alertT = 1.5; t.alertYaw = yawTo(from.x - t.x, from.z - t.z); if (t.defusing) t.defusing = false;
-    t.wantCover = true; t.threatX = from.x; t.threatZ = from.z;
-  }
-  if (t.hp <= 0) kill(t, from);
+/** The human's input snapshot for this step, from the held and pressed keys (src/keys.ts bindings), the mouse and a clicked button. */
+function readInput(act: string | undefined): PlayerInput {
+  const inp = idleInput(), held = (a: string): boolean => down.has(bind[a]), press = (a: string): boolean => pressed(bind[a]);
+  inp.moveF = (held('forward') ? 1 : 0) - (held('back') ? 1 : 0); inp.moveS = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+  inp.walk = held('walk'); inp.sprint = held('sprint'); inp.crouch = held('crouch'); inp.use = held('use'); inp.usePress = press('use');
+  inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = pressed('Mouse2');
+  inp.lookLeft = down.has('ArrowLeft'); inp.lookRight = down.has('ArrowRight'); inp.lookUp = down.has('ArrowUp'); inp.lookDown = down.has('ArrowDown');
+  inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
+  inp.shop = press('buy'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
+  inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
+  inp.digits = [0, 1, 2, 3, 4].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
+  inp.spectateKey = pressed('Space');
+  if (act && act.startsWith('buy:')) inp.buyItem = act.slice(4);
+  if (act && act.startsWith('ans:')) inp.answer = Number(act.slice(4));
+  inp.closeShop = act === 'closebuy'; inp.closeCard = act === 'closecard'; inp.spectate = act === 'spec';
+  return inp;
 }
-function kill(t: Loose, from: Loose): void {
-  t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
-  if (from && from !== t) { from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money); }
-  feed(`${from ? from.name : 'La bomba'} ${from && from.human ? 'eliminaste a' : 'eliminó a'} ${t.human ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
-    (from && from.human) || t.human);
-  if (from && from.human && from !== t) { state.killT = 0.4; SFX.kill(); }
-  if (state.bomb.state === 'carried' && state.bomb.carrier === t) {
-    state.bomb.state = 'dropped'; state.bomb.x = t.x; state.bomb.z = t.z; state.bomb.carrier = null;
-    if (sideOf(state.human) === 'att') say(t.human ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
-  }
-  if (state.bomb.defuser === t) state.bomb.defuser = null;
-  if (t.human) { state.menu = false; closeCard(true); state.spec = 0; t.scoped = false; nextSpec(); }
-  events.push({ type: 'kill', who: t.name, by: from ? from.name : '' });
-}
-function nextSpec() {
-  const pool = state.players.filter(p => p.alive && p.squad === state.human.squad && !p.human);
-  const any = pool.length ? pool : state.players.filter(p => p.alive);
-  if (!any.length) return;
-  state.spec = (state.spec + 1) % any.length; state.specP = any[state.spec];
-}
-function humanShoot(p: Loose): void {
-  const w = p.cur, a = p.ammo[w];
-  if (p.reloadT > 0 || p.cool > 0) return;
-  if (a.mag <= 0) { SFX.empty(); p.cool = 0.25; if (a.res > 0) startReload(p); return; }
-  a.mag--; p.cool = tune[w + '_rate'];
-  if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) SFX.lowAmmo();
-  const spread = humanSpread(p), eye = me.eye + me.jumpY;
-  const yaw = p.yaw + (rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (rng() - 0.5) * 2 * spread;
-  p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
-  if (w === 'sniper') p.scoped = false;
-  const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
-  // walls and crates along the flat ray, or the floor when aimed down
-  let wallT = 200;
-  for (let s = 0.2; s < 200; s += 0.2) if (solidSight(p.x + hx * s, p.z + hz * s)) { wallT = s; break; }
-  if (pitch < -0.01) wallT = Math.min(wallT, eye / -tp);
-  let best = null, bestT = wallT, head = false;
-  for (const e of state.players) {
-    if (!e.alive || e.squad === p.squad) continue;
-    const ox = e.x - p.x, oz = e.z - p.z, along = ox * hx + oz * hz;
-    if (along <= 0) continue;
-    const perp2 = ox * ox + oz * oz - along * along, r = 0.42;
-    if (perp2 > r * r) continue;
-    const t = along - Math.sqrt(r * r - perp2);
-    const y = eye + tp * t;
-    if (y < 0 || y > 1.88 || t >= bestT) continue;
-    best = e; bestT = t; head = y > 1.46;
-  }
-  const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = eye + tp * bestT;
-  const gx = p.x + hx * 0.6 - hz * 0.18, gz = p.z + hz * 0.6 + hx * 0.18;
-  tracer(gx, eye - 0.18, gz, ex, ey, ez);
-  SFX.shot(w);
-  viewGuns[w].flash.visible = true; p.flashT = 0.05;
-  makeNoise(p.x, p.z, tune.bot_hear_shot, p.squad);
-  if (best) {
-    state.hitT = 0.15; SFX.hit();
-    applyDamage(best, tune[w + '_dmg'] * (head ? tune.headshot_mult : 1), p);
-  } else spark(ex, ey, ez);
-  void cp;
-}
-/** The human's shot spread now, in radians: the gun, moving, the scope, then the stance and the air multipliers. */
-function humanSpread(p: Loose): number {
-  const s = p.cur === 'sniper' && p.scoped ? 0.002 : tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0);
-  const stance = me.stance === 'prone' ? tune.prone_spread_mult : me.stance === 'crouch' ? tune.crouch_spread_mult : 1;
-  return s * stance * (me.jumpY > 0 || me.vy !== 0 ? tune.air_spread_mult : 1);
-}
-function startReload(p: Loose): void {
-  const a = p.ammo[p.cur];
-  if (p.reloadT > 0 || a.res <= 0 || a.mag >= tune[p.cur + '_mag']) return;
-  p.reloadT = tune.reload_time; p.scoped = false; if (p.human) SFX.reload(p.cur);
-}
-function finishReload(p: Loose): void {
-  const a = p.ammo[p.cur], need = tune[p.cur + '_mag'] - a.mag;
-  if (p.human) { const n = Math.min(need, a.res); a.mag += n; a.res -= n; } else a.mag = tune[p.cur + '_mag'];
-}
-/** A noise at (x, z) made by a body of `squad`: every living enemy bot within r metres hears it (walls do not stop
- *  sound). A defender who hears it near a site raises the site alert; a bot not already fighting turns toward it
- *  and remembers where it was, to go and look when it has nothing better to do. With sight, the only way a bot
- *  learns where an enemy is. */
-function makeNoise(x: number, z: number, r: number, squad: number): void {
-  for (const b of state.players) {
-    if (b.human || !b.alive || b.squad === squad || Math.hypot(b.x - x, b.z - z) >= r) continue;
-    siteAlert(b, x, z);
-    if (b.target) continue;
-    b.alertT = 1.2; b.alertYaw = yawTo(x - b.x, z - b.z); b.noiseX = x; b.noiseZ = z; b.noiseNew = true;
-  }
-}
-/** A defender bot that saw or heard an enemy at (x, z) within bot_site_alert metres of a site calls that site:
- *  the squad's other defenders (not the sniper) rotate there together. */
-function siteAlert(b: Loose, x: number, z: number): void {
-  if (sideOf(b) !== 'def') return;
-  const toA = Math.hypot(x - center(SITE.A.cx), z - center(SITE.A.cy)), toB = Math.hypot(x - center(SITE.B.cx), z - center(SITE.B.cy));
-  if (Math.min(toA, toB) < tune.bot_site_alert) state.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: state.t };
-}
-function botShoot(b: Loose, t: Loose): void {
-  const w = b.cur;
-  if (!b.ammo[w]) b.ammo[w] = { mag: tune[w + '_mag'], res: 999 };
-  const a = b.ammo[w];
-  if (b.reloadT > 0 || b.cool > 0) return;
-  if (a.mag <= 0) { b.reloadT = tune.reload_time; return; }
-  a.mag--; b.cool = tune[w + '_rate'] * tune.bot_fire_slow * (0.85 + rng() * 0.3);
-  const d = Math.hypot(t.x - b.x, t.z - b.z);
-  const stanceHit = !t.human ? 1 : me.stance === 'prone' ? tune.prone_hit_mult : me.stance === 'crouch' ? tune.crouch_hit_mult : 1;
-  const chance = hitChance(level(), tune.bot_acc_start, tune.bot_acc_end, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
-  const hitIt = rng() < chance;
-  const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
-  const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;
-  const miss = hitIt ? 0 : (rng() - 0.5) * 2.2;
-  const body = t.human ? me.eye / EYE : 1, lift = t.human ? me.jumpY : 0; // the human's body: lower when down, higher in a jump
-  tracer(gx, 1.3, gz, t.x - fz * miss, (hitIt ? 1.2 : 1.0 + rng() * 1.2) * body + lift, t.z + fx * miss);
-  b.flashT = 0.06;
-  const v = heard(b.x, b.z), at = heardFrom(b.x, b.z); SFX.shot(w, v * 0.8, at.pan, at.dist);
-  makeNoise(b.x, b.z, tune.bot_hear_shot, b.squad);
-  if (hitIt) applyDamage(t, tune[w + '_dmg'], b);
-}
-
-// ---- Bots -----------------------------------------------------------------------------
-function botSpeed(b: Loose): number { return tune['bot_speed_' + b.role] * (b.cur === 'sniper' ? tune.sniper_speed_mult : 1); }
-function turnTo(b: Loose, yaw: number, rate: number, dt: number): void {
-  const d = angDiff(yaw, b.yaw), m = rate * dt;
-  b.yaw += Math.abs(d) < m ? d : Math.sign(d) * m;
-}
-/** Walks a bot along its waypoints (bfs between them, cutting corners where the straight line is clear), turning
- *  it to face the way it walks unless `look` is false. Stuck: it re-paths from its own cell, cell centre by cell
- *  centre, for bot_repath_strict s; stuck again in that time, it snaps to its cell centre. False once arrived. */
-function followPath(b: Loose, dt: number, speed: number, look = true): boolean {
-  if (b.pathI >= b.path.length) {
-    if (!b.wps.length) { b.arrived = true; return false; }
-    const w = b.wps[0];
-    b.path = bfs(cellOf(b.x), cellOf(b.z), w[0], w[1]); b.pathI = 0;
-    if (!b.path.length) {
-      const tx = center(w[0]), tz = center(w[1]), dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
-      if (d > 0.3) { moveBody(b, dx / d * speed * dt, dz / d * speed * dt); if (look) b.yaw = yawTo(dx, dz); return true; }
-      b.wps.shift(); return true;
+/** Plays and draws what the last step's events say (sounds, tracers, sparks, the round's models), logs the ones checks read, and empties the list. */
+function playEvents(): void {
+  for (const e of state.events) {
+    if (LOG.has(e.type)) events.push(e);
+    switch (e.type) {
+      case 'shot':
+        tracer(e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
+        if (e.human) { SFX.shot(e.w); viewGuns[e.w].flash.visible = true; if (e.spark) spark(e.to[0], e.to[1], e.to[2]); }
+        else { const v = heard(e.x, e.z), at = heardFrom(e.x, e.z); SFX.shot(e.w, v * 0.8, at.pan, at.dist); }
+        break;
+      case 'hit': SFX.hit(); break;
+      case 'hurt': SFX.hurt(); break;
+      case 'killmark': SFX.kill(); break;
+      case 'empty': SFX.empty(); break;
+      case 'lowAmmo': SFX.lowAmmo(); break;
+      case 'reload': SFX.reload(e.w); break;
+      case 'click': SFX.click(); break;
+      case 'buy': SFX.buy(); break;
+      case 'answer': (e.right ? SFX.right : SFX.wrong)(); break;
+      case 'plant': SFX.plant(); break;
+      case 'defused': SFX.defused(); break;
+      case 'beep': SFX.beep(Math.max(0.25, heard(e.x, e.z)), e.panic); break;
+      case 'boom': SFX.boom(); break;
+      case 'gate': SFX.gate(); break;
+      case 'roundEnd': (e.win === state.human.squad ? SFX.win : SFX.lose)(); break;
+      case 'round':
+        for (const p of state.players) { models[p.id].team.color.setHex(SIDE_HEX[sideOf(state, p)]); models[p.id].group.rotation.set(0, p.yaw, 0); }
+        for (const gm of gates) { gm.position.y = 1.5; gm.visible = true; }
+        break;
+      case 'unlock': if (locked) document.exitPointerLock(); break;
+      case 'matchEnd': scene = 'results'; if (locked) document.exitPointerLock(); break;
     }
   }
-  if (b.pathI < b.path.length - 1 && state.t >= b.strictT) {
-    const n = b.path[b.pathI + 1];
-    if (walkClear(b.x, b.z, center(n[0]), center(n[1]))) b.pathI++;
-  }
-  const c = b.path[b.pathI], tx = center(c[0]), tz = center(c[1]);
-  const dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
-  if (d < 0.5) {
-    b.pathI++;
-    if (b.pathI >= b.path.length) { b.wps.shift(); b.path = []; b.pathI = 0; }
-    return true;
-  }
-  const ox = b.x, oz = b.z;
-  moveBody(b, dx / d * speed * dt, dz / d * speed * dt);
-  if (look) turnTo(b, yawTo(dx, dz), 8, dt);
-  if (Math.hypot(b.x - ox, b.z - oz) < speed * dt * 0.2) {
-    b.stuckT += dt;
-    if (b.stuckT > 0.8) {
-      b.stuckT = 0;
-      if (state.t < b.strictT) { b.path = []; b.pathI = 0; b.x = center(cellOf(b.x)); b.z = center(cellOf(b.z)); }
-      else { const cx = cellOf(b.x), cy = cellOf(b.z), w = b.wps[0]; b.path = [[cx, cy], ...bfs(cx, cy, w[0], w[1])]; b.pathI = 0; }
-      b.strictT = state.t + tune.bot_repath_strict;
-    }
-  } else b.stuckT = 0;
-  return true;
-}
-function canSee(b: Loose, e: Loose): boolean {
-  const dx = e.x - b.x, dz = e.z - b.z, d = Math.hypot(dx, dz);
-  if (d > tune.bot_view_range) return false;
-  const fov = (b.alertT > 0 || b.target === e) ? Math.PI * 2 : tune.bot_fov_deg * Math.PI / 180;
-  if (Math.abs(angDiff(yawTo(dx, dz), b.yaw)) > fov / 2) return false;
-  return losClear(b.x, b.z, e.x, e.z);
-}
-/** One step of a bot in cover: it walks to its cover cell, then hides there for bot_peek_hide s and steps out to its
- *  peek cell (where it can shoot) for bot_peek_show s, in turn, never peeking while it reloads. When bot_cover_time
- *  is up and the gun is loaded it takes up the plan it left. `look`: false so walking never turns it from the threat. */
-function coverStep(b: Loose, dt: number, speed: number, look: boolean): void {
-  b.coverT -= dt;
-  if (b.coverT <= 0 && b.reloadT <= 0) { b.coverT = 0; b.wps = b.plan; b.plan = []; b.path = []; b.pathI = 0; b.arrived = false; return; }
-  if (b.wps.length) { if (followPath(b, dt, speed, look)) b.moving = true; return; }
-  b.peekT -= dt;
-  if (b.peekT <= 0) { b.peekOut = !b.peekOut; b.peekT = b.peekOut ? tune.bot_peek_show : tune.bot_peek_hide; }
-  const c = b.peekOut && b.peek && b.reloadT <= 0 ? b.peek : b.cover;
-  const dx = center(c[0]) - b.x, dz = center(c[1]) - b.z, d = Math.hypot(dx, dz);
-  if (d > 0.2) { const k = Math.min(d, speed * dt) / d; moveBody(b, dx * k, dz * k); b.moving = true; }
-}
-const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-/** One bot's step: look, take cover, fight, then the plan (staging, rotation, noises, corner checks, the route). */
-function botUpdate(b: Loose, dt: number): void {
-  b.cool = Math.max(0, b.cool - dt); b.alertT = Math.max(0, b.alertT - dt); b.flashT = Math.max(0, b.flashT - dt);
-  if (b.reloadT > 0) { b.reloadT -= dt; if (b.reloadT <= 0) finishReload(b); }
-  const side = sideOf(b), live = state.phase === 'live', bomb = state.bomb;
-  b.moving = false;
-  // Look for enemies a few times a second.
-  b.scanT -= dt;
-  if (live && b.scanT <= 0) {
-    b.scanT = 0.15 + rng() * 0.06;
-    let best = null, bestD = 1e9;
-    for (const e of state.players) {
-      if (!e.alive || e.squad === b.squad || !canSee(b, e)) continue;
-      const d = Math.hypot(e.x - b.x, e.z - b.z);
-      if (d < bestD) { best = e; bestD = d; }
-    }
-    if (best) {
-      if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level()) * (0.8 + rng() * 0.4); }
-      b.target = best; b.lastX = best.x; b.lastZ = best.z; b.lastSeenT = state.t;
-      if (best.squad !== state.human.squad || true) best.spotT = state.t;
-      siteAlert(b, best.x, best.z);
-      if (b.defusing) { b.defusing = false; state.bomb.defuser = null; }
-    } else {
-      // Lost sight of a living target: go to where it was last seen (and back), with the nearest free teammate.
-      const lost = b.target && b.target.alive && b.coverT <= 0;
-      b.target = null;
-      const free = (q: Loose): boolean => q.role !== 'sniper' && bomb.carrier !== q && !q.defusing && !q.chasing && q.coverT <= 0
-        && !(sideOf(q) === 'def' && bomb.state === 'planted');
-      const go = (q: Loose): void => {
-        q.chasing = true; q.wps = [[cellOf(b.lastX), cellOf(b.lastZ)], ...(q.wps.length ? q.wps : [[cellOf(q.x), cellOf(q.z)]])];
-        q.path = []; q.arrived = false;
-      };
-      if (lost && free(b)) {
-        go(b);
-        let buddy = null, bd = tune.bot_buddy_range;
-        for (const q of state.players) {
-          const d = Math.hypot(q.x - b.x, q.z - b.z);
-          if (q !== b && !q.human && q.alive && q.squad === b.squad && !q.target && free(q) && d < bd) { buddy = q; bd = d; }
-        }
-        if (buddy) go(buddy);
-      }
-    }
-  }
-  const t = b.target && b.target.alive ? b.target : null;
-  if (!t) b.target = null;
-  const speed = botSpeed(b);
-  // Cover: when hit, reloading with an enemy about, or low on health facing one, find the nearest cell (within
-  // bot_cover_search steps) beside a wall or crate with no line of sight to the threat, best one with a peek cell
-  // beside it that has the line of sight back; not while planting or defusing, nor defending a planted bomb.
-  if (t) { b.threatX = t.x; b.threatZ = t.z; }
-  const about = !!t || state.t - b.lastSeenT < tune.bot_threat_memory;
-  if (live && (b.wantCover || (b.coverT <= 0 && about && (b.reloadT > 0 || (!!t && b.hp < tune.bot_cover_hp))))
-    && state.t >= b.coverTry && !b.defusing && !b.plantT && !(side === 'def' && bomb.state === 'planted')) {
-    const sx = cellOf(b.x), sy = cellOf(b.z), steps = new Map<number, number>([[idx(sx, sy), 0]]), q: Cell[] = [[sx, sy]];
-    let hide: Cell | null = null, best: Cell | null = null, peek: Cell | null = null;
-    for (let h = 0; h < q.length && !best; h++) {
-      const [x, y] = q[h], n = steps.get(idx(x, y))!;
-      if (N4.some(([dx, dy]) => grid[idx(x + dx, y + dy)] !== 1) && !losClear(center(x), center(y), b.threatX, b.threatZ)) {
-        hide ??= [x, y];
-        const pk = N4.find(([dx, dy]) => walkable(x + dx, y + dy) && losClear(center(x + dx), center(y + dy), b.threatX, b.threatZ));
-        if (pk) { best = [x, y]; peek = [x + pk[0], y + pk[1]]; }
-      }
-      if (n < tune.bot_cover_search) for (const [dx, dy] of N4) {
-        if (walkable(x + dx, y + dy) && !steps.has(idx(x + dx, y + dy))) { steps.set(idx(x + dx, y + dy), n + 1); q.push([x + dx, y + dy]); }
-      }
-    }
-    const c = best ?? hide;
-    if (c) {
-      if (b.coverT <= 0) b.plan = b.wps;
-      Object.assign(b, { coverT: tune.bot_cover_time, cover: c, peek, wps: [c], path: [], pathI: 0, arrived: false, peekOut: false, peekT: tune.bot_peek_hide });
-    } else b.coverTry = state.t + tune.bot_cover_retry;
-  }
-  b.wantCover = false;
-  // Keep apart: every body closer than bot_sep_dist pushes the bot away, harder the closer it is.
-  if (live && !b.defusing && !b.plantT) {
-    let px = 0, pz = 0;
-    for (const o of state.players) {
-      if (o === b || !o.alive) continue;
-      const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
-      if (d >= tune.bot_sep_dist) continue;
-      const k = (tune.bot_sep_dist - d) / tune.bot_sep_dist;
-      if (d > 1e-3) { px += dx / d * k; pz += dz / d * k; } else { px += Math.cos(b.id) * k; pz += Math.sin(b.id) * k; }
-    }
-    const m = Math.hypot(px, pz);
-    if (m > 0) { const k = Math.min(1, m) / m * speed * dt; moveBody(b, px * k, pz * k); }
-  }
-  if (t && live) { // fight
-    const dx = t.x - b.x, dz = t.z - b.z, d = Math.hypot(dx, dz);
-    turnTo(b, yawTo(dx, dz), 7, dt);
-    b.reactT -= dt;
-    if (b.reactT <= 0 && Math.abs(angDiff(yawTo(dx, dz), b.yaw)) < 0.2) botShoot(b, t);
-    if (b.coverT > 0) { coverStep(b, dt, speed, false); return; }
-    b.strafeT -= dt;
-    if (b.strafeT <= 0) { b.strafeT = 0.5 + rng() * 0.8; b.strafe = rng() < 0.5 ? -1 : 1; }
-    const sk = b.role === 'rusher' ? 0.65 : b.role === 'rifleman' ? 0.3 : 0;
-    if (sk > 0) {
-      const px = -dz / d, pz = dx / d;
-      let mx = px * b.strafe * sk, mz = pz * b.strafe * sk;
-      if (b.role === 'rusher' && d > 9) { mx += dx / d * 0.7; mz += dz / d * 0.7; }
-      moveBody(b, mx * speed * dt, mz * speed * dt); b.moving = true;
-    }
-    return;
-  }
-  if (b.alertT > 0) turnTo(b, b.alertYaw, 6, dt);
-  if (!live) return;
-  if (b.coverT > 0) { turnTo(b, yawTo(b.threatX - b.x, b.threatZ - b.z), 5, dt); coverStep(b, dt, speed, false); return; }
-  // No enemy in sight: follow the plan.
-  if (side === 'att') {
-    if (bomb.state === 'dropped' && !b.fetching && !state.players.some(p => p.fetching && p.alive && sideOf(p) === 'att')) {
-      b.fetching = true; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false; b.after = [];
-    }
-    if (bomb.state === 'planted' && !b.guarding) {
-      b.guarding = true; const c = nearCell(bomb.x, bomb.z, 2); b.wps = [c]; b.path = []; b.arrived = false; b.after = [];
-    }
-    // Staging: wait facing the site until every attacker bot still to go in is at its staging point (and out of
-    // cover), or bot_group_wait passes; then all of them that are there go in together.
-    if (b.after.length && b.arrived && !b.wps.length) {
-      const mates = state.players.filter(q => !q.human && q.alive && q.squad === b.squad && q.after.length);
-      const ready = (q: Loose): boolean => q.arrived && !q.wps.length && q.coverT <= 0;
-      b.waitT += dt; turnTo(b, yawTo(center(b.after[0][0]) - b.x, center(b.after[0][1]) - b.z), 4, dt);
-      if (b.waitT >= tune.bot_group_wait || mates.every(ready)) {
-        for (const q of mates) if (ready(q)) { q.wps = q.after; q.after = []; q.arrived = false; q.path = []; q.waitT = 0; }
-      }
-      return;
-    }
-    if (bomb.carrier === b && b.arrived) {
-      const z = zone[idx(cellOf(b.x), cellOf(b.z))];
-      if (z === 3 || z === 4) {
-        b.plantT += dt;
-        if (b.plantT >= tune.plant_time) plantBomb(b);
-        return;
-      }
-      routeTo(b, 'site');
-    }
-    if (b.routeKind === 'hold' && b.arrived) {
-      b.holdT -= dt; turnTo(b, b.holdYaw, 4, dt);
-      if (b.holdT <= 0) routeTo(b, rng() < 0.5 ? 'mid' : 'lane');
-      return;
-    }
-  } else {
-    if (bomb.state === 'planted') {
-      const d = Math.hypot(bomb.x - b.x, bomb.z - b.z);
-      if (!b.guarding) { b.guarding = true; b.rotating = false; b.wps = [[cellOf(bomb.x), cellOf(bomb.z)]]; b.path = []; b.arrived = false; }
-      if (d < 1.7 && (!bomb.defuser || bomb.defuser === b)) {
-        if (!b.defusing) { b.defusing = true; bomb.defuser = b; b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, rng()); b.defuseRight = 0; }
-        b.thinkT -= dt;
-        if (b.thinkT <= 0) {
-          if (rng() < tune.bot_defuse_right) { b.right++; b.defuseRight++; } else { b.wrong++; bomb.panicT = 1.0; }
-          if (b.defuseRight >= tune.defuse_answers) { defuseBomb(b); return; }
-          b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, rng());
-        }
-        return;
-      }
-    } else if (state.alert && state.alert.squad === b.squad && !b.rotated && b.role !== 'sniper' && b.anchor !== state.alert.site
-      && state.t - state.alert.t < 8) {
-      b.rotated = true; anchorTo(b, state.alert.site); b.rotating = true; b.rotT = 0;
-    }
-  }
-  // Rotating defenders go as a pack: one more than bot_group_gap m ahead of a rotating teammate waits for them
-  // (at most bot_group_wait s in all), facing the site.
-  if (b.rotating) {
-    if (!b.wps.length) b.rotating = false;
-    else {
-      const gx = center(SITE[b.anchor].cx), gz = center(SITE[b.anchor].cy), mine = Math.hypot(gx - b.x, gz - b.z);
-      if (b.rotT < tune.bot_group_wait && state.players.some(q => q !== b && q.alive && q.rotating && q.squad === b.squad
-        && Math.hypot(gx - q.x, gz - q.z) - mine > tune.bot_group_gap)) {
-        b.rotT += dt; turnTo(b, yawTo(gx - b.x, gz - b.z), 4, dt); return;
-      }
-    }
-  }
-  // A noise heard with nothing better to do (holding its spot, not the sniper, the carrier or a guard): go and look, then come back.
-  if (b.noiseNew) {
-    b.noiseNew = false;
-    if (b.arrived && !b.wps.length && !b.after.length && !b.looks.length && !b.investigating && !b.rotating && !b.guarding
-      && b.role !== 'sniper' && bomb.carrier !== b) {
-      b.investigating = true; b.wps = [[cellOf(b.noiseX), cellOf(b.noiseZ)], [cellOf(b.x), cellOf(b.z)]]; b.path = []; b.arrived = false;
-    }
-  }
-  // Corner check: an attacker that arrives in a site (not the carrier) looks at each way into it, bot_corner_look s
-  // apiece (entries closer than bot_corner_merge_deg count as one), before it settles.
-  const here = zone[idx(cellOf(b.x), cellOf(b.z))];
-  if (side === 'att' && b.arrived && !b.cleared && bomb.carrier !== b && (here === 3 || here === 4)) {
-    b.cleared = true; b.lookT = 0; b.looks = [];
-    for (const [x, y] of here === SITE.A.z ? siteCells.A : siteCells.B) {
-      if (!N4.some(([dx, dy]) => grid[idx(x + dx, y + dy)] === 1 && zone[idx(x + dx, y + dy)] !== here)) continue;
-      const yw = yawTo(center(x) - b.x, center(y) - b.z);
-      if (b.looks.every((l: number) => Math.abs(angDiff(l, yw)) > tune.bot_corner_merge_deg * Math.PI / 180)) b.looks.push(yw);
-    }
-  }
-  if (b.looks.length) {
-    turnTo(b, b.looks[0], 6, dt); b.lookT += dt;
-    if (b.lookT >= tune.bot_corner_look) { b.looks.shift(); b.lookT = 0; }
-    return;
-  }
-  if (followPath(b, dt, speed)) b.moving = true;
-  else { b.chasing = false; b.investigating = false; turnTo(b, b.holdYaw, 3, dt); }
-  if (b.arrived && b.fetching) b.fetching = false;
-}
-function nearCell(x: number, z: number, r: number): number[] {
-  for (let k = 0; k < 12; k++) {
-    const cx = cellOf(x) + Math.round((rng() - 0.5) * 2 * r), cy = cellOf(z) + Math.round((rng() - 0.5) * 2 * r);
-    if (walkable(cx, cy)) return [cx, cy];
-  }
-  return [cellOf(x), cellOf(z)];
-}
-
-// ---- The bomb -------------------------------------------------------------------------
-function plantBomb(p: Loose): void {
-  const b = state.bomb;
-  b.state = 'planted'; b.x = p.x; b.z = p.z; b.carrier = null; b.timer = tune.bomb_time;
-  b.site = zone[idx(cellOf(p.x), cellOf(p.z))] === 3 ? 'A' : 'B';
-  p.money = Math.min(tune.max_money, p.money + tune.plant_money);
-  p.plantT = 0; state.plantT = 0;
-  bombModel.group.position.set(p.x, 0, p.z); bombModel.group.rotation.y = p.yaw; bombModel.group.visible = true;
-  SFX.plant();
-  say(`¡Bomba plantada en ${b.site}! ${tune.bomb_time} segundos`, 4);
-  for (const q of state.players) { q.guarding = false; q.fetching = false; }
-  events.push({ type: 'plant', site: b.site });
-}
-function defuseBomb(p: Loose): void {
-  state.bomb.state = 'defused'; state.bomb.defuser = null; SFX.defused();
-  feed(p.human ? 'Desactivaste la bomba' : `${p.name} desactivó la bomba`, p.human);
-  endRound('def', 'La bomba fue desactivada');
-}
-function updateBomb(dt: number): void {
-  const b = state.bomb;
-  b.panicT = Math.max(0, b.panicT - dt);
-  if (b.state === 'carried' && b.carrier) { b.x = b.carrier.x; b.z = b.carrier.z; }
-  if (b.state === 'dropped') {
-    bombModel.group.position.set(b.x, 0, b.z); bombModel.group.visible = true;
-    for (const p of state.players) {
-      if (p.alive && sideOf(p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3) {
-        b.state = 'carried'; b.carrier = p; bombModel.group.visible = false; p.fetching = false;
-        if (!p.human) routeTo(p, 'site');
-        if (p.human) say('Recogiste la bomba'); break;
-      }
-    }
-  }
-  if (b.state === 'planted' && state.phase === 'live') {
-    b.timer -= dt; b.beepT -= dt;
-    if (b.beepT <= 0) {
-      b.beepT = Math.max(0.12, (b.timer / tune.bomb_time) * 1.0);
-      SFX.beep(Math.max(0.25, heard(b.x, b.z)), b.panicT > 0);
-    }
-    if (b.timer <= 0) {
-      b.state = 'exploded'; state.boomT = 1.2; SFX.boom();
-      boomMesh.position.set(b.x, 1, b.z); boomMesh.visible = true; bombModel.group.visible = false;
-      for (const p of state.players) if (p.alive && Math.hypot(p.x - b.x, p.z - b.z) < 14) kill(p, null);
-      endRound('att', 'La bomba explotó');
-    }
-  }
-}
-
-// ---- Rounds ---------------------------------------------------------------------------
-function endRound(winSide: string, reason: string): void {
-  if (state.phase !== 'live') return;
-  const win = winSide === 'att' ? state.attSquad : 1 - state.attSquad, lose = 1 - win;
-  state.score[win]++;
-  state.lossStreak[win] = 0; state.lossStreak[lose]++;
-  for (const p of state.players) {
-    const pay = roundPay(p.squad === win, state.lossStreak[lose], tune.win_money, tune.loss_money, tune.loss_bonus);
-    p.money = Math.min(tune.max_money, p.money + pay);
-  }
-  state.phase = 'post'; state.phaseT = tune.round_end_delay;
-  state.banner = { text: `${win === 0 ? 'Tu equipo gana' : 'Los rivales ganan'} la ronda`, reason, mine: win === state.human.squad };
-  state.menu = false; closeCard(true);
-  (win === state.human.squad ? SFX.win : SFX.lose)();
-  events.push({ type: 'roundEnd', win, reason, score: state.score.slice() });
-}
-function checkRound() {
-  if (state.phase !== 'live') return;
-  const alive = (side: string): number => state.players.filter(p => p.alive && sideOf(p) === side).length;
-  const b = state.bomb;
-  if (b.state === 'planted') { if (!alive('def')) endRound('att', 'Todos los defensores han caído'); return; }
-  if (!alive('att')) endRound('def', 'Todos los atacantes han caído');
-  else if (!alive('def')) endRound('att', 'Todos los defensores han caído');
-  else if (state.roundT <= 0) endRound('def', 'Se acabó el tiempo sin plantar la bomba');
-}
-function afterRound() {
-  if (state.score[0] >= tune.rounds_to_win || state.score[1] >= tune.rounds_to_win) {
-    const p = state.human, total = p.right + p.wrong;
-    const won = state.score[0] > state.score[1];
-    state.gained = `${won ? 'Tu equipo gana' : 'Los rivales ganan'} ${state.score[0]} - ${state.score[1]}`;
-    state.answered = total ? `Respondiste bien ${p.right} de ${total} preguntas (${Math.round(100 * p.right / total)} %)` : 'No respondiste ninguna pregunta en esta partida';
-    scene = 'results'; events.push({ type: 'matchEnd', won });
-    if (locked) document.exitPointerLock();
-    return;
-  }
-  if (state.round === tune.halftime_after) {
-    state.attSquad = 1 - state.attSquad; state.lossStreak = [0, 0];
-    for (const p of state.players) { resetGuns(p); p.money = tune.start_money; p.alive = false; }
-    say('¡Descanso: se cambian los lados!', 4);
-  }
-  startRound();
-}
-
-// ---- You -------------------------------------------------------------------------------
-function inOwnBase(p: Loose): boolean { const z = zone[idx(cellOf(p.x), cellOf(p.z))]; return z === (sideOf(p) === 'att' ? 1 : 2); }
-function shopBlock(p: Loose, it: typeof SHOP[number]): string {
-  if (it.id === 'armor' && p.armor >= 100) return 'Lleno';
-  if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Lleno';
-  if (p.primary === it.id) return 'Comprada';
-  if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
-  return '';
-}
-function grant(p: Loose, id: string): void {
-  const it = SHOP.find(s => s.id === id)!;
-  p.money -= tune[it.price];
-  if (id === 'armor') p.armor = 100;
-  else if (id === 'ammo') for (const [w, a] of Object.entries(p.ammo as Record<string, Loose>)) a.res = tune[w + '_reserve'];
-  else { p.primary = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
-  SFX.buy(); feed(`Compraste: ${it.name}`, true);
-  events.push({ type: 'buy', item: id });
-}
-/**
- * The level of the question an item asks: the session level stepped up by `question_step_<item>`, at most Difícil.
- * No item (the defuse) uses the session level. A custom CSV ignores levels, so it returns undefined.
- */
-function questionLevel(item?: string): Level | undefined {
-  if (session.subject === QUESTIONS.CUSTOM) return undefined;
-  const step = item ? tune['question_step_' + item] : 0;
-  return LEVELS[Math.min(LEVELS.length - 1, LEVELS.indexOf(session.level) + step)];
-}
-function openCard(kind: string, item?: string): void {
-  const level = questionLevel(item);
-  state.card = { kind, item, level, q: state.deck.next(level), picked: -1, wrongT: 0, wrongTotal: 0, okT: 0, anim: 0, got: 0 };
-  if (locked) document.exitPointerLock();
-}
-/**
- * Closes the open card. A question not yet answered goes back as the next draw (GDD Edge Cases); one in its
- * wrong-answer lockout was already missed, and one already answered right is spent. While a right answer is
- * being confirmed the card stays open unless `force` (death, the round ending, the bomb gone).
- */
-function closeCard(force = false): void {
-  const c = state.card;
-  if (!c || (c.okT > 0 && !force)) return;
-  if (c.okT <= 0 && c.wrongT <= 0) state.deck.putBack(c.q);
-  state.card = null;
-}
-function answer(i: number): void {
-  const c = state.card, p = state.human;
-  if (!c || c.wrongT > 0 || c.okT > 0 || i >= c.q.choices.length) return;
-  c.picked = i;
-  if (i === c.q.answer) { p.right++; state.wrongStreak = 0; c.okT = 0.35; SFX.right(); events.push({ type: 'answer', right: true }); }
-  else {
-    p.wrong++; state.wrongStreak++;
-    // The lockout grows by wrong_delay_growth for each wrong answer in a row, up to wrong_delay_max.
-    c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (state.wrongStreak - 1));
-    state.deck.miss(c.q); SFX.wrong(); events.push({ type: 'answer', right: false });
-    if (c.kind === 'defuse') state.bomb.panicT = 1.6;
-  }
-}
-function updateCard(dt: number): void {
-  const c = state.card;
-  c.anim = Math.min(1, c.anim + dt * 5);
-  for (let k = 0; k < 4; k++) if (pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1))) answer(k);
-  if (c.okT > 0) {
-    c.okT -= dt;
-    if (c.okT <= 0) {
-      if (c.kind === 'buy') { grant(state.human, c.item); state.card = null; }
-      else {
-        c.got++;
-        if (c.got >= tune.defuse_answers) { state.card = null; defuseBomb(state.human); }
-        else { c.q = state.deck.next(c.level); c.picked = -1; }
-      }
-    }
-  } else if (c.wrongT > 0) {
-    c.wrongT -= dt;
-    if (c.wrongT <= 0) { c.q = state.deck.next(c.level); c.picked = -1; } // a wrong answer always brings a new question
-  }
-}
-function humanUpdate(p: Loose, dt: number): void {
-  p.cool = Math.max(0, p.cool - dt); p.flashT = Math.max(0, p.flashT - dt);
-  p.recoil *= Math.exp(-dt * 7);
-  if (p.reloadT > 0) { p.reloadT -= dt; if (p.reloadT <= 0) finishReload(p); }
-  const live = state.phase === 'live', buy = state.phase === 'buy';
-  // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
-  const f = (down.has(bind.forward) ? 1 : 0) - (down.has(bind.back) ? 1 : 0), s = (down.has(bind.right) ? 1 : 0) - (down.has(bind.left) ? 1 : 0);
-  const planting = live && state.bomb.carrier === p && down.has(bind.use);
-  const walk = down.has(bind.walk), sprintKey = down.has(bind.sprint) && !walk && (f !== 0 || s !== 0);
-  if (me.proneT > 0) { me.proneT -= dt; if (me.proneT <= 0) { me.proneT = 0; me.prone = !me.prone; } }
-  if (me.jumpY > 0 || me.vy !== 0) {
-    me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt;
-    if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live) makeNoise(p.x, p.z, tune.bot_hear_land, p.squad); } // the landing is heard
-  }
-  me.sprint = sprintKey && !uiOpen() && !planting && !me.prone && me.proneT === 0;
-  const crouch = !me.prone && !me.sprint && down.has(bind.crouch);
-  me.stance = me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
-  const eyeTo = (me.proneT > 0 ? !me.prone : me.prone) ? tune.prone_eye : crouch ? tune.crouch_eye : EYE;
-  me.eye += (eyeTo - me.eye) * Math.min(1, tune.eye_rate * dt);
-  if (Math.abs(eyeTo - me.eye) < 0.002) me.eye = eyeTo;
-  // Menus and cards first.
-  if (pressed(bind.buy)) {
-    if (state.card && state.card.kind === 'buy') closeCard();
-    else if (state.menu) state.menu = false;
-    else if (buy && inOwnBase(p)) { state.menu = true; if (locked) document.exitPointerLock(); }
-    else say(buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
-  }
-  if (state.card && state.card.kind === 'defuse') {
-    if (state.bomb.state !== 'planted') closeCard(true);
-    else if (pressed(bind.use)) closeCard();
-  }
-  if (state.card) { updateCard(dt); p.moving = false; return; }
-  if (state.menu) {
-    if (!buy) { state.menu = false; say('Se acabó el tiempo de compra'); }
-    for (let k = 0; k < SHOP.length; k++) if (pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1))) tryBuy(SHOP[k].id);
-    p.moving = false; return;
-  }
-  // Look with the arrow keys too.
-  if (down.has('ArrowLeft')) p.yaw += tune.key_turn_speed * dt;
-  if (down.has('ArrowRight')) p.yaw -= tune.key_turn_speed * dt;
-  if (down.has('ArrowUp')) p.pitch = Math.min(1.4, p.pitch + tune.key_turn_speed * 0.6 * dt);
-  if (down.has('ArrowDown')) p.pitch = Math.max(-1.4, p.pitch - tune.key_turn_speed * 0.6 * dt);
-  // Stance keys: prone toggles (and takes prone_time), sprinting stands you up, a jump needs standing on the ground.
-  const ground = me.jumpY === 0 && me.vy === 0, changing = me.proneT > 0;
-  if (!changing && ground && (pressed(bind.prone) || (me.prone && sprintKey))) me.proneT = tune.prone_time;
-  if (pressed(bind.jump) && ground && !changing && me.stance === 'stand') me.vy = tune.jump_velocity;
-  // Move.
-  let sp = walk ? tune.walk_speed : me.sprint ? tune.sprint_speed : tune.run_speed;
-  if (p.cur === 'sniper') sp *= tune.sniper_speed_mult;
-  if (p.scoped) sp *= 0.5;
-  if (me.stance === 'prone') sp *= tune.prone_speed_mult; else if (me.stance === 'crouch') sp *= tune.crouch_speed_mult;
-  if ((f || s) && !planting && me.proneT === 0) {
-    const n = Math.hypot(f, s), fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
-    const mx = (fx * f + -fz * s) / n, mz = (fz * f + fx * s) / n;
-    moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp > tune.walk_speed + 0.1;
-  } else p.moving = false;
-  // Footsteps the enemy bots hear: sprinting carries far, running less; walking, crouched or prone is silent.
-  const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
-  if (stepR > 0 && Math.floor(state.t / tune.bot_step_interval) !== Math.floor((state.t - dt) / tune.bot_step_interval)) makeNoise(p.x, p.z, stepR, p.squad);
-  // Weapons.
-  if (pressed(bind.primary) && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
-  if (pressed(bind.pistol) && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
-  if (pressed(bind.swap) && p.primary) { p.cur = p.cur === 'pistol' ? p.primary : 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
-  if (pressed(bind.reload)) startReload(p);
-  if (pressed('Mouse2') && p.cur === 'sniper' && p.reloadT <= 0) p.scoped = !p.scoped;
-  if (live) {
-    const auto = WEAPON[p.cur].auto;
-    const trig = auto ? (down.has('Mouse0') || down.has(bind.shoot)) : (pressed('Mouse0') || pressed(bind.shoot));
-    if (trig && !me.sprint && me.proneT === 0) humanShoot(p);
-  } else if (pressed('Mouse0') || pressed(bind.shoot)) say('Se puede disparar cuando se abran las puertas');
-  // The bomb.
-  const b = state.bomb;
-  if (live && b.carrier === p) {
-    const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if ((z === 3 || z === 4) && down.has(bind.use)) {
-      state.plantT += dt;
-      if (state.plantT >= tune.plant_time) plantBomb(p);
-    } else state.plantT = 0;
-    // Your bot teammates follow you to the site you head for.
-    for (const k of ['A', 'B']) {
-      if (state.attackSite !== k && Math.hypot(p.x - center(SITE[k].cx), p.z - center(SITE[k].cy)) < 20) {
-        state.attackSite = k;
-        for (const q of state.players) if (!q.human && q.squad === p.squad && q.alive && q.routeKind !== 'hold') routeTo(q, 'site');
-      }
-    }
-  }
-  if (live && b.state === 'planted' && sideOf(p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && pressed(bind.use)) {
-    if (b.defuser && !b.defuser.human) { b.defuser.defusing = false; }
-    b.defuser = p; openCard('defuse');
-  }
-}
-function tryBuy(id: string): void {
-  const p = state.human, it = SHOP.find(s => s.id === id)!, why = shopBlock(p, it);
-  if (why) { say(`${it.name}: ${why}`); SFX.click(); return; }
-  openCard('buy', id);
+  state.events.length = 0;
 }
 
 // ---- Scenes ---------------------------------------------------------------------------
@@ -1300,46 +516,9 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   },
   play: {
     update(dt) {
-      if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; if (locked) document.exitPointerLock(); return; }
-      const act = clicks.shift();
-      if (act && act.startsWith('buy:')) tryBuy(act.slice(4));
-      if (act && act.startsWith('ans:')) answer(Number(act.slice(4)));
-      if (act === 'closebuy') state.menu = false;
-      if (act === 'closecard') closeCard();
-      if (act === 'spec' || (!state.human.alive && pressed('Space'))) nextSpec();
-      state.t += dt;
-      for (const p of state.players) { p.px = p.x; p.pz = p.z; }
-      if (state.phase === 'buy') {
-        state.phaseT -= dt;
-        if (state.phaseT <= 0) {
-          // A right answer already given completes the purchase; any other open buy card closes (GDD Edge Cases).
-          if (state.card && state.card.kind === 'buy') {
-            if (state.card.okT > 0) grant(state.human, state.card.item);
-            closeCard(true);
-          }
-          state.phase = 'live'; mapState.gatesClosed = false; state.gateT = 0.01; SFX.gate();
-          say(sideOf(state.human) === 'att' ? '¡Puertas abiertas: adelante!' : '¡Puertas abiertas: defiende los sitios!', 2.5);
-        }
-      } else if (state.phase === 'live') {
-        if (state.bomb.state !== 'planted') state.roundT -= dt;
-      } else if (state.phase === 'post') {
-        state.phaseT -= dt;
-        if (state.phaseT <= 0) { afterRound(); return; }
-      }
-      if (state.human.alive) humanUpdate(state.human, dt);
-      else { state.human.moving = false; if (!state.specP || !state.specP.alive) nextSpec(); }
-      for (const p of state.players) if (!p.human && p.alive) botUpdate(p, dt);
-      for (const p of state.players) if (!p.alive) p.deadT += dt;
-      updateBomb(dt);
-      checkRound();
-      // timers
-      state.msgT -= dt; state.flashT = Math.max(0, state.flashT - dt); state.hitT = Math.max(0, state.hitT - dt);
-      state.killT = Math.max(0, state.killT - dt); state.boomT = Math.max(0, state.boomT - dt);
-      for (const h of state.hurt) h.t -= dt;
-      state.hurt = state.hurt.filter(h => h.t > 0);
-      for (const f of state.feed) f.t -= dt;
-      state.feed = state.feed.filter(f => f.t > 0);
-      if (state.gateT > 0) state.gateT += dt;
+      if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; lookYaw = 0; lookPitch = 0; if (locked) document.exitPointerLock(); return; }
+      stepMatch(state, { [state.human.id]: readInput(clicks.shift()) }, dt);
+      playEvents();
     },
     draw() { drawWorld(); drawHUD(); },
   },
@@ -1464,7 +643,7 @@ function drawWorld() {
   const p = state.human, view = p.alive ? p : (state.specP || p);
   placeModels();
   if (view === p) {
-    camera.position.set(p.x, me.eye + me.jumpY, p.z);
+    camera.position.set(p.x, state.me.eye + state.me.jumpY, p.z);
     camera.rotation.set(p.pitch + p.recoil, p.yaw, 0, 'YXZ');
   } else {
     camera.position.set(lerp(view.px, view.x, ALPHA), EYE, lerp(view.pz, view.z, ALPHA));
@@ -1481,6 +660,9 @@ function drawWorld() {
     const fast = b.panicT > 0, on = Math.floor(state.t * (fast ? 14 : 3)) % 2 === 0;
     bombModel.lightMat.color.setHex(fast ? (on ? 0xff2020 : 0x400000) : (on ? 0xff5040 : 0x301010));
   } else bombModel.lightMat.color.setHex(0x44ff66);
+  // the bomb on the floor: dropped, planted, or defused (until the next round)
+  bombModel.group.visible = b.state === 'planted' || b.state === 'dropped' || b.state === 'defused';
+  if (bombModel.group.visible) { bombModel.group.position.set(b.x, 0, b.z); bombModel.group.rotation.y = b.yaw ?? 0; }
   const showBeacon = b.state === 'planted' || b.state === 'dropped';
   beacon.group.visible = showBeacon;
   if (showBeacon) {
@@ -1492,7 +674,7 @@ function drawWorld() {
   for (const tr of tracers) { tr.t -= 1 / 60; tr.line.material.opacity = Math.max(0, tr.t / 0.09); }
   for (const s of sparks) { s.t -= 1 / 60; s.m.visible = s.t > 0; s.m.position.y += 0.01; }
   if (state.boomT > 0) {
-    const k = 1 - state.boomT / 1.2; boomMesh.scale.setScalar(2 + k * 14); boomMesh.material.opacity = 0.85 * (1 - k); boomMesh.visible = true;
+    const k = 1 - state.boomT / 1.2; boomMesh.position.set(b.x, 1, b.z); boomMesh.scale.setScalar(2 + k * 14); boomMesh.material.opacity = 0.85 * (1 - k); boomMesh.visible = true;
   } else boomMesh.visible = false;
   renderer.clear(); renderer.render(world, camera);
   if (view !== p) models[view.id].group.visible = true;
@@ -1575,20 +757,20 @@ function drawMinimap(x0: number, y0: number): void {
   text('A', x0 + (SITE.A.cx + 0.5) * k, y0 + (SITE.A.cy + 0.5) * k, 16, '#a3241a');
   text('B', x0 + (SITE.B.cx + 0.5) * k, y0 + (SITE.B.cy + 0.5) * k, 16, '#a3241a');
   const me = state.human, b = state.bomb;
-  if (b.state === 'planted' || b.state === 'dropped' || (b.state === 'carried' && sideOf(me) === 'att' && b.carrier && !b.carrier.human)) {
-    if (b.state !== 'carried' || sideOf(me) === 'att') drawBombIcon(x0 + b.x / CELL * k, y0 + b.z / CELL * k, 12);
+  if (b.state === 'planted' || b.state === 'dropped' || (b.state === 'carried' && sideOf(state, me) === 'att' && b.carrier && !b.carrier.human)) {
+    if (b.state !== 'carried' || sideOf(state, me) === 'att') drawBombIcon(x0 + b.x / CELL * k, y0 + b.z / CELL * k, 12);
   }
   for (const p of state.players) {
     if (!p.alive) continue;
     const mine = p.squad === me.squad;
     if (!mine && state.t - p.spotT > 1.5) continue;
-    drawArrow(x0 + p.x / CELL * k, y0 + p.z / CELL * k, p.yaw, p.human ? 6 : 5, p.human ? '#ffffff' : SIDE_CSS[sideOf(p)]);
+    drawArrow(x0 + p.x / CELL * k, y0 + p.z / CELL * k, p.yaw, p.human ? 6 : 5, p.human ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
   }
 }
 function drawHUD(paused?: boolean): void {
   buttons.length = 0;
   ctx.clearRect(0, 0, W, H);
-  const p = state.human, b = state.bomb, mySide = sideOf(p);
+  const p = state.human, b = state.bomb, mySide = sideOf(state, p);
   if (p.alive && p.scoped) { // scope: dark all around a clear round lens
     ctx.fillStyle = '#05070a'; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, 300, 0, Math.PI * 2, true); ctx.fill();
     ctx.strokeStyle = '#05070a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(W / 2 - 300, H / 2); ctx.lineTo(W / 2 + 300, H / 2);
@@ -1604,7 +786,7 @@ function drawHUD(paused?: boolean): void {
     if (!s || s.x < 0 || s.x > W || s.y < 0 || s.y > H) continue;
     const tag = `${q.name} (${ROLE_NAME[q.role]})`; ctx.font = `bold 14px ${FONT}`;
     const tw = ctx.measureText(tag).width + 14; rr(s.x - tw / 2, s.y - 11, tw, 22, 6, "rgba(15,20,32,0.75)", null);
-    text(tag, s.x, s.y, 14, SIDE_CSS[sideOf(q)]);
+    text(tag, s.x, s.y, 14, SIDE_CSS[sideOf(state, q)]);
   }
   // a bot defusing: its bar stalls while it thinks
   if (b.state === 'planted' && b.defuser && !b.defuser.human) {
@@ -1642,8 +824,8 @@ function drawHUD(paused?: boolean): void {
   }
   if (p.alive) {
     // crosshair and hit marker
-    if (!p.scoped && !uiOpen()) {
-      const gap = 6 + humanSpread(p) * 300;
+    if (!p.scoped && !uiOpen(state)) {
+      const gap = 6 + humanSpread(state, p) * 300;
       ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
       for (const [dx, dy, w, h] of [[-gap - 12, -1.5, 12, 3], [gap, -1.5, 12, 3], [-1.5, -gap - 12, 3, 12], [-1.5, gap, 3, 12]]) {
         ctx.fillRect(W / 2 + dx, H / 2 + dy, w, h); ctx.strokeRect(W / 2 + dx, H / 2 + dy, w, h);
@@ -1665,7 +847,7 @@ function drawHUD(paused?: boolean): void {
     text(WEAPON[p.cur].name, W - 270, H - 50, 20, '#c8d2e6', 'left');
     text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
     // stance: a drawn figure and its word, above the health box, only when not just standing
-    const word = me.proneT > 0 || me.stance === 'prone' ? 'tumbado' : me.stance === 'crouch' ? 'agachado' : me.sprint ? 'corriendo' : '';
+    const word = state.me.proneT > 0 || state.me.stance === 'prone' ? 'tumbado' : state.me.stance === 'crouch' ? 'agachado' : state.me.sprint ? 'corriendo' : '';
     if (word) {
       rr(18, H - 136, 176, 44, 10, 'rgba(15,20,32,0.78)', null);
       const fx = 46, fy = H - 114;
@@ -1675,7 +857,7 @@ function drawHUD(paused?: boolean): void {
       else { ctx.arc(fx + 4, fy - 14, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(fx + 2, fy - 9); ctx.lineTo(fx - 2, fy + 3); ctx.lineTo(fx - 10, fy + 14); ctx.moveTo(fx - 2, fy + 3); ctx.lineTo(fx + 8, fy + 8); ctx.lineTo(fx + 6, fy + 14); ctx.moveTo(fx, fy - 4); ctx.lineTo(fx + 10, fy - 2); }
       ctx.stroke(); ctx.lineCap = 'butt';
       text(word, 74, H - 114, 18, '#ffe7a8', 'left');
-      if (me.proneT > 0) rr(74, H - 101, 104 * (1 - me.proneT / tune.prone_time), 4, 2, '#ffd06a', null);
+      if (state.me.proneT > 0) rr(74, H - 101, 104 * (1 - state.me.proneT / tune.prone_time), 4, 2, '#ffd06a', null);
     }
     if (b.carrier === p) { rr(W - 290, H - 142, 160, 48, 10, 'rgba(15,20,32,0.78)', null); drawBombIcon(W - 256, H - 118, 30); text('Bomba', W - 182, H - 118, 18, '#ffd06a'); }
   } else {
@@ -1686,9 +868,9 @@ function drawHUD(paused?: boolean): void {
   }
   // the one hint that matters now
   let hint = '';
-  if (p.alive && !uiOpen()) {
+  if (p.alive && !uiOpen(state)) {
     const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if (state.phase === 'buy') hint = inOwnBase(p) ? `Pulsa ${keyName(bind.buy)} para comprar. Las puertas se abren en ${Math.ceil(state.phaseT)} s` : '';
+    if (state.phase === 'buy') hint = inOwnBase(state, p) ? `Pulsa ${keyName(bind.buy)} para comprar. Las puertas se abren en ${Math.ceil(state.phaseT)} s` : '';
     else if (b.carrier === p && (z === 3 || z === 4)) hint = `Mantén ${keyName(bind.use)} para plantar la bomba`;
     else if (b.carrier === p) hint = 'Llevas la bomba: plántala en la A o la B grandes';
     else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Pulsa ${keyName(bind.use)} para desactivar: ¡responde la pregunta!`;
@@ -1735,7 +917,7 @@ function drawShop() {
     text(it.name, x + 84, by + 18, 21, why ? '#7d8799' : '#fff', 'left');
     text(it.desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
     text(why || `$${tune[it.price]}`, x + w - 44, by + 20, 20, why ? '#ff9a8a' : '#9ff08a', 'right');
-    const ql = questionLevel(it.id); // the level of the item's question (none for a custom CSV)
+    const ql = questionLevel(state, it.id); // the level of the item's question (none for a custom CSV)
     if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
   text(`1-5 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
@@ -1984,7 +1166,7 @@ addEventListener('tune', e => {
   if ((e as CustomEvent).detail?.key === 'default_map' && scene === 'title') pickMap(String(tune.default_map));
 });
 useMap(session.map);
-reset();
+state = blankMatch(seedFrom(CONFIG.seed));
 scene = params.get('scene') || 'title';
 if (scene === 'play' || scene === 'pause' || scene === 'results') startMatch();
 last = clock.now();
