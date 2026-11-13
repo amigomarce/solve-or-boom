@@ -62,6 +62,12 @@ export const MAP_LIST: { id: string; name: string }[] = MAP_IDS.map(id => ({ id,
 const ZONES: Record<string, number> = { att_base: 1, def_base: 2, A: 3, B: 4 };
 
 export const CELL = 3, WALL_H = 4.5, EYE = 1.6, RADIUS = 0.35;
+/** The share of a cell a drawn crate fills (the model's size, src/main.ts); a player's shot sees the crate this size, so it is not stopped by the empty margin around it (story 015). Walls fill the whole cell. */
+export const CRATE_FILL = 0.92;
+/** How tall each kind of crate cell is drawn, in metres above its floor (the models in src/main.ts): two stacked
+ *  wooden crates, four barrels with one on top, three pallets with cartons, five courses of sandbags. A player's shot
+ *  passes over a crate cell above this height (story 015); sight, bots and walking still treat the cell as a full block. */
+export const CRATE_TOP: Record<string, number> = { crate: 2.2, barrel: 2.62, pallet: 2.12, sandbag: 1.5 };
 /** The loaded map's id and data. */
 export let MAP_ID = '', MAP: MapData;
 /** The loaded map's size in cells. */
@@ -75,6 +81,8 @@ export let rampDir = new Uint8Array(0), rampLo = new Float32Array(0), rampHi = n
 /** True when the loaded map has a first floor or a ramp. False: every height function below is skipped and the rules are exactly the flat ones. */
 export let hasHeights = false;
 export let isGate = new Uint8Array(0); // floor cells that close a base during buy time
+/** The drawn height of each ground crate cell's stack (CRATE_TOP by its prop kind), 0 elsewhere. */
+export let crateTop = new Float32Array(0);
 /** The loaded map's crate cells. */
 export let CRATES: Cell[] = [];
 /** The loaded map's site centres and zone numbers. */
@@ -106,7 +114,9 @@ function build(d: MapData): void {
     }
   }
   CRATES = d.crates;
-  for (const c of CRATES) { if (c[2] === 1) grid1[idx(c[0], c[1])] = 2; else grid[idx(c[0], c[1])] = 2; }
+  crateTop = new Float32Array(MW * MH);
+  for (const c of CRATES) { if (c[2] === 1) grid1[idx(c[0], c[1])] = 2; else { grid[idx(c[0], c[1])] = 2; crateTop[idx(c[0], c[1])] = CRATE_TOP.crate; } }
+  for (const p of d.props ?? []) if (crateTop[idx(p.cell[0], p.cell[1])]) crateTop[idx(p.cell[0], p.cell[1])] = CRATE_TOP[p.kind] ?? CRATE_TOP.crate;
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = idx(x, y);
     if (grid[i] !== 1 || zone[i] === 1 || zone[i] === 2) continue;
@@ -126,7 +136,7 @@ function build(d: MapData): void {
 }
 
 /** Everything build() makes for one map: kept, so a second match on the same map (or rooms on different maps) switch maps without rebuilding. */
-interface Built { MW: number; MH: number; grid: typeof grid; zone: typeof zone; grid1: typeof grid1; zone1: typeof zone1; rampDir: typeof rampDir; rampLo: typeof rampLo; rampHi: typeof rampHi; hasHeights: boolean; isGate: typeof isGate; CRATES: Cell[]; SITE: typeof SITE; siteCells: typeof siteCells; bfsPrev: typeof bfsPrev }
+interface Built { MW: number; MH: number; grid: typeof grid; zone: typeof zone; grid1: typeof grid1; zone1: typeof zone1; rampDir: typeof rampDir; rampLo: typeof rampLo; rampHi: typeof rampHi; hasHeights: boolean; isGate: typeof isGate; crateTop: typeof crateTop; CRATES: Cell[]; SITE: typeof SITE; siteCells: typeof siteCells; bfsPrev: typeof bfsPrev }
 const built: Record<string, Built> = {};
 
 /**
@@ -138,8 +148,8 @@ export function loadMap(id: string): void {
   const d = MAPS[id];
   if (!d) throw new Error(`No map "${id}": the maps are ${MAP_IDS.join(', ')}`);
   MAP_ID = id; MAP = d;
-  if (!built[id]) { build(d); built[id] = { MW, MH, grid, zone, grid1, zone1, rampDir, rampLo, rampHi, hasHeights, isGate, CRATES, SITE, siteCells, bfsPrev }; return; }
-  ({ MW, MH, grid, zone, grid1, zone1, rampDir, rampLo, rampHi, hasHeights, isGate, CRATES, SITE, siteCells, bfsPrev } = built[id]);
+  if (!built[id]) { build(d); built[id] = { MW, MH, grid, zone, grid1, zone1, rampDir, rampLo, rampHi, hasHeights, isGate, crateTop, CRATES, SITE, siteCells, bfsPrev }; return; }
+  ({ MW, MH, grid, zone, grid1, zone1, rampDir, rampLo, rampHi, hasHeights, isGate, crateTop, CRATES, SITE, siteCells, bfsPrev } = built[id]);
 }
 
 /**
@@ -250,11 +260,13 @@ export function walkable(cx: number, cy: number): boolean {
   const i = idx(cx, cy);
   return grid[i] === 1 && !(mapState.gatesClosed && isGate[i]);
 }
-/** True when walls or crates stop sight and bullets at (x, z). */
-export function solidSight(x: number, z: number): boolean { // walls and crates stop sight and bullets; gates do not
+/** True when walls or crates stop sight and bullets at (x, z). With `tight`, a crate counts only where it is drawn (CRATE_FILL of its cell), not out to the cell's edge: a player's shot. */
+export function solidSight(x: number, z: number, tight = false): boolean { // walls and crates stop sight and bullets; gates do not
   const cx = cellOf(x), cy = cellOf(z);
   if (cx < 0 || cy < 0 || cx >= MW || cy >= MH) return true;
-  return grid[idx(cx, cy)] !== 1;
+  const g = grid[idx(cx, cy)];
+  if (tight && g === 2) { const m = (1 - CRATE_FILL) / 2 * CELL, fx = x - cx * CELL, fz = z - cy * CELL; return fx >= m && fx <= CELL - m && fz >= m && fz <= CELL - m; }
+  return g !== 1;
 }
 /** The height of the first floor above the ground, in metres (data/config.json level_height). */
 export const levelHeight = (): number => tune.level_height;
@@ -352,15 +364,17 @@ export function moveBody(p: Loose, dx: number, dz: number): void {
   if (s < y - tune.step_height) st.jumpY += y - s; // off a ledge: fall (no damage)
   st.y = s;
 }
-/** True when a point at (x, z, h) in metres (h from the ground floor) lies inside something that stops a shot or sight, given the previous point's height. */
-function solidAt(x: number, z: number, h: number, hPrev: number): boolean {
+/** True when a point at (x, z, h) in metres (h from the ground floor) lies inside something that stops a shot or sight, given the previous point's height.
+ *  With `tight` (a player's shot), a crate counts only where it is drawn: CRATE_FILL of its cell, and up to its drawn height (crateTop, CRATE_TOP). */
+export function solidAt(x: number, z: number, h: number, hPrev: number, tight = false): boolean {
   const cx = cellOf(x), cy = cellOf(z);
   if (cx < 0 || cy < 0 || cx >= MW || cy >= MH) return true;
   const i = idx(cx, cy), g = grid[i], H1 = levelHeight();
   if (g === 0) return true;                                     // walls rise through every level
   if (h <= 0) return true;                                      // under the ground
-  if (g === 2 && (grid1[i] !== 1 || h < H1)) return true;       // a ground crate (under a first floor: up to that floor)
-  if (grid1[i] === 2 && h >= H1) return true;                   // a first-floor crate
+  const m = tight ? (1 - CRATE_FILL) / 2 * CELL : 0, fx = x - cx * CELL, fz = z - cy * CELL, inBox = fx >= m && fx <= CELL - m && fz >= m && fz <= CELL - m; // inside a crate's drawn box
+  if (g === 2 && inBox && (grid1[i] !== 1 || h < H1) && (!tight || h < crateTop[i])) return true; // a ground crate (under a first floor: up to that floor)
+  if (grid1[i] === 2 && h >= H1 && inBox && (!tight || h < H1 + CRATE_TOP.crate)) return true;    // a first-floor crate
   if (rampDir[i] && h < rampHeight(cx, cy, x, z)) return true;  // the ramp is solid below its surface
   if (grid1[i] === 1 && (hPrev - H1) * (h - H1) <= 0) return true; // the first floor is a slab: a shot cannot cross it
   return false;
@@ -377,11 +391,11 @@ export function losClear(x0: number, z0: number, x1: number, z1: number, y0 = 0,
 }
 /**
  * How far a shot from (x, z) at height h0 (metres from the ground floor), going the horizontal way (hx, hz) (a unit vector) with
- * the slope `tp` (tan of the pitch), travels before it meets a wall, crate, floor or ceiling; `max` when nothing. Only for maps with heights.
+ * the slope `tp` (tan of the pitch), travels before it meets a wall, crate, floor or ceiling; `max` when nothing. Only for maps with heights. With `tight`, a crate counts only where it is drawn (a player's shot).
  */
-export function rayStop(x: number, z: number, h0: number, hx: number, hz: number, tp: number, max = 200): number {
+export function rayStop(x: number, z: number, h0: number, hx: number, hz: number, tp: number, max = 200, tight = false): number {
   let prev = h0;
-  for (let s = 0.2; s < max; s += 0.2) { const h = h0 + tp * s; if (solidAt(x + hx * s, z + hz * s, h, prev)) return s; prev = h; }
+  for (let s = 0.2; s < max; s += 0.2) { const h = h0 + tp * s; if (solidAt(x + hx * s, z + hz * s, h, prev, tight)) return s; prev = h; }
   return max;
 }
 /** True when a body can walk the straight line between the two points (feet at height y, default the ground; the height follows ramps along the way). */

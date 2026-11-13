@@ -1,0 +1,36 @@
+# Crate edge: shooter 0.4 m from a crate, aiming 0.06 m inside its cell but outside the drawn crate
+## before
+pequeno level 0 crate 24,4 shot travels 0.60 m; from 72.20,1.42,12.24 dist from eye 0.63
+pequeno level 1 no crate
+dospisos level 0 crate 19,13 shot travels 0.60 m; from 57.20,1.42,39.24 dist from eye 0.63
+dospisos level 1 crate 19,26,1 shot travels 0.60 m; from 57.20,4.42,78.24 dist from eye 0.63
+grande level 0 crate 36,6 shot travels 0.60 m; from 108.20,1.42,18.24 dist from eye 0.63
+grande level 1 no crate
+## after
+pequeno level 0 crate 24,4 shot travels 15.60 m; from 72.20,1.52,12.06 dist from eye 0.60
+pequeno level 1 no crate
+dospisos level 0 crate 19,13 shot travels 60.60 m; from 57.20,1.52,39.06 dist from eye 0.60
+dospisos level 1 crate 19,26,1 shot travels 63.60 m; from 57.20,4.52,78.06 dist from eye 0.60
+grande level 0 crate 36,6 shot travels 24.60 m; from 108.20,1.52,18.06 dist from eye 0.60
+grande level 1 no crate
+
+# The playtest case: enemy just past a crate edge, crosshair on him 2-20 cm outside the drawn crate
+## before
+pequeno level 0 crate 24,4 | gap 0.02 m: blocked | gap 0.05 m: blocked | gap 0.1 m: blocked | gap 0.2 m: HIT
+pequeno level 1 no crate with room round it
+dospisos level 0 crate 19,13 | gap 0.02 m: blocked | gap 0.05 m: blocked | gap 0.1 m: blocked | gap 0.2 m: HIT
+dospisos level 1 crate 29,29,1 | gap 0.02 m: blocked | gap 0.05 m: blocked | gap 0.1 m: blocked | gap 0.2 m: HIT
+## after
+pequeno level 0 crate 24,4 | gap 0.02 m: HIT | gap 0.05 m: HIT | gap 0.1 m: HIT | gap 0.2 m: HIT
+pequeno level 1 no crate with room round it
+dospisos level 0 crate 19,13 | gap 0.02 m: HIT | gap 0.05 m: HIT | gap 0.1 m: HIT | gap 0.2 m: HIT
+dospisos level 1 crate 29,29,1 | gap 0.02 m: HIT | gap 0.05 m: HIT | gap 0.1 m: HIT | gap 0.2 m: HIT
+
+# Over a crate's top (crate 2.2 m, sandbags 1.5 m), after only (before every crate stopped shots at every height)
+pequeno level 0 crate 24,4 top 2.200000047683716 | level aim: travels 2.2 m, ends at height 1.60 | aimed over the top: travels 17.2 m, ends at height 9.82
+pequeno level 0 sandbag 26,16 top 1.5 | level aim: travels 20.2 m, ends at height 1.60 | aimed over the top: travels 20.2 m, ends at height 3.74
+grande level 0 crate 36,6 top 2.200000047683716 | level aim: travels 2.2 m, ends at height 1.60 | aimed over the top: travels 26.2 m, ends at height 14.13
+grande level 0 sandbag 39,24 top 1.5 | level aim: travels 29.2 m, ends at height 1.59 | aimed over the top: travels 29.2 m, ends at height 4.70
+dospisos level 0 crate 34,13 top 2.200000047683716 | level aim: travels 2.2 m, ends at height 1.60 | aimed over the top: travels 17.2 m, ends at height 9.82
+dospisos level 0 sandbag 19,22 top 1.5 | level aim: travels 47.2 m, ends at height 1.59 | aimed over the top: travels 26.2 m, ends at height 4.38
+dospisos level 1 crate 19,26,1 top 2.2 | level aim: travels 2.2 m, ends at height 1.60 | aimed over the top: travels 65.2 m, ends at height 32.77

@@ -12,7 +12,7 @@ import { LEVELS, type Level } from './game/types';
 import type { Loose } from './game/types';
 import { params, manual, clock, seedFrom, install } from './hook';
 import {
-  CELL, MW, MH, WALL_H, EYE, grid, zone, isGate, idx, CRATES, SITE, siteCells, mapState,
+  CELL, CRATE_FILL, MW, MH, WALL_H, EYE, grid, zone, isGate, idx, CRATES, SITE, siteCells, mapState,
   center, cellOf, walkable, solidSight, hitsWall, moveBody, losClear, walkClear, bfs,
   MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell, type MapData,
   hasHeights, grid1, zone1, rampAt, rampHeight, levelHeight, levelOfY, canStepXY,
@@ -424,7 +424,7 @@ function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: num
   });
   const tex = slabTex, topMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: tex });
   const crateMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: crateTex });
-  const crateGeo = new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92);
+  const crateGeo = new THREE.BoxGeometry(CELL * CRATE_FILL, 1.1, CELL * CRATE_FILL);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const g1 = grid1[idx(x, y)];
     if (!g1) continue;
@@ -603,7 +603,7 @@ function buildWorld(): void {
     });
     walls.matrixAutoUpdate = false; group.add(walls);
     const wood = CRATES.filter(([x, y, l]) => l !== 1 && !kinds.has(idx(x, y))); // first-floor crates are drawn with the first floor
-    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
+    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * CRATE_FILL, 1.1, CELL * CRATE_FILL), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
     wood.forEach(([x, y], i) => {
       m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
       m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), 1.65, center(y)); crates.setMatrixAt(i * 2 + 1, m);
@@ -1031,7 +1031,10 @@ function playEvents(list: Loose[] = state.events): void {
     if (LOG.has(e.type)) events.push(e);
     switch (e.type) {
       case 'shot':
-        tracer(e.w, e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
+        if (e.by === state.human?.id && e.w === 'sniper' && state.human.scoped) { // seen through the scope: the 22° view magnifies the first metres into a white blob, so the tracer starts further out and thinner
+          const dx = e.to[0] - e.from[0], dy = e.to[1] - e.from[1], dz = e.to[2] - e.from[2], len = Math.hypot(dx, dy, dz), k = Math.min(1, tune.fx_scope_tracer_skip / (len || 1));
+          if (k < 1) { tracer(e.w, e.from[0] + dx * k, e.from[1] + dy * k, e.from[2] + dz * k, e.to[0], e.to[1], e.to[2]); tracers[(tracerI - 1) % tracers.length].w = tune.fx_scope_tracer_w; }
+        } else tracer(e.w, e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
         { // a red burst when the shot ends on a player, else a pale wall/floor/crate spark. A human's shot says it (spark); a bot's shot has no hit flag, so a player standing at its end point is the hit
           let hitP = e.human ? !e.spark : false, hitId = -1;
           for (const q of state.players) { const dx = q.x - e.to[0], dz = q.z - e.to[2]; if (q.alive && q.id !== e.by && dx * dx + dz * dz < 0.36 && e.to[1] - (q.st?.y ?? 0) < 2 && e.to[1] >= (q.st?.y ?? 0) - 0.05) { hitId = q.id; break; } }

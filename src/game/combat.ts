@@ -1,6 +1,6 @@
 // Shooting and damage: the human's shot, a bot's shot, armour, kills, reloads and the noises that bots hear.
 // No browser in here: sounds, tracers and sparks are events in match.events for the screen to play and draw.
-import { EYE, solidSight, center, SITE, hasHeights, rayStop, levelOfY, losClear } from './map';
+import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } from './map';
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
@@ -48,13 +48,9 @@ export function humanShoot(match: Match, p: Loose): void {
   const yaw = p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (match.rng() - 0.5) * 2 * spread;
   p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
   const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
-  // walls and crates along the flat ray, or the floor when aimed down
-  let wallT = 200;
-  if (hasHeights) wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp); // floors, ceilings, ramps, walls and crates at their height (story 011)
-  else {
-    for (let s = 0.2; s < 200; s += 0.2) if (solidSight(p.x + hx * s, p.z + hz * s)) { wallT = s; break; }
-    if (pitch < -0.01) wallT = Math.min(wallT, eye / -tp);
-  }
+  // Walls, the floor, and on maps with heights floors, ceilings and ramps (story 011); crates as drawn (story 015): not out to
+  // their cell's edge, and only up to their drawn height, so a shot over a crate's top flies on. The same ray on every map.
+  const wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp, 200, true);
   let best = null, bestT = wallT, head = false;
   for (const e of match.players) {
     if (!e.alive || e.squad === p.squad) continue;
@@ -68,8 +64,15 @@ export function humanShoot(match: Match, p: Loose): void {
     best = e; bestT = t; head = y > 1.46;
   }
   const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = p.st.y + eye + tp * bestT;
-  const gx = p.x + hx * 0.6 - hz * 0.18, gz = p.z + hz * 0.6 + hx * 0.18;
-  match.events.push({ type: 'shot', human: true, by: p.id, w, x: p.x, z: p.z, from: [gx, p.st.y + eye - 0.18, gz], to: [ex, ey, ez], spark: !best });
+  // Where the shot and its tracer leave (story 015): the gun in the hand, or on the centre line at the sights when aimed (never the shoulder).
+  // Pulled back toward the eye when a wall or crate is close, so the start is never inside one: first along the ray, then onto the centre line
+  // when the gun's side point is inside a crate beside the shooter, then the eye itself.
+  const fwd = tune.muzzle_fwd, down = p.scoped ? tune.sights_down : tune.muzzle_down;
+  let k = Math.min(1, Math.max(0, (wallT - 0.05) / fwd)), side = p.scoped ? 0 : tune.muzzle_side;
+  if (side && solidAt(p.x + (hx * fwd - hz * side) * k, p.z + (hz * fwd + hx * side) * k, p.st.y + eye - down * k, p.st.y + eye - down * k, true)) side = 0;
+  if (solidAt(p.x + (hx * fwd - hz * side) * k, p.z + (hz * fwd + hx * side) * k, p.st.y + eye - down * k, p.st.y + eye - down * k, true)) k = 0;
+  const gx = p.x + (hx * fwd - hz * side) * k, gz = p.z + (hz * fwd + hx * side) * k;
+  match.events.push({ type: 'shot', human: true, by: p.id, w, x: p.x, z: p.z, from: [gx, p.st.y + eye - down * k, gz], to: [ex, ey, ez], spark: !best });
   p.flashT = 0.05;
   makeNoise(match, p.x, p.z, tune.bot_hear_shot, p.squad, p.st.y);
   if (best) {

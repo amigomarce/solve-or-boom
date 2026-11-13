@@ -1,0 +1,29 @@
+# Spread at 20 m (3000 shots per row; r95 = radius holding 95% of shots, widest = widest group), before = story 013 code, after = story 015
+## before
+gun    mode     radius95  maxDiameter  (metres at 20 m)
+pistol standing    0.29        0.67
+pistol moving      1.12        2.60
+pistol aimed       0.09        0.22
+smg    standing    0.47        1.11
+smg    moving      1.32        3.09
+smg    aimed       0.19        0.44
+rifle  standing    0.24        0.56
+rifle  moving      1.09        2.51
+rifle  aimed       0.07        0.17
+sniper standing    1.67        3.89
+sniper moving      2.51        5.90
+sniper aimed       0.05        0.11
+## after
+gun    mode     radius95  maxDiameter  (metres at 20 m)
+pistol standing    0.21        0.50
+pistol moving      0.40        0.94
+pistol aimed       0.07        0.17
+smg    standing    0.31        0.72
+smg    moving      0.51        1.18
+smg    aimed       0.12        0.28
+rifle  standing    0.17        0.39
+rifle  moving      0.36        0.83
+rifle  aimed       0.05        0.11
+sniper standing    0.95        2.22
+sniper moving      1.14        2.69
+sniper aimed       0.01        0.03

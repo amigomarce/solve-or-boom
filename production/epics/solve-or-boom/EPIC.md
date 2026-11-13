@@ -30,3 +30,6 @@ Build order from the brief:
 | 012 | Two-floor map | Integration | Complete | N/A |
 | 013 | Aim with every gun | Integration | Complete | N/A |
 | 014 | Mobile play | UI | Complete | N/A |
+| 015 | Shooting fixes | Integration | Complete | N/A |
+| 016 | Combat and economy | Integration | Ready | N/A |
+| 017 | Match options | Integration | Ready | N/A |

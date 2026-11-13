@@ -1,0 +1,21 @@
+teacher start: true, seats 0,4
+map dospisos (hasHeights true, level_height 3 m); protocol PROTOCOL_VERSION 5; 90 s; room running (); matches 0; final score 0-0; rounds 1:0-0
+server steps 5310, dropped 0, mean step 0.331 ms, max 11.37 ms; warnings 0
+server sent 3540 snapshots, 535 bytes each, 10513 B/s per student; 10624 messages accepted (59.0/s per student), 0 refused
+Ana seat 0: 1773 msgs in (19.7/s), 1770 snaps; versions seen 5; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 21.1 s at y 3.00 m; on a ramp 3.8 s; shots seen 228, from above the first floor 56
+  prediction correction ground: n 726, mean 0.004 m, max 0.163 m, height part mean 0.000 m max 0.008 m
+  prediction correction ramp:   n 77, mean 0.010 m, max 0.160 m, height part mean 0.004 m max 0.071 m
+  prediction correction floor1: n 464, mean 0.003 m, max 0.076 m, height part mean 0.000 m max 0.008 m
+Beto seat 4: 1772 msgs in (19.7/s), 1770 snaps; versions seen 5; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 40.4 s at y 3.00 m; on a ramp 3.4 s; shots seen 228, from above the first floor 56
+  prediction correction ground: n 327, mean 0.004 m, max 0.277 m, height part mean 0.000 m max 0.007 m
+  prediction correction ramp:   n 68, mean 0.001 m, max 0.007 m, height part mean 0.000 m max 0.005 m
+  prediction correction floor1: n 872, mean 0.002 m, max 0.090 m, height part mean 0.000 m max 0.008 m
+Ana aiming (live, alive, held): 1806 steps; predicted aimed on the same step 1513; held but not aimed with no reload or ended aim 0; server steps with the scoped flag 2310; correction while aimed: n 507, mean 0.004 m, max 0.163 m, height part mean 0.001 m max 0.008 m
+  pistol: server aimed steps 807, client predicted aimed steps 805, correction while aimed n 0, mean 0.000 m, max 0.000 m, height part mean 0.000 m max 0.000 m
+  smg: server aimed steps 300, client predicted aimed steps 307, correction while aimed n 105, mean 0.009 m, max 0.163 m, height part mean 0.000 m max 0.000 m
+  rifle: server aimed steps 300, client predicted aimed steps 300, correction while aimed n 100, mean 0.002 m, max 0.013 m, height part mean 0.000 m max 0.000 m
+  sniper: server aimed steps 903, client predicted aimed steps 906, correction while aimed n 302, mean 0.003 m, max 0.009 m, height part mean 0.000 m max 0.000 m
+Ana's shots 14; next to a crate (within 1 m of its cell): aimed 9 (start off the centre line at most 0.004 m), not aimed 4 (sideways 0.182 m); on the ground 3, on the first floor 10; starts inside a wall or crate 0
+no errors (server or client)

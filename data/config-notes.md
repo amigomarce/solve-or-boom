@@ -43,7 +43,10 @@ holds no comments. The values themselves are in `data/config.json`.
 
 ---- Weapons: damage per hit, seconds between shots, magazine, reserve, spread (radians)
 - `sniper_spread`: not aiming; aimed is sniper_aim_spread
-- `move_spread`: added while running
+- `move_spread`: added while running (story 015: 0.035 to 0.008, so moving adds a modest amount: a rifle on the move is about twice as wide as standing)
+- `muzzle_fwd` 0.6 m, `muzzle_side` 0.18 m, `muzzle_down` 0.18 m: where an unaimed shot and its tracer leave the player, from the eye: ahead, to the right, below (the gun in the hand). Pulled back toward the eye when a wall or crate is in the way (story 015)
+- `sights_down` 0.08 m: where an aimed shot and its tracer leave: on the centre line, `muzzle_fwd` ahead and this far below the eye (the sights, not the shoulder)
+- Story 015 spread at 20 m (radius of the group, standing / moving / aimed): pistol 0.009 (0.25 m) / 0.017 / 0.003; smg 0.013 (0.37 m) / 0.021 / 0.005; rifle 0.007 (0.20 m) / 0.015 / 0.002; sniper 0.04 (1.1 m) / 0.048 / 0.0005 (0.014 m). Before: 0.012 / 0.02 / 0.01 / 0.07 standing, +0.035 moving, aimed 0.004 / 0.008 / 0.003 / 0.002
 - `pistol_aim_fov`: view angle in degrees while aiming with this gun (72 is the normal view; smaller zooms more); mouse turn scales with it
 - `pistol_aim_spread`: shot spread in radians while aiming (replaces the gun spread and move_spread)
 - `pistol_aim_speed`: walk speed multiplier while aiming
@@ -159,14 +162,14 @@ holds no comments. The values themselves are in `data/config.json`.
 
 ## Weapons and effects (story 008), data/config.json
 - `fx_<gun>_flash` (pistol .14, smg .17, rifle .24, sniper .34): size of the muzzle flash star (metres, in the first-person gun's space; other players' flashes use the same value, scaled to their model).
-- `fx_<gun>_tracer_w` (.04 to .14) and `fx_<gun>_tracer_life` (.06 to .22 s): thickness of the tracer bar and how long it stays; a bigger gun leaves a thicker, longer-lived line. The bar always runs from the gun to the hit point.
-- `fx_spark_*`: the pale burst on a wall, floor or crate: cubes thrown (`count`), their speed (m/s), size (m) and life (s). `fx_hit_*`: the same for the red burst on a player. `fx_gravity`: how fast both fall (m/s per s).
+- `fx_<gun>_tracer_w` (story 015: .02 to .06, half of before) and `fx_<gun>_tracer_life` (.06 to .22 s): thickness of the tracer bar and how long it stays; a bigger gun leaves a thicker, longer-lived line. The bar always runs from the gun to the hit point.
+- `fx_spark_*`: the pale burst on a wall, floor or crate: cubes thrown (`count`), their speed (m/s), size (m) and life (s). `fx_hit_*`: the same for the red burst on a player. `fx_gravity`: how fast both fall (m/s per s). Story 015: `fx_spark_size` 0.13 to 0.07 m.
 - `fx_boom_fireball` 7 (see the second pass below) / `fx_boom_ring` 30 / `fx_boom_column` 26: the explosion's fireball radius, the shockwave ring radius and the fire column's height (metres); the column is what makes it readable over walls from across the map. `fx_boom_debris` 28 cubes at `fx_boom_debris_speed` 14 m/s.
 - `fx_shake` .14 (metres of camera shake at the blast) and `fx_shake_range` 45 (m): the shake falls off with distance to the bomb, never below a fifth of it, and fades over the blast's 1.2 s. 0 turns the shake off.
 - Story 008 second pass (the first was not readable on screen): `fx_spark_*` raised to 8 cubes, 4 m/s, 0.13 m, 0.45 s; `fx_hit_*` to 14 cubes, 4.5 m/s, 0.16 m, 0.6 s.
-- `fx_spark_puff` 0.7 m / `fx_spark_puff_life` 0.25 s: a bright pale puff where a shot meets a wall, floor or crate. `fx_hit_puff` 0.45 m / `fx_hit_puff_life` 0.25 s: the red puff on a player, drawn over the model so the body never hides it.
+- `fx_spark_puff` 0.4 m (was 0.7, story 015) / `fx_spark_puff_life` 0.25 s: a bright pale puff where a shot meets a wall, floor or crate. `fx_hit_puff` 0.45 m / `fx_hit_puff_life` 0.25 s: the red puff on a player, drawn over the model so the body never hides it.
 - `fx_hit_tint` 0.12 s: how long a hit player's team colour flashes red.
-- `fx_mark_size` 0.5 m / `fx_mark_life` 1.5 s: the dark mark a shot leaves on a wall, crate or floor (16 at most, the oldest reused); it fades over the second half of its life.
+- `fx_mark_size` 0.25 m (was 0.5, story 015) / `fx_mark_life` 1.5 s: the dark mark a shot leaves on a wall, crate or floor (16 at most, the oldest reused); it fades over the second half of its life.
 - `fx_boom_screen_time` 0.12 s / `fx_boom_screen_alpha` 0.45: the full-screen cream flash of the explosion, short and light so the fireball, ring and column show after it (it used to last the whole 1.2 s). `fx_boom_ball_time` 0.15 s: how long the white flash ball lasts.
 - `fx_boom_fireball` lowered from 12 to 7 m in the second pass, so a viewer 8 m away sees the fireball and the ring from outside it instead of a screen filled with yellow.
 - `chr_stride` 4 rad/m: how fast a character'"'"'s legs cycle per metre walked, so the swing speed follows the speed. `chr_leg_swing` 0.7 rad / `chr_arm_swing` 0.3 rad: the leg and arm swing at full walk. `chr_bob` 0.04 m: how much the body rises with each step. `chr_blend` 12 /s: how fast a pose (crouch, prone, walk or stand) eases in. `chr_death_time` 0.7 s: how long the fall to the floor takes (the body then stays down until the round resets).
@@ -182,3 +185,6 @@ holds no comments. The values themselves are in `data/config.json`.
 - `touch_stick_size` 130 px: the diameter of the left stick (CSS pixels); the knob moves half of it each way. `touch_deadzone` 0.3: the part of the stick's radius the knob must pass before it moves you (the move is 8-way, like the keys: the network protocol takes -1, 0 or 1 per axis).
 - `touch_button_size` 56 px: the width of the round on-screen buttons (jump, crouch, reload, swap gun, buy, aim, pause, plant or defuse); fire is 1.4 times that. Thumb-sized: 44 px is the least Apple and Google advise.
 - `touch_pixel_ratio` 1.5: the most the phone graphics level draws per CSS pixel (3D and the overlay), used on touch devices instead of the desktop's 2; a phone with a ratio of 3 would draw four times the pixels for no visible gain.
+- `fx_scope_tracer_skip`: metres of the own sniper tracer left undrawn when seen through the scope (story 015): the 22° view magnifies the first metres into a white blob
+- `fx_scope_tracer_w`: the own sniper tracer's width when seen through the scope (story 015)
+- `CRATE_TOP` (src/game/map.ts, not config: the models' size): a player's shot passes over a crate cell above its drawn height, crate 2.2, barrel 2.62, pallet 2.12, sandbag 1.5 m (story 015)

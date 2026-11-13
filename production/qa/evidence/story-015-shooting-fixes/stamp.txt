@@ -1,0 +1,5 @@
+Reviewed-Content-Hash: src/game/combat.ts cd863cb3cd85a32eaed4da9016d1c7e1ca9ef38f
+Reviewed-Content-Hash: src/game/map.ts 8f1d96dbf16345b0655864720631747e9bc8e750
+Reviewed-Content-Hash: src/main.ts 806d9d42b3cfb4bf4ae7bc851dec5b4fe3ebc562
+Reviewed-Content-Hash: data/config.json 769ce4d2cf8fbbc17d44e7388d3d904b792fb88b
+Reviewed-Content-Hash: data/config-notes.md 20dccb85d6bab8ae39aff19cca110b73683332f4
