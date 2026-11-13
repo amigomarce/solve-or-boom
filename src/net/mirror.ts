@@ -12,7 +12,7 @@
 // server's position and replays the inputs it sent after that. A small difference is blended out
 // (net_correct_blend per snapshot); one over net_snap_m metres is taken at once.
 import { blankMatch, feed, say, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
-import { loadMap, MAP_ID, mapState } from '../game/map';
+import { hasHeights, loadMap, MAP_ID, mapState, moveBody } from '../game/map';
 import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
 import type { Level } from '../game/types';
@@ -35,8 +35,10 @@ export interface Mirror {
   snaps: SnapMessage[];
   /** The client time (ms) of server step 0, smoothed: maps a snapshot's step `k` to the client clock. */
   base: number | null;
-  /** How far the last correction moved the own player, in metres (for a debug readout). */
+  /** How far the last correction moved the own player, in metres, body height (st.y + jumpY) included (for a debug readout). */
   lastError: number;
+  /** The height part of lastError, in metres: the body's height (feet floor st.y plus jumpY, what is drawn), so a fall booked one step apart at a ledge is not an error (story 011). */
+  lastErrorY: number;
 }
 
 /**
@@ -49,7 +51,7 @@ export function createMirror(begin: BeginMessage): Mirror {
   match.classroom = true; match.opts.map = begin.map; match.opts.subject = begin.subject; match.opts.level = begin.level as Level;
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
-  return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0 };
+  return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };
 }
 
 /** Names the players again from a `room` message (a student joined or left); the own player stays "Tú". */
@@ -95,6 +97,8 @@ export function predict(m: Mirror, inp: PlayerInput, dt: number): number {
 }
 
 const T = SCALE.time, P = SCALE.pos, A = SCALE.ang;
+/** A scratch body for the correction's blend walk (reused: no allocation per snapshot). */
+const probe = { x: 0, z: 0, st: { y: 0, jumpY: 0 } };
 
 /**
  * Takes a snapshot in: the round, the bomb, every player (the others into the interpolation buffer), the own
@@ -116,6 +120,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   const [bs, bx, bz, bt, carrier, site, defuser] = snap.b;
   Object.assign(match.bomb, { state: BOMB_STATES[bs], x: bx / P, z: bz / P, timer: bt / T, carrier: carrier >= 0 ? match.players[carrier] : null,
     site: site === 1 ? 'A' : site === 2 ? 'B' : undefined, defuser: defuser >= 0 ? match.players[defuser] : null });
+  match.bomb.y = (snap.b[7] ?? 0) / P; // protocol 4: absent on a flat map
   for (const r of snap.p) {
     const p = match.players[r[0]];
     const wasAlive = p.alive;
@@ -124,7 +129,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
     p.cur = WEAPON_IDS[r[6]] ?? 'pistol'; p.kills = r[9]; p.deaths = r[10];
     if (!p.alive && wasAlive) p.deadT = r[11] / T;
     if (p === me) continue;
-    p.moving = !!(r[5] & FLAG.moving); p.st.stance = STANCES[r[7]] ?? 'stand'; p.st.jumpY = r[8] / P;
+    p.moving = !!(r[5] & FLAG.moving); p.st.stance = STANCES[r[7]] ?? 'stand'; p.st.jumpY = r[8] / P; p.st.y = (r[12] ?? 0) / P;
   }
   // The own player's private values.
   const y = snap.y;
@@ -139,16 +144,28 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
     picked: c.pk, wrongT: c.w / T, wrongTotal: c.wt / T, okT: c.ok / T, anim: old ? old.anim : 0, got: c.g } : null;
   // Reconcile: the server's position and stance at the last input it played, then the inputs since, replayed.
   const row = snap.p.find(r => r[0] === m.seat)!;
-  const shownX = me.x, shownZ = me.z, keepYaw = me.yaw, keepPitch = me.pitch;
-  me.x = row[1] / P; me.z = row[2] / P;
+  const shownX = me.x, shownZ = me.z, shownY = me.st.y + me.st.jumpY, keepYaw = me.yaw, keepPitch = me.pitch;
+  me.x = row[1] / P; me.z = row[2] / P; me.st.y = (row[12] ?? 0) / P;
   Object.assign(me.st, { prone: y[7] === 1, proneT: y[8] / T, jumpY: y[9] / P, vy: y[10] / P, eye: y[11] / P });
   m.unacked = m.unacked.filter(u => u.seq > snap.a);
   for (const u of m.unacked) { me.yaw = u.yaw; me.pitch = u.pitch; walk(m, u.input, STEP); }
   if (newRound || !me.alive) { me.yaw = row[3] / A; me.pitch = row[4] / A; m.unacked.length = 0; } // a new round faces the spawn's way
   else { me.yaw = keepYaw; me.pitch = keepPitch; }
-  const err = Math.hypot(me.x - shownX, me.z - shownZ);
-  m.lastError = newRound ? 0 : err;
-  if (err < tune.net_snap_m && !newRound) { me.x = lerp(shownX, me.x, tune.net_correct_blend); me.z = lerp(shownZ, me.z, tune.net_correct_blend); }
+  const errY = me.st.y + me.st.jumpY - shownY, err = Math.hypot(me.x - shownX, me.z - shownZ, errY);
+  m.lastError = newRound ? 0 : err; m.lastErrorY = newRound ? 0 : Math.abs(errY);
+  if (err < tune.net_snap_m && !newRound) {
+    const bx = lerp(shownX, me.x, tune.net_correct_blend), bz = lerp(shownZ, me.z, tune.net_correct_blend);
+    if (!hasHeights) { me.x = bx; me.z = bz; }
+    else {
+      // With heights the blended spot is reached by walking to it with moveBody from the server's (replayed) state, so
+      // the feet follow ramps and ledges by the same rule. If that walk cannot get there (the spot is past a ramp's side,
+      // a step or a wall from where the server is), the server's state is kept at once: a blend across one of those
+      // edges would leave the prediction walking where the server cannot, and drifting from it every snapshot.
+      probe.x = me.x; probe.z = me.z; probe.st.y = me.st.y; probe.st.jumpY = 0;
+      moveBody(probe, bx - me.x, bz - me.z);
+      if (Math.abs(probe.x - bx) < 1e-6 && Math.abs(probe.z - bz) < 1e-6) { me.x = bx; me.z = bz; me.st.jumpY += probe.st.jumpY; me.st.y = probe.st.y; }
+    }
+  }
   if (newRound) { me.px = me.x; me.pz = me.z; }
   match.events.length = 0;
   for (const e of snap.e) hudFor(m, e);
@@ -194,7 +211,7 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
 
 /**
  * Places the other players for a frame: between the two snapshots around (now - net_interp_ms), or at the latest.
- * Sets x, z, px, pz (the same: the screen's own blend has nothing left to do), yaw and pitch.
+ * Sets x, z, px, pz (the same: the screen's own blend has nothing left to do), yaw, pitch and the feet height st.y.
  * @example interpolate(mirror, performance.now()); drawFrame();
  */
 export function interpolate(m: Mirror, nowMs: number): void {
@@ -209,5 +226,6 @@ export function interpolate(m: Mirror, nowMs: number): void {
     if (rb[0] === m.seat) continue;
     p.x = p.px = lerp(ra[1], rb[1], f) / P; p.z = p.pz = lerp(ra[2], rb[2], f) / P;
     p.yaw = ra[3] / A + angDiff(rb[3] / A, ra[3] / A) * f; p.pitch = lerp(ra[4], rb[4], f) / A;
+    p.st.y = lerp(ra[12] ?? 0, rb[12] ?? 0, f) / P; // the feet height (protocol 4; 0 on a flat map)
   }
 }

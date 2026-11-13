@@ -3,6 +3,7 @@
 // src/net/mirror.ts. Never in a snapshot: another player's health, armour, money, ammo or question card, nor which choice is right.
 import { FLAG, PROTOCOL_VERSION, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type SnapMessage } from './protocol';
 import { deskOf, sideOf, type Match } from '../game/state';
+import { hasHeights } from '../game/map';
 import type { Loose } from '../game/types';
 
 /** Events only the player in their `p` field gets (their own hits, hurts, reloads, empty clicks, and their menu and card's: unlock, click, answer, buy, say). */
@@ -34,12 +35,14 @@ export function eventsFor(match: Match, seat: number, events: Loose[], rangeM: n
   return out;
 }
 
-/** One player as everybody sees it (protocol PlayerRow). */
+/** One player as everybody sees it (protocol PlayerRow; with the feet height last on a map with heights). */
 function playerRow(match: Match, p: Loose): number[] {
   const flags = (p.alive ? FLAG.alive : 0) | (p.human ? FLAG.human : 0) | (p.moving ? FLAG.moving : 0) | (p.defusing || match.bomb.defuser === p ? FLAG.defusing : 0)
     | (p.flashT > 0 ? FLAG.flash : 0) | (p.scoped ? FLAG.scoped : 0) | (match.t - p.spotT < 1.5 ? FLAG.spotted : 0);
-  return [p.id, q(p.x, SCALE.pos), q(p.z, SCALE.pos), q(p.yaw, SCALE.ang), q(p.pitch, SCALE.ang), flags, Math.max(0, WEAPON_IDS.indexOf(p.cur)),
+  const row = [p.id, q(p.x, SCALE.pos), q(p.z, SCALE.pos), q(p.yaw, SCALE.ang), q(p.pitch, SCALE.ang), flags, Math.max(0, WEAPON_IDS.indexOf(p.cur)),
     p.human ? Math.max(0, STANCES.indexOf(p.st.stance)) : 0, p.human ? q(p.st.jumpY, SCALE.pos) : 0, p.kills, p.deaths, q(Math.min(p.deadT, 9), SCALE.time)];
+  if (hasHeights) row.push(q(p.st.y, SCALE.pos)); // protocol 4: the feet height, only where there are heights
+  return row;
 }
 
 /**
@@ -53,7 +56,7 @@ export function buildSnapshot(match: Match, seat: number, ack: number, tick: num
   return {
     v: PROTOCOL_VERSION, t: 'snap', k: tick, a: ack, ph: match.phase, pt: q(match.phaseT, T), rt: q(match.roundT, T),
     r: match.round, s: [...match.score], as: match.attSquad, g: match.gatesClosed ? 1 : 0, pl: q(match.plantT, T),
-    b: [BOMB_STATES.indexOf(b.state), q(b.x, P), q(b.z, P), q(b.timer, T), b.carrier ? b.carrier.id : -1, b.site === 'A' ? 1 : b.site === 'B' ? 2 : 0, b.defuser ? b.defuser.id : -1],
+    b: [BOMB_STATES.indexOf(b.state), q(b.x, P), q(b.z, P), q(b.timer, T), b.carrier ? b.carrier.id : -1, b.site === 'A' ? 1 : b.site === 'B' ? 2 : 0, b.defuser ? b.defuser.id : -1, ...(hasHeights ? [q(b.y ?? 0, P)] : [])],
     p: match.players.map(p => playerRow(match, p)),
     y: [Math.ceil(me.hp), Math.ceil(me.armor), me.money, a.mag, a.res, q(me.reloadT, T), WEAPON_IDS.indexOf(me.primary),
       st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T)],

@@ -1,6 +1,6 @@
 // The bomb: carried, dropped, planted, defused or exploded. No browser in here:
 // the beep, the blast and the model on the floor are drawn from the state and the events.
-import { zone, idx, cellOf } from './map';
+import { zoneAt, cellOf } from './map';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { kill } from './combat';
@@ -10,8 +10,8 @@ import { feed, say, sideOf, type Match } from './state';
 
 export function plantBomb(match: Match, p: Loose): void {
   const b = match.bomb;
-  b.state = 'planted'; b.x = p.x; b.z = p.z; b.carrier = null; b.timer = tune.bomb_time;
-  b.site = zone[idx(cellOf(p.x), cellOf(p.z))] === 3 ? 'A' : 'B';
+  b.state = 'planted'; b.x = p.x; b.z = p.z; b.y = p.st.y; b.carrier = null; b.timer = tune.bomb_time;
+  b.site = zoneAt(cellOf(p.x), cellOf(p.z), p.st.y) === 3 ? 'A' : 'B';
   p.money = Math.min(tune.max_money, p.money + tune.plant_money);
   p.plantT = 0; match.plantT = 0;
   b.yaw = p.yaw; // the way the bomb lies on the floor, for the screen
@@ -27,10 +27,10 @@ export function defuseBomb(match: Match, p: Loose): void {
 export function updateBomb(match: Match, dt: number): void {
   const b = match.bomb;
   b.panicT = Math.max(0, b.panicT - dt);
-  if (b.state === 'carried' && b.carrier) { b.x = b.carrier.x; b.z = b.carrier.z; }
+  if (b.state === 'carried' && b.carrier) { b.x = b.carrier.x; b.z = b.carrier.z; b.y = b.carrier.st.y; }
   if (b.state === 'dropped') {
     for (const p of match.players) {
-      if (p.alive && sideOf(match, p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3) {
+      if (p.alive && sideOf(match, p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3 && Math.abs(p.st.y - b.y) < tune.bomb_reach_y) {
         b.state = 'carried'; b.carrier = p; p.fetching = false;
         if (!p.human) routeTo(match, p, 'site');
         if (p === match.human) say(match, 'Recogiste la bomba'); break;

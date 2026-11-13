@@ -14,7 +14,8 @@ import { params, manual, clock, seedFrom, install } from './hook';
 import {
   CELL, MW, MH, WALL_H, EYE, grid, zone, isGate, idx, CRATES, SITE, siteCells, mapState,
   center, cellOf, walkable, solidSight, hitsWall, moveBody, losClear, walkClear, bfs,
-  MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell,
+  MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell, type MapData,
+  hasHeights, grid1, rampAt, rampHeight, levelHeight,
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
@@ -484,6 +485,21 @@ function buildWorld(): void {
   };
   mark('A', corners((x, y) => zone[idx(x, y)] === 3), 0xd2452f); mark('B', corners((x, y) => zone[idx(x, y)] === 4), 0xd2452f);
   mark('att', corners((x, y) => zone[idx(x, y)] === 1), SIDE_HEX.att); mark('def', corners((x, y) => zone[idx(x, y)] === 2), SIDE_HEX.def);
+  if (hasHeights) { // story 011: just enough of a first floor to read a test map (a slab, its crates, the ramps); story 012 draws the real one
+    const slabMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: wallTex }), H1 = levelHeight(), T = tune.scn_slab_thick;
+    const slabGeo = new THREE.BoxGeometry(CELL, T, CELL), crateGeo = new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const g1 = grid1[idx(x, y)];
+      if (g1 === 1 || g1 === 2) put('slab', slabMat, slabGeo, center(x), H1 - T / 2, center(y));
+      if (g1 === 2) put('crate1', () => new THREE.MeshLambertMaterial({ map: crateTex }), crateGeo, center(x), H1 + 0.55, center(y));
+      if (rampAt(x, y)) { // the ramp's top follows rampHeight at its four corners; a slab of the same thickness under it
+        const top = new THREE.PlaneGeometry(CELL, CELL); top.rotateX(-Math.PI / 2);
+        const pos = top.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) { const wx = center(x) + pos.getX(i), wz = center(y) + pos.getZ(i); pos.setY(i, rampHeight(x, y, Math.min(wx, (x + 1) * CELL - 1e-4), Math.min(wz, (y + 1) * CELL - 1e-4)) + 0.01); }
+        top.computeVertexNormals(); put('slab', slabMat, top, center(x), 0, center(y));
+      }
+    }
+  }
   for (const b of buckets.values()) { const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat); m.matrixAutoUpdate = false; group.add(m); b.geos.forEach(g => g.dispose()); }
   { // walls touching the floor, and the wooden crates (the rest of the crate cells are props), as instanced boxes
     const wallCells = [], sideNear: number[] = [];
@@ -934,7 +950,7 @@ function playEvents(list: Loose[] = state.events): void {
         tracer(e.w, e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
         { // a red burst when the shot ends on a player, else a pale wall/floor/crate spark. A human's shot says it (spark); a bot's shot has no hit flag, so a player standing at its end point is the hit
           let hitP = e.human ? !e.spark : false, hitId = -1;
-          for (const q of state.players) { const dx = q.x - e.to[0], dz = q.z - e.to[2]; if (q.alive && q.id !== e.by && dx * dx + dz * dz < 0.36 && e.to[1] < 2) { hitId = q.id; break; } }
+          for (const q of state.players) { const dx = q.x - e.to[0], dz = q.z - e.to[2]; if (q.alive && q.id !== e.by && dx * dx + dz * dz < 0.36 && e.to[1] - (q.st?.y ?? 0) < 2 && e.to[1] >= (q.st?.y ?? 0) - 0.05) { hitId = q.id; break; } }
           if (!e.human) hitP = hitId >= 0;
           const pf = puffs[puffI++ % puffs.length]; pf.m.material = pf.mats[hitP ? 1 : 0]; pf.m.position.set(e.to[0], e.to[1], e.to[2]); pf.m.visible = true;
           pf.life = pf.t = hitP ? tune.fx_hit_puff_life : tune.fx_spark_puff_life; pf.size = hitP ? tune.fx_hit_puff : tune.fx_spark_puff;
@@ -946,7 +962,8 @@ function playEvents(list: Loose[] = state.events): void {
             // the mark faces the shooter along the grid's main axis (walls and crates are axis-aligned); at floor height it lies flat
             const d = decals[decalI++ % decals.length], dx = e.from[0] - e.to[0], dz = e.from[2] - e.to[2];
             d.m.scale.setScalar(tune.fx_mark_size); d.t = tune.fx_mark_life; d.m.visible = true;
-            if (e.to[1] < 0.05) { d.m.position.set(e.to[0], 0.02, e.to[2]); d.m.rotation.set(-Math.PI / 2, 0, 0); }
+            const onFloor = e.to[1] < 0.05 || (hasHeights && Math.abs(e.to[1] - levelHeight()) < 0.05); // the ground, or the first floor's top
+            if (onFloor) { d.m.position.set(e.to[0], e.to[1] + 0.02, e.to[2]); d.m.rotation.set(-Math.PI / 2, 0, 0); }
             else if (Math.abs(dx) > Math.abs(dz)) { d.m.position.set(e.to[0] + Math.sign(dx) * 0.02, e.to[1], e.to[2]); d.m.rotation.set(0, Math.sign(dx) * Math.PI / 2, 0); }
             else { d.m.position.set(e.to[0], e.to[1], e.to[2] + Math.sign(dz) * 0.02); d.m.rotation.set(0, dz > 0 ? 0 : Math.PI, 0); }
           }
@@ -1179,7 +1196,7 @@ function placeModels() {
     if (p === state.human) continue; // other students are drawn like bots
     const x = lerp(p.px, p.x, ALPHA), z = lerp(p.pz, p.z, ALPHA);
     const dist = m.ready ? Math.hypot(x - m.lx, z - m.lz) : 0; m.lx = x; m.lz = z; m.ready = true; // how far it moved since the last frame drives the walk
-    m.group.position.set(x, 0, z); m.group.rotation.set(0, p.yaw, 0);
+    m.group.position.set(x, p.st?.y ?? 0, z); m.group.rotation.set(0, p.yaw, 0); // at the feet height (story 011; 0 on a flat map)
     setSide(m, sideOf(state, p)); setHeld(m, p.cur);
     poseSoldier(m, p, dist, dt, clock);
     m.flash.visible = p.alive && p.flashT > 0 && m.hold.visible;
@@ -1193,10 +1210,10 @@ function drawWorld() {
   const p = state.human, view = p.alive ? p : (state.specP || p);
   placeModels();
   if (view === p) {
-    camera.position.set(p.x, state.me.eye + state.me.jumpY, p.z);
+    camera.position.set(p.x, state.me.y + state.me.eye + state.me.jumpY, p.z); // feet height + eye + jump
     camera.rotation.set(p.pitch + p.recoil, p.yaw, 0, 'YXZ');
   } else {
-    camera.position.set(lerp(view.px, view.x, ALPHA), EYE, lerp(view.pz, view.z, ALPHA));
+    camera.position.set(lerp(view.px, view.x, ALPHA), (view.st?.y ?? 0) + EYE, lerp(view.pz, view.z, ALPHA));
     camera.rotation.set(0, view.yaw, 0, 'YXZ');
     models[view.id].group.visible = false;
   }
@@ -1212,11 +1229,11 @@ function drawWorld() {
   } else bombModel.lightMat.color.setHex(0x44ff66);
   // the bomb on the floor: dropped, planted, or defused (until the next round)
   bombModel.group.visible = b.state === 'planted' || b.state === 'dropped' || b.state === 'defused';
-  if (bombModel.group.visible) { bombModel.group.position.set(b.x, 0, b.z); bombModel.group.rotation.y = b.yaw ?? 0; }
+  if (bombModel.group.visible) { bombModel.group.position.set(b.x, b.y ?? 0, b.z); bombModel.group.rotation.y = b.yaw ?? 0; }
   const showBeacon = b.state === 'planted' || b.state === 'dropped';
   beacon.group.visible = showBeacon;
   if (showBeacon) {
-    beacon.group.position.set(b.x, 0, b.z);
+    beacon.group.position.set(b.x, b.y ?? 0, b.z);
     beacon.mat.color.setHex(b.state === 'planted' ? (b.panicT > 0 ? 0xff1a1a : 0xff4a2a) : 0xffb030);
     beacon.mat.opacity = 0.22 + 0.12 * Math.sin(state.t * (b.panicT > 0 ? 18 : 5));
     beacon.ring.scale.setScalar(1 + 0.15 * Math.sin(state.t * 4));
@@ -1241,10 +1258,10 @@ function drawWorld() {
   const boom = state.boomT > 0, bk = 1 - state.boomT / 1.2; // bk: 0 at the blast, 1 at its end
   boomFlash.visible = boom && bk < tune.fx_boom_ball_time / 1.2; boomMesh.visible = boomRing.visible = boomColumn.visible = boom;
   if (boom) {
-    boomFlash.position.set(b.x, 1.5, b.z); boomFlash.scale.setScalar(3 + bk * 30); boomFlash.material.opacity = Math.max(0, 1 - bk * 1.2 / tune.fx_boom_ball_time);
-    boomMesh.position.set(b.x, 1, b.z); boomMesh.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_fireball); boomMesh.material.opacity = 0.9 * (1 - bk); boomMesh.material.color.setHSL(0.12 - 0.1 * bk, 1, 0.5);
-    boomRing.position.set(b.x, 0.12, b.z); boomRing.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_ring); boomRing.material.opacity = 0.9 * (1 - bk);
-    boomColumn.position.set(b.x, 0, b.z); boomColumn.scale.set(2 + bk * 3, tune.fx_boom_column * Math.min(1, bk * 4), 2 + bk * 3); boomColumn.material.opacity = 0.55 * (1 - bk);
+    boomFlash.position.set(b.x, (b.y ?? 0) + 1.5, b.z); boomFlash.scale.setScalar(3 + bk * 30); boomFlash.material.opacity = Math.max(0, 1 - bk * 1.2 / tune.fx_boom_ball_time);
+    boomMesh.position.set(b.x, (b.y ?? 0) + 1, b.z); boomMesh.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_fireball); boomMesh.material.opacity = 0.9 * (1 - bk); boomMesh.material.color.setHSL(0.12 - 0.1 * bk, 1, 0.5);
+    boomRing.position.set(b.x, (b.y ?? 0) + 0.12, b.z); boomRing.scale.setScalar(1 + Math.sqrt(bk) * tune.fx_boom_ring); boomRing.material.opacity = 0.9 * (1 - bk);
+    boomColumn.position.set(b.x, b.y ?? 0, b.z); boomColumn.scale.set(2 + bk * 3, tune.fx_boom_column * Math.min(1, bk * 4), 2 + bk * 3); boomColumn.material.opacity = 0.55 * (1 - bk);
   }
   // The screen shake: stronger near the blast, never below a fifth of it, fading with the blast; the camera is put back after the draw
   const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z, crz = camera.rotation.z;
@@ -1917,6 +1934,8 @@ install({
     for (let i = 0; i < n; i++) step();
     if (draw) { ALPHA = alpha; drawFrame(); }
   },
+  // Dev only (?manual=1): plays a single-player match on a map passed in (a scratch test map, story 011). Not in the menus.
+  ...(manual ? { testMap(id: string, data: unknown): void { MAPS[id] = data as MapData; session.map = id; scene = 'play'; startMatch(); } } : {}),
 });
 
 // A value the panel (dev server) changes is read again: the default map, on the session screen.

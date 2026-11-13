@@ -68,6 +68,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `bot_hear_shot`: m a gunshot is heard (was a fixed 24)
 - `bot_hear_sprint`, `bot_hear_run`: m your footsteps are heard sprinting (Shift) or running; walking (X), crouched or prone is silent
 - `bot_hear_land`: m the landing of your jump is heard
+- `bot_hear_floor_mult`: maps with heights: the part of a noise's range a bot on the other level hears, when no clear line (an opening, the ramp) joins the two
 - `bot_step_interval`: s between your footstep noises
 - `bot_corner_look`: s an attacker looks at each entry of a site on arriving there
 - `bot_corner_merge_deg`: entries closer than this angle, seen from the bot, count as one look
@@ -157,3 +158,8 @@ holds no comments. The values themselves are in `data/config.json`.
 - `fx_boom_fireball` lowered from 12 to 7 m in the second pass, so a viewer 8 m away sees the fireball and the ring from outside it instead of a screen filled with yellow.
 - `chr_stride` 4 rad/m: how fast a character'"'"'s legs cycle per metre walked, so the swing speed follows the speed. `chr_leg_swing` 0.7 rad / `chr_arm_swing` 0.3 rad: the leg and arm swing at full walk. `chr_bob` 0.04 m: how much the body rises with each step. `chr_blend` 12 /s: how fast a pose (crouch, prone, walk or stand) eases in. `chr_death_time` 0.7 s: how long the fall to the floor takes (the body then stays down until the round resets).
 - `scn_clouds` 14: how many blocky clouds float high round the arena (3 or 4 white blocks each, flat bottom, 210 to 260 m away, never in front of the arena). `scn_cloud_size` 16 m: the width of one cloud block. `scn_sun_size` 6 degrees: the radius of the sun disc. `scn_floor_wear` 0.6: soft worn patches on the floor, per floor cell (0 = clean). `scn_base_tint` 0.4: how far the walls round a base turn to its side's colour (0 none, 1 full). `scn_flag_height` 5.8 m: the height of the bomb-site and base flags (the walls are 4.5 m, so the flags show above them from across the arena).
+- `scn_slab_thick` 0.25 m: how thick the first-floor slab and the ramps are drawn (story 011: a stand-in look so a test map with heights reads; story 012 draws the real first floor). Drawing only: the rules treat the slab as a plane at `level_height`.
+- `level_height` 3 m: how high the first floor is above the ground (story 011; a map with a first floor or ramps only). The walls are 4.5 m and the eye 1.6 m, so a person on the first floor has the eye at 4.6 m, just over the wall tops. Under it there is 3 m of headroom for the 1.8 m body and a jump (0.83 m).
+- `step_height` 0.5 m: the most a body steps up when walking (a ramp is climbed continuously; a floor higher than this is a wall to it). A drop of more than this is a fall: the body is set down on the lower floor with the landing noise (no damage).
+- `ramp_max_slope` 0.6: the steepest a ramp or stair may be (rise over run); the map check names a steeper one. With level_height 3 a ramp must be 2 cells (6 m) long or more (slope 0.5).
+- `bomb_reach_y` 1.5 m: how far apart in height a person and the bomb may be to pick it up or to open a defuse: a defender under a planted bomb on the floor above (3 m) cannot defuse through the ceiling.

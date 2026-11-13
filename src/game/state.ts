@@ -10,7 +10,9 @@ import * as QUESTIONS from '../questions';
 
 /** A person's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
  *  Every player has one (`p.st`); `match.me` is the viewer's. */
-export interface Stance { stance: string; prone: boolean; proneT: number; jumpY: number; vy: number; eye: number; sprint: boolean }
+export interface Stance { stance: string; prone: boolean; proneT: number; jumpY: number; vy: number; eye: number; sprint: boolean;
+  /** Height of the feet above the ground floor in metres (story 011): 0 on the ground, level_height on the first floor, between on a ramp. jumpY is the jump or fall on top of it. */
+  y: number }
 
 /** What the match was built from: the question choices and the map. */
 export interface MatchOptions {
@@ -110,7 +112,11 @@ export function mulberry32(seed: number): () => number {
 }
 
 /** A standing, grounded stance. */
-export function freshStance(): Stance { return { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false }; }
+export function freshStance(): Stance {
+  const st = { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false } as Stance;
+  // The feet height (story 011): not enumerable, like bomb.y, so a flat match's serialised state is unchanged.
+  return Object.defineProperty(st, 'y', { value: 0, enumerable: false, writable: true });
+}
 
 /** The bot-only AI fields, fresh for a round (never on the human): cover and peeking, the staging wait,
  *  the pack rotation, a heard noise, the corner check and the stuck re-path. */
@@ -161,6 +167,8 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
   Object.defineProperty(match, 'count', { value: null, enumerable: false, writable: true });
   match.human = humans.length ? match.players[humans[0]] : null;
   match.me = (match.human ?? match.players[0]).st;
+  // The bomb's height (feet level, like p.st.y): not enumerable, so the same-seed replay's serialised state is unchanged.
+  Object.defineProperty(match.bomb, 'y', { value: 0, enumerable: false, writable: true });
   match.players.forEach(resetGuns);
   return match;
 }

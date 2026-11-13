@@ -1,0 +1,61 @@
+map problems (test2): []
+
+1. UP the ramp (east along row 6, 0.1 m steps from cell 10):
+x31.60:y0.00 x32.20:y0.00 x32.80:y0.00 x33.40:y0.00 x34.00:y0.00 x34.60:y0.00 x35.20:y0.00 x35.80:y0.00 x36.40:y0.20 x37.00:y0.50 x37.60:y0.80 x38.20:y1.10 x38.80:y1.40 x39.40:y1.70 x40.00:y2.00 => end x40.50 z19.50 y2.25 jumpY0.00
+   DOWN again (west):
+x40.40:y2.20 x39.80:y1.90 x39.20:y1.60 x38.60:y1.30 x38.00:y1.00 x37.40:y0.70 x36.80:y0.40 x36.20:y0.10 x35.60:y0.00 x35.00:y0.00 x34.40:y0.00 x33.80:y0.00 x33.20:y0.00 x32.60:y0.00 x32.00:y0.00 => end x31.50 z19.50 y0.00 jumpY0.00
+
+2. Blocked / edge:
+   ground body walks south into the SIDE of the ramp (cell 12,6, low part still 0.5+ m up?): x37.50:y0.00 x37.50:y0.00 x37.50:y0.00 => end x37.50 z17.60 y0.00 jumpY0.00
+   first-floor body walks north into the first-floor crate at (17,4): x52.50:y3.00 x52.50:y3.00 x52.50:y3.00 => end x52.50 z15.40 y3.00 jumpY0.00
+   first-floor body at x=14 walks WEST off the edge at row 5 (cell 14,5 -> 13,5 is air over ground):
+    x43.40:y3.00 x43.00:y3.00 x42.60:y3.00 x42.20:y3.00 x41.80:y3.00 x41.40:y0.00 x41.00:y0.00 x40.60:y0.00 => end x40.50 z16.50 y0.00 jumpY3.00 (fall: jumpY 3.00 m is the drop; gravity and the landing noise follow in stanceStep)
+   ground body under the first floor walks about (x 16 -> 19): x49.60:y0.00 x51.10:y0.00 => end x52.50 z19.50 y0.00 jumpY0.00  (the room beneath: y stays 0)
+   path ground->first floor (bfs3): [[11,6,0],[12,6,0],[13,6,0],[14,6,1],[15,6,1],[16,6,1]]
+   path first floor -> ground (drop allowed one way): [[15,6,1],[14,6,1],[13,6,0],[12,6,0],[11,6,0],[10,6,0]] ...
+   canStep ground(12,5)->ramp(12,6) from the side: false | ramp top (13,6)->(14,6) level 1: true | ground(11,6)->ramp(12,6): true
+
+3. Shots:
+   ground eye (x16,z6,h1.6) -> first-floor target (x20,z6,h4.2): clear? false (through the floor: expect false)
+   first-floor eye (x15,h4.6) -> ground target (x10.5, h1.2) over the ramp/stairwell: true (through the opening: expect true)
+   first-floor eye (x16,h4.6) -> ground target at x13 (room under the floor): false (floor between: expect false)
+   rayStop straight down from the first floor: 0.20 m (floor at 4.6/ slope 10 -> about 0.2..0.4)
+   rayStop 10->16: stops at 37.6 m of 18 m
+   rayStop 18->16: stops at 3.4 m of 6 m
+   rayStop 14->10: stops at 16.4 m of 12 m
+   ramp-line ray samples (x, h, solid?): 36:2.25:false 38:2.54:false 39.6:2.77:false 40.5:2.90:false 41.5:3.04:false 42.2:3.15:false 43:3.26:false 45:3.55:false
+   rifle from the ground (18,6) up to the first floor (16,6), through the floor: victim hp 100
+   rifle from the ground (10,6) along the ramp line to the first floor (16,6): the ramp is an opening: victim hp 100
+   rifle from the first floor edge (14,6) down to the ground (10,6), through the stairwell: victim hp 66
+   rifle ground to ground (control): victim hp 66
+
+4. Plant on the first floor, defuse from below:
+   bomb planted, site B, bomb.y 3, planter y 3, zone-at-level-1 4, zone-at-level-0 0
+   control: ground plant at site A -> planted, site A, y 0
+   plant with the player on the GROUND level of the same cell: zone 0 -> cannot plant there:
+   ground player below site B for 200 steps: bomb carried
+   defender bot directly UNDER the planted bomb (y 0 vs 3) for 1 s: defusing = false
+   the same bot ON the first floor beside the bomb for 1 s: defusing = true
+
+7. Map checks on broken stairs:
+ t-short:
+   - t-short: ramp 12,6,12,6 is too steep: it climbs 3 m in 3 m (slope 1.00, the most is 0.6); make it longer
+ t-nowhere:
+   - t-nowhere: ramp 12,11,13,11 leads nowhere at its top: the cell after its high end is not a first-floor cell
+   - t-nowhere: the first floor has no way up: no ramp or stair joins the ground to it
+   - t-nowhere: no path from the att base to site B on the first floor with the gates open (that level cannot be reached)
+   - t-nowhere: no path from the def base to site B on the first floor with the gates open (that level cannot be reached)
+   - t-nowhere: route B lane cannot walk 11,10 to 16,6,1
+   - t-nowhere: route B mid cannot walk 11,6 to 15,6,1
+ t-noramp:
+   - t-noramp: the first floor has no way up: no ramp or stair joins the ground to it
+   - t-noramp: no path from the att base to site B on the first floor with the gates open (that level cannot be reached)
+   - t-noramp: no path from the def base to site B on the first floor with the gates open (that level cannot be reached)
+   - t-noramp: route B lane cannot walk 11,10 to 16,6,1
+   - t-noramp: route B mid cannot walk 11,6 to 15,6,1
+ t-spawn1:
+   - t-spawn1: def spawn 21,5,1 on the first floor is not walkable floor
+ t-island:
+   - t-island: the attackers cannot reach 2,10,1 on the first floor: that level cannot be reached
+
+after all the checks the flat maps still check clean: []

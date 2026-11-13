@@ -1,0 +1,23 @@
+seed 5: 6 rounds, over true, bots 8
+seed 6: 5 rounds, over true, bots 8
+seed 7: 5 rounds, over true, bots 8
+seed 8: 6 rounds, over true, bots 8
+map problems: []
+{"ramp crossings up":24,"ramp crossings down":4,"kills same level":125,"planned drops off the edge":5,"plant A (level 0)":9,"defuse A (level 0)":5,"kills across levels":5,"plant B (level 1)":4,"rounds":22,"matches over":4,"exploded A":1,"kills by the bomb":1,"defuse B (level 1)":2}
+STUCK > 5 s: 0
+UNCHOSEN level changes: 0
+supportAt null (cell y phase: samples): []
+AFTER PLANT seed 5 r4 planted A at t287 -> end t297 bomb defused defs alive Bot Ana@10,2,L0 gtrue dtrue wps[[10,2,0]]
+AFTER PLANT seed 5 r6 planted A at t446 -> end t459 bomb defused defs alive Bot You@11,2,L0 gtrue dtrue wps[[10,2,0]] | Bot Ana@10,2,L0 gtrue dfalse wps[]
+AFTER PLANT seed 5 r7 planted B at t518 -> end t529 bomb planted defs alive 
+AFTER PLANT seed 6 r1 planted A at t50 -> end t90 bomb exploded defs alive Bot Rex@13,4,L0 gtrue dfalse wps[[8,2,0]]
+AFTER PLANT seed 6 r2 planted B at t148 -> end t150 bomb planted defs alive 
+AFTER PLANT seed 6 r4 planted A at t301 -> end t312 bomb planted defs alive 
+AFTER PLANT seed 6 r6 planted A at t419 -> end t439 bomb defused defs alive Bot Tomas@10,3,L0 gtrue dtrue wps[]
+AFTER PLANT seed 7 r1 planted A at t90 -> end t122 bomb defused defs alive Bot Mila@18,4,L1 gtrue dfalse wps[[8,2,0]] | Bot Iker@9,2,L0 gtrue dtrue wps[[8,2,0]]
+AFTER PLANT seed 7 r2 planted A at t176 -> end t195 bomb planted defs alive 
+AFTER PLANT seed 7 r4 planted A at t344 -> end t352 bomb planted defs alive 
+AFTER PLANT seed 8 r1 planted B at t89 -> end t107 bomb defused defs alive Bot Rex@17,6,L1 gtrue dtrue wps[[17,6,1]] | Bot Iker@14,6,L1 gtrue dfalse wps[[17,6,1]] | Bot Sol@17,6,L1 gtrue dfalse wps[]
+AFTER PLANT seed 8 r3 planted A at t231 -> end t244 bomb defused defs alive Bot Rex@9,2,L0 gtrue dfalse wps[[8,2,0]] | Bot Mila@8,2,L0 gtrue dfalse wps[] | Bot Iker@8,2,L0 gtrue dtrue wps[[8,2,0]] | Bot Sol@8,2,L0 gtrue dfalse wps[]
+AFTER PLANT seed 8 r4 planted B at t319 -> end t332 bomb defused defs alive Bot You@15,6,L1 gtrue dfalse wps[] | Bot Kira@15,5,L1 gtrue dtrue wps[]
+unmatched kills: []

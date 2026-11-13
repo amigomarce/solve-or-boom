@@ -1,6 +1,6 @@
 // The rounds: the start of a round, how a round ends and what comes after (the half-time swap, the match's end).
 // No browser in here: the screen learns of each from match.events.
-import { MAP, mapState, center } from './map';
+import { MAP, mapState, center, levelY } from './map';
 import { roundPay } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
@@ -18,7 +18,7 @@ export function startRound(match: Match) {
   for (const p of match.players) {
     if (!p.alive) resetGuns(p);
     const side = sideOf(match, p), spot = spawnSpots(side)[sides[side]++];
-    p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]);
+    p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]); p.st.y = levelY(spot[2] ?? 0);
     p.yaw = side === 'att' ? -Math.PI / 2 : Math.PI / 2; p.pitch = 0; p.recoil = 0; p.scoped = false;
     p.target = null; p.path = []; p.wps = []; p.arrived = false; p.defusing = false; p.plantT = 0;
     p.deadT = 0; p.alertT = 0; p.rotated = false; p.guarding = false; p.fetching = false; p.chasing = false; p.reloadT = 0; p.cool = 0; p.lastSeenT = -99;

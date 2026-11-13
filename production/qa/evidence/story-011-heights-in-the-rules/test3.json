@@ -1,0 +1,24 @@
+{
+  "name": "Prueba de dos pisos (pasillos)",
+  "width": 24, "height": 14, "round_time": 100,
+  "view": { "fog": [40, 120], "flyover": [30, 20, 25] },
+  "floor": [
+    { "rect": [1, 4, 3, 8], "zone": "att_base" },
+    { "rect": [2, 1, 11, 3], "note": "north lane" },
+    { "rect": [8, 1, 10, 3], "zone": "A", "note": "site A on the ground" },
+    { "rect": [4, 6, 11, 6], "note": "mid corridor to the ramp foot" },
+    { "rect": [11, 5, 11, 5], "note": "mid joins the room under the first floor" },
+    { "rect": [2, 9, 2, 11] }, { "rect": [2, 10, 11, 11], "note": "south lane" },
+    { "rect": [12, 2, 19, 11], "note": "the ground room under the first floor" },
+    { "rect": [20, 4, 22, 8], "zone": "def_base" },
+    { "rect": [20, 9, 22, 11], "note": "the foot of the second ramp" },
+    { "rect": [14, 2, 19, 10], "zone": "B", "level": 1, "note": "the first floor, site B on it" }
+  ],
+  "ramps": [ { "rect": [12, 6, 13, 6], "dir": "E" }, { "rect": [20, 10, 21, 10], "dir": "W", "note": "second ramp, the defenders' way up" } ],
+  "crates": [[7, 10], [15, 5], [16, 8], [17, 4, 1]],
+  "spawns": { "att": [[1, 5], [1, 6], [2, 5], [2, 6]], "def": [[21, 5], [21, 6], [20, 5], [20, 6]] },
+  "sites": { "A": [9, 2], "B": [16, 6, 1] },
+  "routes": { "A": { "lane": [[5, 2]], "mid": [[11, 11], [12, 3]] }, "B": { "lane": [[11, 10], [22, 10], [18, 9, 1]], "mid": [[11, 6], [15, 6, 1]] } },
+  "anchors": { "conn": [[12, 9]], "mid": [7, 6] },
+  "attack_hold": [5, 6]
+}

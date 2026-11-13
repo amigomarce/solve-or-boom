@@ -1,0 +1,2 @@
+teacher start: true, seats 0,4
+[errY 3.000] Ana ack 2296 k 2304; shown x 41.623 z 13.514 y 0.000 jumpY 3.729 vy 1.500 seq 2315 unacked 21 | server row x 43.28 z 13.53 y 3 own jumpY 0 vy 0 | after replay+blend x 41.660 z 13.508 y 3.000 jumpY 0.729 vy 1.500 unacked 18 | server now x 42.832 z 13.523 y 3.000 jumpY 0.079

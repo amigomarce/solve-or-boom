@@ -1,6 +1,6 @@
 // The bots' plans and purchases: who buys what, and each round's routes (staging lanes, anchors, holds).
 // Everything random goes through match.rng(). No browser in here.
-import { MAP, SITE, siteCells, type Cell } from './map';
+import { MAP, SITE, siteCells, hasHeights, cellLevels, type Cell } from './map';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { sideOf, type Match } from './state';
@@ -25,23 +25,34 @@ export function botBuy(match: Match, b: Loose): void {
   if (b.armor < 50 && b.money >= tune.price_armor && ask()) { b.money -= tune.price_armor; b.armor = 100; }
 }
 
-export function siteSpot(match: Match, S: string): number[] { const c = siteCells[S]; return c[Math.floor(match.rng() * c.length)]; }
+/** A random cell of site S (with heights: [cx, cy, the site's level]). */
+export function siteSpot(match: Match, S: string): number[] {
+  const c = siteCells[S], k = c[Math.floor(match.rng() * c.length)];
+  return hasHeights ? [k[0], k[1], SITE[S].lv] : k;
+}
+/** A copy of a map-data cell: the level (third number) kept on a map with heights. */
+const copy = (c: Cell): Cell => (hasHeights ? c.slice() : [c[0], c[1]]);
+/** Sends bot b on the attack route of `kind` (lane, mid, hold, or straight to the site) for this round's site. */
 export function routeTo(match: Match, b: Loose, kind: string): void {
   const S = match.attackSite;
-  const copy = (c: Cell): Cell => [c[0], c[1]];
   const r = S === 'A' ? MAP.routes.A : MAP.routes.B, lane = r.lane.map(copy), mid = r.mid.map(copy);
   b.routeKind = kind; b.arrived = false; b.path = []; b.after = []; b.coverT = 0; b.plan = [];
   if (kind === 'lane') b.wps = [...lane, siteSpot(match, S)];
   else if (kind === 'mid') b.wps = [...mid, siteSpot(match, S)];
-  else if (kind === 'hold') { b.wps = [[MAP.attack_hold[0], MAP.attack_hold[1]]]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
+  else if (kind === 'hold') { b.wps = [copy(MAP.attack_hold)]; b.holdT = tune.sniper_hold_time; b.holdYaw = -Math.PI / 2; }
   else b.wps = [siteSpot(match, S)];
   if (kind !== 'hold') b.holdYaw = -Math.PI / 2;
-  if (match.bomb.carrier === b) b.wps[b.wps.length - 1] = [SITE[S].cx + (match.rng() < 0.5 ? -1 : 1), SITE[S].cy];
+  if (match.bomb.carrier === b) {
+    const c = [SITE[S].cx + (match.rng() < 0.5 ? -1 : 1), SITE[S].cy];
+    // With heights the carrier plants on the site's level (the cell beside the centre, or the centre when that one is not floor there).
+    b.wps[b.wps.length - 1] = !hasHeights ? c : cellLevels(c[0], c[1]).includes(SITE[S].lv) ? [c[0], c[1], SITE[S].lv] : [SITE[S].cx, SITE[S].cy, SITE[S].lv];
+  }
 }
+/** Sends defender bot b to anchor `a` (A, B, the connector or mid). */
 export function anchorTo(match: Match, b: Loose, a: string): void {
   b.anchor = a; b.arrived = false; b.path = []; b.holdYaw = Math.PI / 2;
-  if (a === 'mid') b.wps = [[MAP.anchors.mid[0], MAP.anchors.mid[1]]];
-  else if (a === 'conn') { const conn = MAP.anchors.conn[Math.floor(match.rng() * MAP.anchors.conn.length)]; b.wps = [[conn[0], conn[1]]]; }
+  if (a === 'mid') b.wps = [copy(MAP.anchors.mid)];
+  else if (a === 'conn') { const conn = MAP.anchors.conn[Math.floor(match.rng() * MAP.anchors.conn.length)]; b.wps = [copy(conn)]; }
   else b.wps = [siteSpot(match, a)];
 }
 /** A copy of the list in an order drawn with the seeded rng (Fisher-Yates). */

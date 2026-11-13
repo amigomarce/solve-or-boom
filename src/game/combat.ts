@@ -1,6 +1,6 @@
 // Shooting and damage: the human's shot, a bot's shot, armour, kills, reloads and the noises that bots hear.
 // No browser in here: sounds, tracers and sparks are events in match.events for the screen to play and draw.
-import { EYE, solidSight, center, SITE } from './map';
+import { EYE, solidSight, center, SITE, hasHeights, rayStop, levelOfY, losClear } from './map';
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
@@ -30,7 +30,7 @@ export function kill(match: Match, t: Loose, from: Loose): void {
     (from && from === me) || t === me);
   if (from && from.human && from !== t) { if (from === me) match.killT = 0.4; match.events.push({ type: 'killmark', p: from.id }); }
   if (match.bomb.state === 'carried' && match.bomb.carrier === t) {
-    match.bomb.state = 'dropped'; match.bomb.x = t.x; match.bomb.z = t.z; match.bomb.carrier = null;
+    match.bomb.state = 'dropped'; match.bomb.x = t.x; match.bomb.z = t.z; match.bomb.y = t.st.y; match.bomb.carrier = null;
     if (me && sideOf(match, me) === 'att') say(match, t === me ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
   }
   if (match.bomb.defuser === t) match.bomb.defuser = null;
@@ -51,8 +51,11 @@ export function humanShoot(match: Match, p: Loose): void {
   const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
   // walls and crates along the flat ray, or the floor when aimed down
   let wallT = 200;
-  for (let s = 0.2; s < 200; s += 0.2) if (solidSight(p.x + hx * s, p.z + hz * s)) { wallT = s; break; }
-  if (pitch < -0.01) wallT = Math.min(wallT, eye / -tp);
+  if (hasHeights) wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp); // floors, ceilings, ramps, walls and crates at their height (story 011)
+  else {
+    for (let s = 0.2; s < 200; s += 0.2) if (solidSight(p.x + hx * s, p.z + hz * s)) { wallT = s; break; }
+    if (pitch < -0.01) wallT = Math.min(wallT, eye / -tp);
+  }
   let best = null, bestT = wallT, head = false;
   for (const e of match.players) {
     if (!e.alive || e.squad === p.squad) continue;
@@ -61,15 +64,15 @@ export function humanShoot(match: Match, p: Loose): void {
     const perp2 = ox * ox + oz * oz - along * along, r = 0.42;
     if (perp2 > r * r) continue;
     const t = along - Math.sqrt(r * r - perp2);
-    const y = eye + tp * t;
+    const y = eye + tp * t + (p.st.y - e.st.y); // height over the target's feet
     if (y < 0 || y > 1.88 || t >= bestT) continue;
     best = e; bestT = t; head = y > 1.46;
   }
-  const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = eye + tp * bestT;
+  const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = p.st.y + eye + tp * bestT;
   const gx = p.x + hx * 0.6 - hz * 0.18, gz = p.z + hz * 0.6 + hx * 0.18;
-  match.events.push({ type: 'shot', human: true, by: p.id, w, x: p.x, z: p.z, from: [gx, eye - 0.18, gz], to: [ex, ey, ez], spark: !best });
+  match.events.push({ type: 'shot', human: true, by: p.id, w, x: p.x, z: p.z, from: [gx, p.st.y + eye - 0.18, gz], to: [ex, ey, ez], spark: !best });
   p.flashT = 0.05;
-  makeNoise(match, p.x, p.z, tune.bot_hear_shot, p.squad);
+  makeNoise(match, p.x, p.z, tune.bot_hear_shot, p.squad, p.st.y);
   if (best) {
     if (p === match.human) match.hitT = 0.15;
     match.events.push({ type: 'hit', p: p.id });
@@ -93,15 +96,18 @@ export function finishReload(p: Loose): void {
   if (p.human) { const n = Math.min(need, a.res); a.mag += n; a.res -= n; } else a.mag = tune[p.cur + '_mag'];
 }
 /** A noise at (x, z) made by a body of `squad`: every living enemy bot within r metres hears it (walls do not stop
- *  sound). A defender who hears it near a site raises the site alert; a bot not already fighting turns toward it
+ *  sound; on a map with heights a ceiling damps it, see bot_hear_floor_mult). A defender who hears it near a site raises the site alert; a bot not already fighting turns toward it
  *  and remembers where it was, to go and look when it has nothing better to do. With sight, the only way a bot
  *  learns where an enemy is. */
-export function makeNoise(match: Match, x: number, z: number, r: number, squad: number): void {
+export function makeNoise(match: Match, x: number, z: number, r: number, squad: number, y = 0): void {
   for (const b of match.players) {
-    if (b.human || !b.alive || b.squad === squad || Math.hypot(b.x - x, b.z - z) >= r) continue;
+    if (b.human || !b.alive || b.squad === squad) continue;
+    // Heights: a noise on the other level carries bot_hear_floor_mult of its range, unless a clear line joins the two (an opening, the ramp).
+    const far = hasHeights && levelOfY(y) !== levelOfY(b.st.y) && !losClear(x, z, b.x, b.z, y + 1, b.st.y + 1) ? r * tune.bot_hear_floor_mult : r;
+    if (Math.hypot(b.x - x, b.z - z) >= far) continue;
     siteAlert(match, b, x, z);
     if (b.target) continue;
-    b.alertT = 1.2; b.alertYaw = yawTo(x - b.x, z - b.z); b.noiseX = x; b.noiseZ = z; b.noiseNew = true;
+    b.alertT = 1.2; b.alertYaw = yawTo(x - b.x, z - b.z); b.noiseX = x; b.noiseZ = z; if (hasHeights) b.noiseY = y; b.noiseNew = true; // noiseY only where there are heights, so a flat match's state is as before
   }
 }
 /** A defender bot that saw or heard an enemy at (x, z) within bot_site_alert metres of a site calls that site:
@@ -126,8 +132,8 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
   const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;
   const miss = hitIt ? 0 : (match.rng() - 0.5) * 2.2;
   const body = t.human ? t.st.eye / EYE : 1, lift = t.human ? t.st.jumpY : 0; // a person's body: lower when down, higher in a jump
-  match.events.push({ type: 'shot', human: false, by: b.id, w, x: b.x, z: b.z, from: [gx, 1.3, gz], to: [t.x - fz * miss, (hitIt ? 1.2 : 1.0 + match.rng() * 1.2) * body + lift, t.z + fx * miss], spark: false });
+  match.events.push({ type: 'shot', human: false, by: b.id, w, x: b.x, z: b.z, from: [gx, b.st.y + 1.3, gz], to: [t.x - fz * miss, t.st.y + (hitIt ? 1.2 : 1.0 + match.rng() * 1.2) * body + lift, t.z + fx * miss], spark: false });
   b.flashT = 0.06;
-  makeNoise(match, b.x, b.z, tune.bot_hear_shot, b.squad);
+  makeNoise(match, b.x, b.z, tune.bot_hear_shot, b.squad, b.st.y);
   if (hitIt) applyDamage(match, t, tune[w + '_dmg'], b);
 }

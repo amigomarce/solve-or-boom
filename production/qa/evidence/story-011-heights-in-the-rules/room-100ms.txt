@@ -1,0 +1,16 @@
+teacher start: true, seats 0,4
+map test3 (hasHeights true, level_height 3 m); protocol PROTOCOL_VERSION 4; 617 s; room ended (partida terminada); matches 1; final score 3-4; rounds 1:0-0 2:1-0 3:2-0 4:3-0 5:3-1 6:3-2 7:3-3
+server steps 36922, dropped 0, mean step 0.152 ms, max 20.79 ms; warnings 0
+server sent 24616 snapshots, 527 bytes each, 10513 B/s per student; 74046 messages accepted (60.0/s per student), 0 refused
+Ana seat 0: 12308 msgs in (20.0/s), 12305 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 186.9 s at y 3.00 m; on a ramp 13.8 s; shots seen 1005, from above the first floor 242
+  prediction correction ground: n 1901, mean 0.023 m, max 0.137 m, height part mean 0.000 m max 0.000 m
+  prediction correction ramp:   n 275, mean 0.030 m, max 0.146 m, height part mean 0.004 m max 0.055 m
+  prediction correction floor1: n 4117, mean 0.016 m, max 3.001 m, height part mean 0.001 m max 3.000 m
+Beto seat 4: 12307 msgs in (19.9/s), 12305 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 51.5 s at y 3.00 m; on a ramp 5.7 s; shots seen 1005, from above the first floor 242
+  prediction correction ground: n 1504, mean 0.009 m, max 0.098 m, height part mean 0.000 m max 0.000 m
+  prediction correction ramp:   n 122, mean 0.013 m, max 0.105 m, height part mean 0.002 m max 0.045 m
+  prediction correction floor1: n 1122, mean 0.032 m, max 0.096 m, height part mean 0.000 m max 0.000 m
+no errors (server or client)
+exit 0

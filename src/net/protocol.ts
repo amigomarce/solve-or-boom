@@ -9,8 +9,8 @@
 import type { PlayerInput } from '../game/player';
 import { LEVELS, type Level } from '../game/types';
 
-/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). */
-export const PROTOCOL_VERSION = 3;
+/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). */
+export const PROTOCOL_VERSION = 4;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -103,8 +103,9 @@ export const SCALE = { pos: 100, ang: 1000, time: 100 } as const;
 /** Player row flag bits: alive, a person plays it, moving, defusing, muzzle flash on, scoped, seen by an enemy in the last 1.5 s. */
 export const FLAG = { alive: 1, human: 2, moving: 4, defusing: 8, flash: 16, scoped: 32, spotted: 64 } as const;
 /**
- * One player as everybody sees it: [id, x, z, yaw, pitch, flags, gun, stance, jumpY, kills, deaths, deadT] (scaled
+ * One player as everybody sees it: [id, x, z, yaw, pitch, flags, gun, stance, jumpY, kills, deaths, deadT, y?] (scaled
  * by SCALE, gun by WEAPON_IDS, stance by STANCES, flags by FLAG). Health, armour, money and ammo are not in it.
+ * `y` (SCALE.pos), the height of the feet above the ground floor, is there only on a map with heights (protocol 4); absent means 0.
  */
 export type PlayerRow = number[];
 /**
@@ -112,7 +113,7 @@ export type PlayerRow = number[];
  * prone (0/1), proneT, jumpY, vy, eye, recoil, cool] (timers, heights and speeds scaled by SCALE.time / SCALE.pos).
  */
 export type OwnRow = number[];
-/** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1)]. */
+/** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1), y?]; `y` (SCALE.pos), the bomb's height, only on a map with heights (protocol 4). */
 export type BombRow = number[];
 /**
  * The receiving student's open question card, private to them. It never says which choice is right: the server
@@ -313,8 +314,8 @@ export function parseServerMessage(text: string): ServerMessage | null {
         ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
-        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && isNums(raw.b, 7) && isNums(raw.y, 14)
-        && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => isNums(r, 12) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
+        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 14)
+        && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => (isNums(r, 12) || isNums(r, 13)) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
         && Array.isArray(raw.e) && raw.e.every(e => isObject(e) && isStr(e.type)) && (raw.m === 0 || raw.m === 1) && (raw.c === null || isCard(raw.c));
       if (!ok) return null;
       // JSON.parse built every array and object fresh, so they are kept as they are.

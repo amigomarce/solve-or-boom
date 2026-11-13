@@ -1,7 +1,7 @@
 // The human as a player whose inputs come from outside: the buy menu, the question cards, movement,
 // stance, weapons and the bomb. The rules read a PlayerInput snapshot, never a key or the mouse,
 // so a screen (or, later, a student's connection) only has to fill one in. No browser in here.
-import { EYE, zone, idx, cellOf, center, moveBody, SITE } from './map';
+import { EYE, zone, idx, cellOf, center, moveBody, zoneAt, SITE } from './map';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { startReload, finishReload, humanShoot, makeNoise } from './combat';
@@ -125,7 +125,7 @@ export function stanceStep(match: Match, p: Loose, dt: number, inp: PlayerInput,
   if (me.proneT > 0) { me.proneT -= dt; if (me.proneT <= 0) { me.proneT = 0; me.prone = !me.prone; } }
   if (me.jumpY > 0 || me.vy !== 0) {
     me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt;
-    if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live && !quiet) makeNoise(match, p.x, p.z, tune.bot_hear_land, p.squad); } // the landing is heard
+    if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live && !quiet) makeNoise(match, p.x, p.z, tune.bot_hear_land, p.squad, p.st.y); } // the landing is heard
   }
   me.sprint = sprintKey && !uiOpen(deskOf(match, p)) && !planting && !me.prone && me.proneT === 0;
   const crouch = !me.prone && !me.sprint && inp.crouch;
@@ -165,7 +165,7 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
   } else p.moving = false;
   // Footsteps the enemy bots hear: sprinting carries far, running less; walking, crouched or prone is silent.
   const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
-  if (!quiet && stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad);
+  if (!quiet && stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad, p.st.y);
 }
 /**
  * One step of a person's player: stance, their buy menu and question card (deskOf), movement, weapons,
@@ -210,7 +210,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   // The bomb.
   const b = match.bomb;
   if (live && b.carrier === p) {
-    const z = zone[idx(cellOf(p.x), cellOf(p.z))];
+    const z = zoneAt(cellOf(p.x), cellOf(p.z), me.y); // the zone on the level the person stands on
     if ((z === 3 || z === 4) && inp.use) {
       match.plantT += dt;
       if (match.plantT >= tune.plant_time) plantBomb(match, p);
@@ -223,7 +223,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
       }
     }
   }
-  if (live && b.state === 'planted' && sideOf(match, p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && inp.usePress) {
+  if (live && b.state === 'planted' && sideOf(match, p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && Math.abs(me.y - b.y) < tune.bomb_reach_y && inp.usePress) {
     // One student defuses at a time: a teammate's open defuse card keeps the bomb theirs.
     if (b.defuser && b.defuser !== p && b.defuser.human && deskOf(match, b.defuser).card?.kind === 'defuse') tell(match, p, 'Un compañero ya está desactivando la bomba');
     else {

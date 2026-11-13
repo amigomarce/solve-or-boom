@@ -26,5 +26,5 @@ Build order from the brief:
 | 008 | Weapons and effects | Visual/Feel | Complete | N/A |
 | 009 | Characters | Visual/Feel | Complete | N/A |
 | 010 | Scenery | Visual/Feel | Complete | N/A |
-| 011 | Heights in the rules | Integration | Ready | N/A |
+| 011 | Heights in the rules | Integration | Complete | N/A |
 | 012 | Two-floor map | Integration | Ready | N/A |

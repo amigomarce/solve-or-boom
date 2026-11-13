@@ -1,0 +1,19 @@
+teacher start: true, seats 0,4
+[errY 0.104] Beto ack 1911 k 1968; shown x 38.128 z 19.457 y 1.064 jumpY 0.350 vy 3.750 seq 1913 unacked 3 | server row x 38.13 z 19.46 y 1.07 own jumpY 0.35 vy 3.75 | after replay+blend x 38.160 z 19.458 y 1.080 jumpY 0.408 vy 3.500 unacked 1 | seat human human true q 1 dropped 0 ack 1911 pushed-by-bot? alive true | server now x 38.131 z 19.457 y 1.065 jumpY 0.354
+[errY 0.138] Beto ack 3420 k 3513; shown x 52.486 z 32.094 y 0.000 jumpY 0.935 vy -7.750 seq 3422 unacked 3 | server row x 52.49 z 32.1 y 0 own jumpY 0.93 vy -7.75 | after replay+blend x 52.488 z 32.064 y 0.000 jumpY 0.797 vy -8.000 unacked 1 | seat human human true q 1 dropped 0 ack 3420 pushed-by-bot? alive true | server now x 52.487 z 32.095 y 0.000 jumpY 0.933
+[errY 0.113] Beto ack 5108 k 5241; shown x 39.758 z 19.487 y 1.879 jumpY 0.154 vy 4.500 seq 5110 unacked 3 | server row x 39.76 z 19.49 y 1.88 own jumpY 0.15 vy 4.5 | after replay+blend x 39.790 z 19.488 y 1.895 jumpY 0.221 vy 4.250 unacked 1 | seat human human true q 1 dropped 0 ack 5108 pushed-by-bot? alive true | server now x 39.761 z 19.489 y 1.881 jumpY 0.154
+map test3 (hasHeights true, level_height 3 m); protocol PROTOCOL_VERSION 4; 584 s; room ended (partida terminada); matches 1; final score 3-4; rounds 1:0-0 2:0-1 3:0-2 4:0-3 5:1-3 6:2-3 7:3-3
+server steps 34964, dropped 0, mean step 0.127 ms, max 3.47 ms; warnings 0
+server sent 23310 snapshots, 526 bytes each, 10486 B/s per student; 68298 messages accepted (58.4/s per student), 0 refused
+Ana seat 0: 11658 msgs in (20.0/s), 11655 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 65.7 s at y 3.00 m; on a ramp 8.6 s; shots seen 1055, from above the first floor 124
+  prediction correction ground: n 1021, mean 0.016 m, max 0.129 m, height part mean 0.001 m max 0.092 m
+  prediction correction ramp:   n 178, mean 0.016 m, max 0.103 m, height part mean 0.007 m max 0.046 m
+  prediction correction floor1: n 1426, mean 0.006 m, max 0.109 m, height part mean 0.000 m max 0.058 m
+Beto seat 4: 11657 msgs in (20.0/s), 11655 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 85.3 s at y 3.00 m; on a ramp 11.1 s; shots seen 1055, from above the first floor 124
+  prediction correction ground: n 2543, mean 0.015 m, max 0.162 m, height part mean 0.001 m max 0.138 m
+  prediction correction ramp:   n 229, mean 0.022 m, max 0.145 m, height part mean 0.011 m max 0.113 m
+  prediction correction floor1: n 1844, mean 0.007 m, max 0.096 m, height part mean 0.000 m max 0.070 m
+no errors (server or client)
+exit 0
