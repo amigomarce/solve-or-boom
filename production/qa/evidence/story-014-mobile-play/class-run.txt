@@ -1,0 +1,8 @@
+phone { scene: 'join', touch: 'touch' }
+focused Tu nombre
+Ana after Entrar waiting
+Beto desktop touch class: (none) touch div shown: none
+Ana moved [ 10.5, 34.5 ] -> [ 'Tú', 16.4, 40.4 ] | Ana sees [ 'Beto', 97.5, 34.5 ] | Beto sees [ 'Ana', 15.7, 39.7 ]
+phone frame interval { n: 300, median: 16.7, p95: 17.7, max: 17.8 } draw-only ms/frame 0.62 gl canvas [ 1039, 585, 2 ]
+errors ["teacher console: Failed to load resource: the server responded with a status of 404 (Not Found)"]
+server log errors []

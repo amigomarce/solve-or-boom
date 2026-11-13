@@ -1,0 +1,6 @@
+Reviewed-Content-Hash: index.html 06fe6c60e97b4269724fdc894f0a9442b0cddc30
+Reviewed-Content-Hash: src/main.ts 1c9f50704740747533960a81ebeec0f05c5a538a
+Reviewed-Content-Hash: src/screen.ts 761c4d23618bfee9ba7162f1607bc3574f4f1504
+Reviewed-Content-Hash: src/touch.ts 5b90f09ad2687dfcfe06b159b44f4f3b0e783f35
+Reviewed-Content-Hash: data/config-notes.md 145e0a4fc1c710f2231e677b23edeb1e6a0ad8fb
+Reviewed-Content-Hash: data/config.json 567d3e8a9911cc0cf355ca3116afd1cd261acbd3

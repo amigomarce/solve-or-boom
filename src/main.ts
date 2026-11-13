@@ -24,6 +24,7 @@ import {
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
+import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel } from './touch';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 import { connect, savedName, type Connection } from './net/client';
@@ -60,7 +61,8 @@ const aula = { name: '', error: '', busy: false, conn: null as Connection | null
 const nameInput = Object.assign(document.createElement('input'), { type: 'text', maxLength: NAME_MAX * 2, autocomplete: 'off', spellcheck: false });
 nameInput.setAttribute('aria-label', 'Tu nombre');
 nameInput.setAttribute('autocapitalize', 'words');
-nameInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0';
+nameInput.setAttribute('enterkeyhint', 'go');
+nameInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px';
 document.body.append(nameInput);
 // Only the characters a name may hold, no leading or double spaces, at most NAME_MAX; the caret stays at the end.
 nameInput.addEventListener('input', () => {
@@ -68,6 +70,8 @@ nameInput.addEventListener('input', () => {
   aula.name = [...name].slice(0, NAME_MAX).join(''); aula.error = '';
   nameInput.value = aula.name; nameInput.setSelectionRange(aula.name.length, aula.name.length);
 });
+// A phone keyboard's Enter may not carry code 'Enter': read the key, so "Ir" joins the class.
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') hit.add('Enter'); });
 /** The room states in words. */
 const ROOM_STATE: Record<RoomView['state'], [string, string]> = {
   waiting: ['Esperando a que empiece la partida', '#f2f5fb'],
@@ -209,6 +213,7 @@ function toLogical(e: PointerEvent | MouseEvent): { x: number; y: number } {
   return { x: (e.clientX - b.left) * W / b.width, y: (e.clientY - b.top) * H / b.height };
 }
 function requestLock() {
+  if (TOUCH) return; // touch aims by dragging: no pointer lock
   try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* no lock here */ }
 }
 canvas.addEventListener('pointermove', e => { const m = toLogical(e); mouse.x = m.x; mouse.y = m.y; });
@@ -219,16 +224,21 @@ canvas.addEventListener('pointerdown', e => {
   if (scene === 'controls' && ctl.capture && e.button === 2) { hit.add('Mouse2'); return; } // the right button is a key being bound, wherever it is pressed
   if (!locked) {
     const b = buttons.find(b => m.x >= b.x && m.x <= b.x + b.w && m.y >= b.y && m.y <= b.y + b.h);
-    if (b) { if (b.act === 'upload') csvInput.click(); else clicks.push(b.act); return; }
+    if (b) { if (b.act === 'upload') { if (e.pointerType !== 'touch') csvInput.click(); } else clicks.push(b.act); return; }
   }
   if (scene === 'pause') { clicks.push('resume'); requestLock(); return; }
   if (scene === 'play' && state.human && !state.human.alive) { clicks.push('spec'); return; }
   if (scene === 'play' && !locked && !uiOpen(state)) { requestLock(); return; }
+  if (e.pointerType === 'touch') return; // on touch only the Fuego and Apuntar buttons shoot and aim: a tap on the bare canvas does nothing
   const code = e.button === 2 ? 'Mouse2' : 'Mouse0';
   down.add(code); hit.add(code);
 });
-canvas.addEventListener('click', () => { if (scene === 'join') nameInput.focus({ preventScroll: true }); });
-addEventListener('pointerup', e => down.delete(e.button === 2 ? 'Mouse2' : 'Mouse0'));
+canvas.addEventListener('click', e => {
+  if (scene === 'join') nameInput.focus({ preventScroll: true });
+  const m = toLogical(e), b = buttons.find(b => m.x >= b.x && m.x <= b.x + b.w && m.y >= b.y && m.y <= b.y + b.h);
+  if (TOUCH && b?.act === 'upload') csvInput.click(); // a tap opens the file picker on its click: the browser allows it there
+});
+addEventListener('pointerup', e => { down.delete(e.button === 2 ? 'Mouse2' : 'Mouse0'); if (e.pointerType === 'touch') { mouse.x = -1; mouse.y = -1; } }); // a lifted finger leaves no hover
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
@@ -272,8 +282,8 @@ function heardFrom(x: number, z: number): { pan: number; dist: number } {
 }
 
 // ---- Three.js world -----------------------------------------------------------------
-const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: !CHEAP });
-renderer.setPixelRatio(CHEAP ? 0.5 : Math.min(devicePixelRatio || 1, 2));
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: !CHEAP && !TOUCH }); // the phone graphics level: no antialiasing, a lower pixel ratio (touch_pixel_ratio)
+renderer.setPixelRatio(CHEAP ? 0.5 : Math.min(renderRatio(), 2));
 renderer.autoClear = false;
 setRenderer(renderer);
 fit();
@@ -998,6 +1008,10 @@ function readInput(act: string | undefined): PlayerInput {
   inp.walk = held('walk'); inp.sprint = held('sprint'); inp.crouch = held('crouch'); inp.use = held('use'); inp.usePress = press('use');
   inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = held('aim');
   inp.lookLeft = down.has('ArrowLeft'); inp.lookRight = down.has('ArrowRight'); inp.lookUp = down.has('ArrowUp'); inp.lookDown = down.has('ArrowDown');
+  if (touch.dx || touch.dy) { // the drag on the right half: the same turn per pixel as the mouse's, with its own sensitivity
+    const k = tune.touch_turn * tune.touch_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / 72 : 1);
+    lookYaw -= touch.dx * k; lookPitch -= touch.dy * k; touch.dx = 0; touch.dy = 0;
+  }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
   inp.shop = press('buy'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
   inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
@@ -1098,7 +1112,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
       if (pressed('Enter') || pressed('Space') || act === 'start') {
-        if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
+        if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = TOUCH ? 'Primero sube un CSV o elige una asignatura' : 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
         if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
         startMatch(); scene = 'play';
       }
@@ -1120,19 +1134,20 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (CLASS_MODE) netStep(idleInput()); // the match goes on on the server: stand still, keep the seat
       if (pressed(bind.pause) || pressed('Escape') || act === 'resume') scene = 'play';
       if (act === 'controls') { Object.assign(ctl, { from: 'pause', sel: 0, capture: false, note: '' }); scene = 'controls'; }
-      if (pressed('BracketLeft') || act === 'sens:-') CONFIG.mouse_sens.value = Math.max(CONFIG.mouse_sens.min, +(tune.mouse_sens - 0.1).toFixed(2));
-      if (pressed('BracketRight') || act === 'sens:+') CONFIG.mouse_sens.value = Math.min(CONFIG.mouse_sens.max, +(tune.mouse_sens + 0.1).toFixed(2));
+      const sens = CONFIG[TOUCH ? 'touch_sens' : 'mouse_sens']; // the finger's own setting on a touch device
+      if (pressed('BracketLeft') || act === 'sens:-') sens.value = Math.max(sens.min, +(sens.value - 0.1).toFixed(2));
+      if (pressed('BracketRight') || act === 'sens:+') sens.value = Math.min(sens.max, +(sens.value + 0.1).toFixed(2));
       if (pressed('Backspace') || act === 'quit') { if (CLASS_MODE) aula.conn?.leave(); else scene = 'title'; }
     },
     draw() {
       drawWorld(); drawHUD(true);
       ctx.fillStyle = 'rgba(10,14,24,0.72)'; ctx.fillRect(0, 0, W, H);
       text('Pausa', W / 2, 200, 56, '#fff');
-      text(`Sensibilidad del ratón: ${tune.mouse_sens.toFixed(1)}`, W / 2, 290, 28, '#fff');
+      text(TOUCH ? `Sensibilidad del dedo: ${tune.touch_sens.toFixed(1)}` : `Sensibilidad del ratón: ${tune.mouse_sens.toFixed(1)}`, W / 2, 290, 28, '#fff');
       button(W / 2 - 275, 270, 60, 44, '-', 'sens:-', { size: 30 });
       button(W / 2 + 215, 270, 60, 44, '+', 'sens:+', { size: 30 });
-      text('También con [ y ]', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
-      button(W / 2 - 160, 380, 320, 52, `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
+      if (!TOUCH) text('También con [ y ]', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
+      button(W / 2 - 160, 380, 320, 52, TOUCH ? 'Continuar' : `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
       button(W / 2 - 160, 444, 320, 52, 'Controles', 'controls', { size: 22 });
       button(W / 2 - 160, 508, 320, 52, CLASS_MODE ? 'Salir de la sala' : 'Salir a la pantalla de sesión', 'quit', { size: 20 });
       text(`Asignatura: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
@@ -1174,6 +1189,18 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(10,14,24,0.88)'; ctx.fillRect(0, 0, W, H);
       text('Controles', W / 2, 50, 40, '#ffd06a');
+      if (TOUCH) { // no keys to bind: what each finger does
+        const rows: [string, string][] = [['Palanca de la izquierda', 'moverte'], ['Arrastrar por la derecha', 'mirar a tu alrededor'], ['Fuego (mantener)', 'disparar; también gira si arrastras desde él'],
+          ['Apuntar (mantener)', 'mirar por el arma'], ['Saltar', 'saltar'], ['Agachar', 'agacharte; pulsa otra vez para levantarte'], ['Recargar', 'recargar el arma'],
+          ['Arma', 'cambiar de arma'], ['Comprar', 'abrir o cerrar el menú de compra'], ['Plantar / Desactivar (mantener)', 'la bomba, junto a ella'], ['Pausa', 'detener la partida']];
+        rows.forEach(([a, d], i) => {
+          const y = 104 + i * 46;
+          rr(120, y - 19, 1040, 40, 8, 'rgba(255,255,255,0.06)', null);
+          text(a, 144, y, 21, '#ffe7a8', 'left'); text(d, 560, y, 20, '#fff', 'left', 'normal');
+        });
+        button(W / 2 - 160, 644, 320, 52, 'Volver', 'back', { size: 22 });
+        return;
+      }
       text('Clic en una acción (o flechas y Intro) y pulsa la tecla nueva. Esc cancela.', W / 2, 94, 17, '#e4e9f4', 'center', 'normal');
       const n = ACTIONS.length, half = Math.ceil(n / 2);
       ACTIONS.forEach((a, i) => {
@@ -1554,19 +1581,19 @@ function drawHUD(paused?: boolean): void {
     const sp = state.specP;
     rr(W / 2 - 280, H - 92, 560, 64, 12, 'rgba(15,20,32,0.78)', null);
     text('Has caído', W / 2, H - 74, 20, '#ff8a7a');
-    text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. Clic o Espacio para el siguiente` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
+    text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. ${TOUCH ? 'Toca la pantalla para ver al siguiente' : 'Clic o Espacio para el siguiente'}` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
   }
   // the one hint that matters now
   let hint = '';
   if (p.alive && !uiOpen(state)) {
     const z = zone[idx(cellOf(p.x), cellOf(p.z))];
-    if (state.phase === 'buy') hint = inOwnBase(state, p) ? `Pulsa ${keyName(bind.buy)} para comprar. Las puertas se abren en ${Math.ceil(state.phaseT)} s` : '';
-    else if (b.carrier === p && (z === 3 || z === 4)) hint = `Mantén ${keyName(bind.use)} para plantar la bomba`;
+    if (state.phase === 'buy') hint = inOwnBase(state, p) ? `${TOUCH ? 'Toca Comprar' : `Pulsa ${keyName(bind.buy)}`} para comprar. Las puertas se abren en ${Math.ceil(state.phaseT)} s` : '';
+    else if (b.carrier === p && (z === 3 || z === 4)) hint = TOUCH ? 'Mantén Plantar para plantar la bomba' : `Mantén ${keyName(bind.use)} para plantar la bomba`;
     else if (b.carrier === p) hint = 'Llevas la bomba: plántala en la A o la B grandes';
-    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Pulsa ${keyName(bind.use)} para desactivar: ¡responde la pregunta!`;
+    else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = TOUCH ? 'Toca Desactivar: ¡responde la pregunta!' : `Pulsa ${keyName(bind.use)} para desactivar: ¡responde la pregunta!`;
     else if (b.state === 'planted' && mySide === 'def') hint = `¡Desactiva la bomba en ${b.site}!`;
     else if (b.state === 'dropped' && mySide === 'att') hint = 'Recoge la bomba del suelo (mira el mapa)';
-    if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Clic para mirar con el ratón' : 'Haz clic para mirar con el ratón';
+    if (!locked && !TOUCH && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Clic para mirar con el ratón' : 'Haz clic para mirar con el ratón';
   }
   if (hint) {
     const pulse = state.round === 1 && state.phase === 'buy' ? 0.75 + 0.25 * Math.sin(state.t * 6) : 1;
@@ -1617,12 +1644,13 @@ function drawShop() {
     button(x + 24, by, w - 48, 54, '', why ? null : 'buy:' + it.id, { fill: why ? '#1b2232' : undefined });
     rr(x + 36, by + 11, 32, 32, 8, '#ffd06a', null); text(String(i + 1), x + 52, by + 27, 20, '#1b2232');
     text(it.name, x + 84, by + 18, 21, why ? '#7d8799' : '#fff', 'left');
-    text(it.desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
+    text(TOUCH ? it.desc.replace('Clic derecho', 'Botón Apuntar') : it.desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
     text(why || `$${tune[it.price]}`, x + w - 44, by + 20, 20, why ? '#ff9a8a' : '#9ff08a', 'right');
     const ql = questionLevel(state, it.id); // the level of the item's question (none for a custom CSV)
     if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
-  text(`1-5 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
+  if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + 418, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + 398, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
+  else text(`1-5 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
 }
 /** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
 function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {
@@ -1678,7 +1706,10 @@ function drawCard() {
   } else {
     const hint = defuse ? `1-4 o clic para responder  |  ${keyName(bind.use)} para alejarte${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`
       : `1-4 o clic para responder  |  ${keyName(bind.buy)} para cancelar`;
-    text(hint, W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal');
+    if (TOUCH) { // no keys: a button closes the card (cancel a purchase, step away from the bomb)
+      text(`Toca una respuesta${defuse && tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`, x + 36, fy, 16, '#3a465e', 'left', 'normal');
+      button(x + w - 196, fy - 19, 172, 36, defuse ? 'Alejarte' : 'Cancelar', 'closecard', { size: 18 });
+    } else text(hint, W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal');
   }
   // The lockout bar under the card: it empties over the lockout, so the player sees why presses are ignored.
   if (c.wrongT > 0) {
@@ -1722,7 +1753,7 @@ function drawMenu() {
     button(340, y, 600, 100, label, id, { size: 34, fill: on ? '#e07a1c' : undefined, stroke: on ? '#fff3c4' : undefined });
     text(sub, W / 2, y + 128, 20, '#e4e9f4', 'center', 'normal');
   });
-  text('Haz clic en un botón, o elige con Arriba / Abajo y pulsa Enter (teclas 1 y 2).', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
+  text(TOUCH ? 'Toca un botón para empezar.' : 'Haz clic en un botón, o elige con Arriba / Abajo y pulsa Enter (teclas 1 y 2).', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
 }
 /** "Clase (multijugador)" outside the teacher's server: this page cannot reach the class, so it says to open the address the teacher shows. */
 function drawClassInfo() {
@@ -1739,7 +1770,7 @@ function drawClassInfo() {
   text('Escríbela en la barra de direcciones y entra con tu nombre.', W / 2, 378, 20, '#e4e9f4', 'center', 'normal');
   wrapText('Este equipo tiene que estar en la misma red (wifi) que el del profesor. Este archivo no se conecta solo: la clase la sirve el ordenador del profesor.', 700, 18)
     .slice(0, 3).forEach((l, i) => text(l, W / 2, 422 + i * 26, 18, '#aab4c8', 'center', 'normal'));
-  button(W / 2 - 160, 516, 320, 56, 'Volver (Esc)', 'back', { size: 22 });
+  button(W / 2 - 160, 516, 320, 56, TOUCH ? 'Volver' : 'Volver (Esc)', 'back', { size: 22 });
 }
 /** The join screen: the name field, Entrar, the refusal or connecting line, and the privacy line, over the map flyover. */
 function drawJoin() {
@@ -1761,13 +1792,13 @@ function drawJoin() {
   text(`${[...aula.name].length} / ${NAME_MAX}`, 900, 336, 15, '#aab4c8', 'right', 'normal');
   if (aula.error) wrapText(aula.error, 520, 18).slice(0, 2).forEach((l, i) => text(l, 380, 374 + i * 24, 18, '#ff9a8a', 'left'));
   if (aula.busy) button(380, 432, 520, 64, 'Conectando…', null, { size: 26, fill: '#3a4258', color: '#c8d2e6' });
-  else button(380, 432, 520, 64, 'Entrar (Enter)', 'enter', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  else button(380, 432, 520, 64, TOUCH ? 'Entrar' : 'Entrar (Enter)', 'enter', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   // a small padlock before the privacy line
   const lx = 380, ly = 552;
   ctx.strokeStyle = '#aab4c8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(lx + 8, ly - 4, 5, Math.PI, 0); ctx.stroke();
   rr(lx + 1, ly - 4, 14, 11, 2, '#aab4c8', null);
   text('Solo se pide tu nombre: no se guarda ningún dato personal.', lx + 26, ly, 16, '#c8d2e6', 'left', 'normal');
-  text('Escribe tu nombre y pulsa Enter para sentarte en una sala.', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
+  text(TOUCH ? 'Toca el recuadro, escribe tu nombre y pulsa Entrar para sentarte en una sala.' : 'Escribe tu nombre y pulsa Enter para sentarte en una sala.', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
 }
 /** The waiting screen: who and where the student is, the room's two teams seat by seat, the room's state, and Salir. */
 function drawWaiting() {
@@ -1815,7 +1846,7 @@ function drawWaiting() {
     text(aula.retry, W / 2, 598, 20, '#ffe28a');
   } else text('Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
   button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
-  if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
+  if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, TOUCH ? 'Volver a la pantalla de entrada' : 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
 }
 function drawTitle() {
   flyover();
@@ -1825,7 +1856,7 @@ function drawTitle() {
   drawLogo(74, 76);
   text('Responde bien para comprar tus armas. Responde bien para desactivar la bomba.', W / 2, 132, 22, '#f2f5fb');
   button(1060, 24, 180, 48, 'Controles', 'controls', { size: 22 });
-  button(40, 24, 180, 48, 'Menú (Esc)', 'mainmenu', { size: 22 });
+  button(40, 24, 180, 48, TOUCH ? 'Menú' : 'Menú (Esc)', 'mainmenu', { size: 22 });
   const custom = session.subject === QUESTIONS.CUSTOM;
   // 1. subject
   rr(40, 170, 330, 400, 16, 'rgba(14,19,30,0.9)', null);
@@ -1835,8 +1866,10 @@ function drawTitle() {
     const label = s === QUESTIONS.CUSTOM ? QUESTIONS.CUSTOM_NAME + ' (CSV)' : QUESTIONS.SUBJECTS[s].name;
     button(60, 222 + i * 58, 290, 48, label, 'subj:' + s, { align: 'left', fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff' });
   });
-  text('Arriba / Abajo: asignatura', 205, 530, 15, '#aab4c8', 'center', 'normal');
-  text('Izquierda / Derecha: nivel', 205, 552, 15, '#aab4c8', 'center', 'normal');
+  if (!TOUCH) {
+    text('Arriba / Abajo: asignatura', 205, 530, 15, '#aab4c8', 'center', 'normal');
+    text('Izquierda / Derecha: nivel', 205, 552, 15, '#aab4c8', 'center', 'normal');
+  }
   // 2. contents: the level, then the topics (or the custom file), then what that choice gives
   rr(390, 170, 450, 400, 16, 'rgba(14,19,30,0.9)', null);
   text('2. Contenido', 414, 200, 24, '#ffd06a', 'left');
@@ -1852,7 +1885,7 @@ function drawTitle() {
       text(clip(session.customName, 400, 18), 414, 316, 18, '#9ff08a', 'left');
       session.custom.slice(0, 4).forEach((c, i) => text(clip(`${i + 1}. ${c.q}`, 400, 16, 'normal'), 414, 348 + i * 28, 16, '#c8d2e6', 'left', 'normal'));
     } else {
-      wrapText('Todavía no hay archivo. Sube un CSV con el botón de la derecha o suelta el archivo en esta ventana.', 400, 18)
+      wrapText(TOUCH ? 'Todavía no hay archivo. Sube un CSV con el botón de la derecha.' : 'Todavía no hay archivo. Sube un CSV con el botón de la derecha o suelta el archivo en esta ventana.', 400, 18)
         .forEach((l, i) => text(l, 414, 318 + i * 26, 18, '#fff', 'left', 'normal'));
     }
     if (session.custom.length > 0 && session.custom.length < 4) text('Pocas preguntas: se repetirán', 615, 556, 16, '#ffb366');
@@ -1864,7 +1897,7 @@ function drawTitle() {
       rr(424, by + 8, 28, 28, 6, on ? '#ffd06a' : '#0d1220', '#ffd06a', 2);
       if (on) { ctx.strokeStyle = '#1b2232'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(430, by + 22); ctx.lineTo(436, by + 29); ctx.lineTo(447, by + 14); ctx.stroke(); }
       text(name, 466, by + 22, 19, on ? '#fff' : '#8893a3', 'left');
-      text(String(i + 1), 800, by + 22, 15, '#aab4c8', 'right', 'normal');
+      if (!TOUCH) text(String(i + 1), 800, by + 22, 15, '#aab4c8', 'right', 'normal');
     });
   }
   const n = session.available;
@@ -1873,12 +1906,12 @@ function drawTitle() {
   // 3. your own questions
   rr(860, 170, 380, 400, 16, 'rgba(14,19,30,0.9)', null);
   text('Tus preguntas', 884, 200, 24, '#ffd06a', 'left');
-  button(880, 222, 340, 50, 'Subir CSV (U)', 'upload', { size: 22 });
+  button(880, 222, 340, 50, TOUCH ? 'Subir CSV' : 'Subir CSV (U)', 'upload', { size: 22 });
   // The accepted shapes: a format line is bold blue and never wraps (it has no spaces), so the long one is split by hand.
   const help: [string, boolean][] = [['Una pregunta por fila, en una de estas formas:', false], ['pregunta,respuesta', true],
     ['pregunta,correcta,incorrecta,', true], ['   incorrecta,incorrecta[,nivel]', true], ['pregunta,a,b,c,d,N  (N = la correcta)', true],
     ['Separador: coma, punto y coma o tabulador.', false], ['Con 2 columnas, las incorrectas salen de las respuestas de otras filas.', false],
-    ['También puedes soltar el archivo en la ventana.', false]];
+    ...(TOUCH ? [] : [['También puedes soltar el archivo en la ventana.', false] as [string, boolean]])];
   let hy = 292;
   for (const [s, fmt] of help) for (const l of fmt ? [s] : wrapText(s, 336, 15)) {
     text(l, 884, hy, 15, fmt ? '#9fd8ff' : '#e4e9f4', 'left', fmt ? 'bold' : 'normal'); hy += 20;
@@ -1888,7 +1921,7 @@ function drawTitle() {
   // 4. the map: a button each, with its size; the chosen one lit
   rr(40, 584, 760, 80, 16, 'rgba(14,19,30,0.9)', null);
   text('Mapa', 60, 612, 24, '#ffd06a', 'left');
-  text('Tecla C', 60, 642, 15, '#aab4c8', 'left', 'normal');
+  if (!TOUCH) text('Tecla C', 60, 642, 15, '#aab4c8', 'left', 'normal');
   const step = Math.min(158, Math.floor(632 / MAP_IDS.length)), bw = step - 8; // four maps keep 158 px; more share the panel's 632 px
   MAP_IDS.forEach((id, i) => {
     const on = session.map === id, m = MAPS[id], bx = 160 + i * step;
@@ -1897,9 +1930,10 @@ function drawTitle() {
     text(`${m.width * CELL} x ${m.height * CELL} m`, bx + bw / 2, 640, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
   });
   // start
-  button(820, 592, 420, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  button(820, 592, 420, 64, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
-  const line = `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
+  const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar y Bomba: botones  |  Pausa: botón de arriba'
+    : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 684, ls, '#e4e9f4', 'center', 'normal');
@@ -1914,7 +1948,7 @@ function drawResults() {
   text(state.answered || (CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
   if (CLASS_MODE) drawClassResults(); else drawSoloTable();
-  const label = !CLASS_MODE ? 'Volver a la pantalla de sesión (Enter)' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida (Enter)' : 'Volver a la pantalla de entrada (Enter)';
+  const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
 }
 /** Single player's results table: every player's kills, deaths and right and wrong answers. */
@@ -2016,7 +2050,17 @@ function tick() {
 function drawFrame() {
   if (net.mirror && state === net.mirror.match) interpolate(net.mirror, performance.now()); // the other players, a little in the past
   scenes[scene].draw();
+  if (TOUCH) { // the on-screen controls: all of them in play, only Pausa with a card or menu open or when dead, none elsewhere
+    const p = state.human, b = state.bomb, live = scene === 'play' && !teacherPaused();
+    setTouchMode(!live ? 'off' : p.alive && !uiOpen(state) ? 'all' : 'pause');
+    if (live) setUseLabel(b.carrier === p ? 'Plantar' : b.state === 'planted' && sideOf(state, p) === 'def' ? 'Desactivar' : 'Bomba');
+  }
 }
+// Turned upright mid-play on a phone: the game pauses, as it does when the mouse leaves on a computer. Like the pause
+// key, it pauses with a card open or while dead too, so nothing runs behind the message.
+if (TOUCH) matchMedia('(orientation: portrait)').addEventListener('change', e => {
+  if (e.matches && scene === 'play') { scene = 'pause'; lookYaw = 0; lookPitch = 0; state.human.scoped = false; state.human.st.aimGun = ''; }
+});
 function frame() { tick(); requestAnimationFrame(frame); }
 function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
 

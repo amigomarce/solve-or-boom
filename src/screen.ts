@@ -1,6 +1,7 @@
 // The drawing kit: the 2D overlay canvas, sized to the window, and its text, panels and buttons.
 import type * as THREE from 'three';
 import { buttons, mouse } from './input';
+import { renderRatio } from './touch';
 
 /** Logical size: everything is drawn at 1280 x 720 and scaled to the window. */
 export const W = 1280, H = 720;
@@ -22,7 +23,7 @@ export function setRenderer(r: THREE.WebGLRenderer): void { renderer = r; }
 /** Fills the window at any size and pixel ratio. */
 export function fit(): void {
   const k = Math.min(innerWidth / W, innerHeight / H);
-  const r = k * (devicePixelRatio || 1);
+  const r = k * renderRatio();
   canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
   wrap.style.width = Math.round(W * k) + 'px'; wrap.style.height = Math.round(H * k) + 'px';
   wrap.style.top = Math.max(0, Math.floor((innerHeight - H * k) / 2)) + 'px';

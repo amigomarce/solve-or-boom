@@ -1,0 +1,83 @@
+detect { coarse: true, tp: 1, touchClass: 'touch', dpr: 2 }
+after tap solo {
+  scene: 'title',
+  phase: 'buy',
+  x: 0,
+  z: 0,
+  yaw: 0,
+  scoped: false,
+  stance: 'stand',
+  ammo: 12,
+  cur: 'pistol',
+  menu: false,
+  card: false,
+  money: 1250
+}
+started {
+  scene: 'play',
+  phase: 'buy',
+  x: 16.5,
+  z: 52.5,
+  yaw: -1.571,
+  scoped: false,
+  stance: 'stand',
+  ammo: 12,
+  cur: 'pistol',
+  menu: false,
+  card: false,
+  money: 1250
+}
+stick moved 16.5 52.5 -> 20.1 52.5
+drag yaw -1.571 -> -1.971
+crouch crouch
+aim held scoped true released false
+buy tap {
+  scene: 'play',
+  phase: 'buy',
+  x: 16.43,
+  z: 52.67,
+  yaw: -1.971,
+  scoped: false,
+  stance: 'stand',
+  ammo: 12,
+  cur: 'pistol',
+  menu: true,
+  card: false,
+  money: 1250
+}
+item tap {
+  scene: 'play',
+  phase: 'buy',
+  x: 16.43,
+  z: 52.67,
+  yaw: -1.971,
+  scoped: false,
+  stance: 'stand',
+  ammo: 12,
+  cur: 'pistol',
+  menu: true,
+  card: true,
+  money: 1250
+}
+answered {
+  scene: 'play',
+  phase: 'buy',
+  x: 16.43,
+  z: 52.67,
+  yaw: -1.971,
+  scoped: false,
+  stance: 'stand',
+  ammo: 25,
+  cur: 'smg',
+  menu: true,
+  card: false,
+  money: 50
+}
+Cerrar tapped, menu false
+fire smg 25 -> 20 live
+pause tap pause
+controles controls
+resumed play
+portrait scene pause
+errors []
+non-file requests []
