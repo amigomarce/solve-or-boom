@@ -28,3 +28,5 @@ Build order from the brief:
 | 010 | Scenery | Visual/Feel | Complete | N/A |
 | 011 | Heights in the rules | Integration | Complete | N/A |
 | 012 | Two-floor map | Integration | Complete | N/A |
+| 013 | Aim with every gun | Integration | Complete | N/A |
+| 014 | Mobile play | UI | Ready | N/A |

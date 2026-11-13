@@ -1,0 +1,20 @@
+teacher start: true, seats 0,4
+map dospisos (hasHeights true, level_height 3 m); protocol PROTOCOL_VERSION 5; 55 s; room running (); matches 0; final score 0-0; rounds 1:0-0
+server steps 3199, dropped 0, mean step 0.168 ms, max 3.75 ms; warnings 0
+server sent 2132 snapshots, 525 bytes each, 10208 B/s per student; 6426 messages accepted (58.6/s per student), 0 refused
+Ana seat 0: 1069 msgs in (19.5/s), 1066 snaps; versions seen 5; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 12.3 s at y 3.00 m; on a ramp 1.8 s; shots seen 85, from above the first floor 8
+  prediction correction ground: n 251, mean 0.006 m, max 0.090 m, height part mean 0.000 m max 0.007 m
+  prediction correction ramp:   n 35, mean 0.005 m, max 0.010 m, height part mean 0.002 m max 0.009 m
+  prediction correction floor1: n 274, mean 0.006 m, max 0.141 m, height part mean 0.000 m max 0.008 m
+Beto seat 4: 1068 msgs in (19.5/s), 1066 snaps; versions seen 5; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 14.2 s at y 3.00 m; on a ramp 1.2 s; shots seen 85, from above the first floor 8
+  prediction correction ground: n 213, mean 0.005 m, max 0.090 m, height part mean 0.000 m max 0.007 m
+  prediction correction ramp:   n 23, mean 0.015 m, max 0.101 m, height part mean 0.006 m max 0.045 m
+  prediction correction floor1: n 325, mean 0.005 m, max 0.095 m, height part mean 0.000 m max 0.008 m
+Ana aiming (live, alive, held): 900 steps; predicted aimed on the same step 900; held but not aimed with no reload or ended aim 0; server steps with the scoped flag 1710; correction while aimed: n 299, mean 0.005 m, max 0.056 m, height part mean 0.000 m max 0.009 m
+  pistol: server aimed steps 810, client predicted aimed steps 805, correction while aimed n 0, mean 0.000 m, max 0.000 m, height part mean 0.000 m max 0.000 m
+  smg: server aimed steps 300, client predicted aimed steps 300, correction while aimed n 100, mean 0.004 m, max 0.056 m, height part mean 0.000 m max 0.000 m
+  rifle: server aimed steps 300, client predicted aimed steps 300, correction while aimed n 99, mean 0.006 m, max 0.050 m, height part mean 0.000 m max 0.000 m
+  sniper: server aimed steps 300, client predicted aimed steps 300, correction while aimed n 100, mean 0.005 m, max 0.012 m, height part mean 0.000 m max 0.000 m
+no errors (server or client)

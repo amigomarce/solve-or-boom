@@ -59,7 +59,8 @@ export function buildSnapshot(match: Match, seat: number, ack: number, tick: num
     b: [BOMB_STATES.indexOf(b.state), q(b.x, P), q(b.z, P), q(b.timer, T), b.carrier ? b.carrier.id : -1, b.site === 'A' ? 1 : b.site === 'B' ? 2 : 0, b.defuser ? b.defuser.id : -1, ...(hasHeights ? [q(b.y ?? 0, P)] : [])],
     p: match.players.map(p => playerRow(match, p)),
     y: [Math.ceil(me.hp), Math.ceil(me.armor), me.money, a.mag, a.res, q(me.reloadT, T), WEAPON_IDS.indexOf(me.primary),
-      st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T)],
+      st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T),
+      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1],
     e: eventsFor(match, seat, events, rangeM),
     m: d.menu ? 1 : 0,
     // The card without its answer index: the student learns right or wrong only from the server's verdict.

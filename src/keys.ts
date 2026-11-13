@@ -42,12 +42,19 @@ function save(): void {
   try { localStorage.setItem(STORE, JSON.stringify(bind)); } catch { /* not saved: the set still holds for this session */ }
 }
 
-// The saved set stands only when it binds every action to a distinct key; anything else is the defaults.
+// The saved set, action by action: each saved key stands when it is a real key no other action took; an action the
+// set lacks (one added since it was saved) or whose key clashes keeps its default when that key is free. A set that
+// still ends with two actions on one key is dropped for the defaults.
 for (const a of ACTIONS) bind[a.id] = a.key;
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
-  const codes = saved && ACTIONS.map(a => saved[a.id]);
-  if (codes && codes.every((c: unknown) => typeof c === 'string' && c && c !== 'Escape') && new Set(codes).size === codes.length) {
-    ACTIONS.forEach((a, i) => { bind[a.id] = codes[i]; });
+  if (saved && typeof saved === 'object') {
+    const got: Record<string, string> = {}, used = new Set<string>();
+    for (const a of ACTIONS) {
+      const c = saved[a.id];
+      if (typeof c === 'string' && c && c !== 'Escape' && !used.has(c)) { got[a.id] = c; used.add(c); }
+    }
+    for (const a of ACTIONS) if (!got[a.id] && !used.has(a.key)) { got[a.id] = a.key; used.add(a.key); }
+    if (ACTIONS.every(a => got[a.id])) for (const a of ACTIONS) bind[a.id] = got[a.id];
   }
 } catch { /* unreadable: the defaults stand */ }

@@ -215,6 +215,8 @@ canvas.addEventListener('pointermove', e => { const m = toLogical(e); mouse.x = 
 canvas.addEventListener('pointerdown', e => {
   startAudio();
   const m = toLogical(e); mouse.x = m.x; mouse.y = m.y;
+  if (e.button !== 0 && e.button !== 2) return; // middle and side buttons do nothing
+  if (scene === 'controls' && ctl.capture && e.button === 2) { hit.add('Mouse2'); return; } // the right button is a key being bound, wherever it is pressed
   if (!locked) {
     const b = buttons.find(b => m.x >= b.x && m.x <= b.x + b.w && m.y >= b.y && m.y <= b.y + b.h);
     if (b) { if (b.act === 'upload') csvInput.click(); else clicks.push(b.act); return; }
@@ -231,11 +233,11 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) lockedBefore = true;
-  else if (lockedBefore && scene === 'play' && !uiOpen(state) && state.human && state.human.alive) scene = 'pause';
+  else if (lockedBefore && scene === 'play' && !uiOpen(state) && state.human && state.human.alive) { scene = 'pause'; state.human.scoped = false; state.human.st.aimGun = ''; }
 });
 addEventListener('mousemove', e => { // the aim answers the hand at once: no smoothing
   if (!locked || scene !== 'play' || !state.human || !state.human.alive || uiOpen(state)) return;
-  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? 0.3 : 1);
+  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / 72 : 1); // the turn scales with the zoom
   lookYaw -= e.movementX * k; lookPitch -= e.movementY * k; // the next step turns the aim
 });
 
@@ -994,7 +996,7 @@ function readInput(act: string | undefined): PlayerInput {
   const inp = idleInput(), held = (a: string): boolean => down.has(bind[a]), press = (a: string): boolean => pressed(bind[a]);
   inp.moveF = (held('forward') ? 1 : 0) - (held('back') ? 1 : 0); inp.moveS = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
   inp.walk = held('walk'); inp.sprint = held('sprint'); inp.crouch = held('crouch'); inp.use = held('use'); inp.usePress = press('use');
-  inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = pressed('Mouse2');
+  inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = held('aim');
   inp.lookLeft = down.has('ArrowLeft'); inp.lookRight = down.has('ArrowRight'); inp.lookUp = down.has('ArrowUp'); inp.lookDown = down.has('ArrowDown');
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
   inp.shop = press('buy'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
@@ -1105,7 +1107,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
   },
   play: {
     update(dt) {
-      if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; lookYaw = 0; lookPitch = 0; if (locked) document.exitPointerLock(); return; }
+      if (pressed(bind.pause) || pressed('Escape')) { scene = 'pause'; lookYaw = 0; lookPitch = 0; state.human.scoped = false; state.human.st.aimGun = ''; if (locked) document.exitPointerLock(); return; }
       if (CLASS_MODE) { netStep(readInput(clicks.shift())); return; }
       stepMatch(state, { [state.human.id]: readInput(clicks.shift()) }, dt);
       playEvents();
@@ -1144,7 +1146,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       else if (act === 'keysreset') { resetKeys(); Object.assign(ctl, { capture: false, note: 'Teclas por defecto restablecidas' }); }
       else if (act === 'back') { scene = ctl.from; return; }
       else if (ctl.capture) {
-        const code = [...hit].find(c => !c.startsWith('Mouse'));
+        const code = [...hit].find(c => c !== 'Mouse0'); // the right button can be bound; the left one is the click that picked the row
         if (code === 'Escape') Object.assign(ctl, { capture: false, note: 'Cambio cancelado' });
         else if (code && code.startsWith('Arrow')) ctl.note = 'Las flechas giran la vista: elige otra tecla';
         else if (code) {
@@ -1175,13 +1177,13 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       text('Clic en una acción (o flechas y Intro) y pulsa la tecla nueva. Esc cancela.', W / 2, 94, 17, '#e4e9f4', 'center', 'normal');
       const n = ACTIONS.length, half = Math.ceil(n / 2);
       ACTIONS.forEach((a, i) => {
-        const x = i < half ? 80 : 660, y = 120 + (i % half) * 54, on = ctl.sel === i, cap = on && ctl.capture;
-        button(x, y, 540, 46, '', 'key:' + i, { fill: cap ? '#ffd06a' : on ? '#33415c' : undefined, stroke: on ? '#fff3c4' : undefined });
-        text(a.label, x + 20, y + 23, 19, cap ? '#1b2232' : '#fff', 'left');
+        const x = i < half ? 80 : 660, y = 118 + (i % half) * 48, on = ctl.sel === i, cap = on && ctl.capture;
+        button(x, y, 540, 42, '', 'key:' + i, { fill: cap ? '#ffd06a' : on ? '#33415c' : undefined, stroke: on ? '#fff3c4' : undefined });
+        text(a.label, x + 20, y + 21, 19, cap ? '#1b2232' : '#fff', 'left');
         const k = cap ? 'Pulsa una tecla…' : keyName(bind[a.id]);
         ctx.font = `bold 18px ${FONT}`; const kw = Math.max(64, ctx.measureText(k).width + 28);
-        rr(x + 520 - kw, y + 7, kw, 32, 8, cap ? '#1b2232' : '#0d1220', '#ffd06a', 2);
-        text(k, x + 520 - kw / 2, y + 23, 18, '#ffe7a8');
+        rr(x + 520 - kw, y + 5, kw, 32, 8, cap ? '#1b2232' : '#0d1220', '#ffd06a', 2);
+        text(k, x + 520 - kw / 2, y + 21, 18, '#ffe7a8');
       });
       if (ctl.note) text(ctl.note, W / 2, 618, 18, '#9ff08a');
       const sel = (i: number) => ctl.sel === i ? { stroke: '#fff3c4', fill: '#33415c' } : {};
@@ -1285,7 +1287,7 @@ function drawWorld() {
     camera.rotation.set(0, view.yaw, 0, 'YXZ');
     models[view.id].group.visible = false;
   }
-  const fov = p.alive && p.scoped ? 22 : 72;
+  const fov = p.alive && p.scoped ? tune[p.cur + '_aim_fov'] : 72;
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   // gates sink into the floor when the round goes live
   if (state.gateT > 0) for (const g of gates) { g.position.y = 1.5 - Math.min(1, state.gateT / 0.7) * 3.2; g.visible = g.position.y > -1.5; }
@@ -1341,18 +1343,20 @@ function drawWorld() {
   camera.position.set(cx, cy, cz); camera.rotation.z = crz;
   if (view !== p) models[view.id].group.visible = true;
   // first-person gun
+  const lens = p.alive && p.scoped && p.cur === 'sniper'; // only the sniper looks through a black-rimmed lens
   const planting = p.alive && state.plantT > 0 && b.carrier === p; // plantT is the carrier's: another student's plant is not yours
   viewBomb.group.visible = planting;
-  for (const [k, g] of Object.entries(viewGuns)) g.group.visible = p.alive && !p.scoped && !planting && k === p.cur;
+  for (const [k, g] of Object.entries(viewGuns)) g.group.visible = p.alive && !lens && !planting && k === p.cur;
   if (planting) { // the bomb in your hands, lowered toward the floor as the plant fills
     const k = state.plantT / tune.plant_time;
     viewBomb.group.position.set(0.02, -0.28 - k * 0.12, -0.55);
     viewBomb.lightMat.color.setHex(Math.floor(state.t * 8) % 2 ? 0xff5040 : 0x44ff66);
     renderer.clearDepth(); renderer.render(gunScene, gunCam);
-  } else if (p.alive && !p.scoped) {
+  } else if (p.alive && !lens) {
     const g = viewGuns[p.cur].group, bob = p.moving ? Math.sin(state.t * 11) : 0;
     const rl = p.reloadT > 0 ? Math.sin(Math.min(1, 1 - p.reloadT / tune.reload_time) * Math.PI) : 0;
-    g.position.set(0.22 + bob * 0.012, -0.21 + Math.abs(bob) * 0.01 - rl * 0.22 + p.recoil * 0.6, -0.5 + p.recoil * 1.6);
+    if (p.scoped) g.position.set(0, -0.15 + Math.abs(bob) * 0.004 + p.recoil * 0.6, -0.5 + p.recoil * 1.6); // aimed: on the centre line, with the sights behind the crosshair
+    else g.position.set(0.22 + bob * 0.012, -0.21 + Math.abs(bob) * 0.01 - rl * 0.22 + p.recoil * 0.6, -0.5 + p.recoil * 1.6);
     g.scale.setScalar(0.75);
     g.rotation.set(p.recoil * 2 - rl * 0.6, 0.05, 0);
     viewGuns[p.cur].flash.visible = p.flashT > 0;
@@ -1457,7 +1461,7 @@ function drawHUD(paused?: boolean): void {
   buttons.length = 0;
   ctx.clearRect(0, 0, W, H);
   const p = state.human, b = state.bomb, mySide = sideOf(state, p);
-  if (p.alive && p.scoped) { // scope: dark all around a clear round lens
+  if (p.alive && p.scoped && p.cur === 'sniper') { // scope: dark all around a clear round lens
     ctx.fillStyle = '#05070a'; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, 300, 0, Math.PI * 2, true); ctx.fill();
     ctx.strokeStyle = '#05070a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(W / 2 - 300, H / 2); ctx.lineTo(W / 2 + 300, H / 2);
     ctx.moveTo(W / 2, H / 2 - 300); ctx.lineTo(W / 2, H / 2 + 300); ctx.stroke();
@@ -1510,7 +1514,7 @@ function drawHUD(paused?: boolean): void {
   }
   if (p.alive) {
     // crosshair and hit marker
-    if (!p.scoped && !uiOpen(state)) {
+    if (!(p.scoped && p.cur === 'sniper') && !uiOpen(state)) {
       const gap = 6 + humanSpread(state, p) * 300;
       ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
       for (const [dx, dy, w, h] of [[-gap - 12, -1.5, 12, 3], [gap, -1.5, 12, 3], [-1.5, -gap - 12, 3, 12], [-1.5, gap, 3, 12]]) {
@@ -1562,7 +1566,7 @@ function drawHUD(paused?: boolean): void {
     else if (b.state === 'planted' && mySide === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2) hint = `Pulsa ${keyName(bind.use)} para desactivar: ¡responde la pregunta!`;
     else if (b.state === 'planted' && mySide === 'def') hint = `¡Desactiva la bomba en ${b.site}!`;
     else if (b.state === 'dropped' && mySide === 'att') hint = 'Recoge la bomba del suelo (mira el mapa)';
-    if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Clic para apuntar' : 'Haz clic para apuntar con el ratón';
+    if (!locked && !CHEAP && state.phase !== 'post') hint = hint ? hint + '   |   Clic para mirar con el ratón' : 'Haz clic para mirar con el ratón';
   }
   if (hint) {
     const pulse = state.round === 1 && state.phase === 'buy' ? 0.75 + 0.25 * Math.sin(state.t * 6) : 1;
@@ -1895,7 +1899,7 @@ function drawTitle() {
   // start
   button(820, 592, 420, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
-  const line = `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón apuntar  |  Clic disparar  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
+  const line = `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 684, ls, '#e4e9f4', 'center', 'normal');

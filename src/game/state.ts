@@ -11,6 +11,8 @@ import * as QUESTIONS from '../questions';
 /** A person's stance, jump and eye height (data/config.json: crouch_*, prone_*, jump_velocity, gravity).
  *  Every player has one (`p.st`); `match.me` is the viewer's. */
 export interface Stance { stance: string; prone: boolean; proneT: number; jumpY: number; vy: number; eye: number; sprint: boolean;
+  /** The aim (story 013): '' not aiming, the gun being aimed with, or '!' for an aim a gun switch, reload, menu or death ended and that waits for the button to be let go. */
+  aimGun: string;
   /** Height of the feet above the ground floor in metres (story 011): 0 on the ground, level_height on the first floor, between on a ramp. jumpY is the jump or fall on top of it. */
   y: number }
 
@@ -113,7 +115,7 @@ export function mulberry32(seed: number): () => number {
 
 /** A standing, grounded stance. */
 export function freshStance(): Stance {
-  const st = { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false } as Stance;
+  const st = { stance: 'stand', prone: false, proneT: 0, jumpY: 0, vy: 0, eye: EYE, sprint: false, aimGun: '' } as Stance;
   // The feet height (story 011): not enumerable, like bomb.y, so a flat match's serialised state is unchanged.
   return Object.defineProperty(st, 'y', { value: 0, enumerable: false, writable: true });
 }
@@ -143,7 +145,7 @@ function newPlayer(r: Loose, i: number, human: boolean): Loose {
 }
 /** Takes a player's primary gun and armour away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {
-  p.primary = null; p.cur = 'pistol'; p.armor = 0; p.scoped = false;
+  p.primary = null; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
   p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
 }
 

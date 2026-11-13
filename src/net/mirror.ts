@@ -146,7 +146,9 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   const row = snap.p.find(r => r[0] === m.seat)!;
   const shownX = me.x, shownZ = me.z, shownY = me.st.y + me.st.jumpY, keepYaw = me.yaw, keepPitch = me.pitch;
   me.x = row[1] / P; me.z = row[2] / P; me.st.y = (row[12] ?? 0) / P;
-  Object.assign(me.st, { prone: y[7] === 1, proneT: y[8] / T, jumpY: y[9] / P, vy: y[10] / P, eye: y[11] / P });
+  Object.assign(me.st, { prone: y[7] === 1, proneT: y[8] / T, jumpY: y[9] / P, vy: y[10] / P, eye: y[11] / P,
+    aimGun: y[14] === 1 ? me.cur : y[14] === 2 ? '!' : '' }); // the server's aim at that input, so the replay ends where the server will
+  me.scoped = y[14] === 1;
   m.unacked = m.unacked.filter(u => u.seq > snap.a);
   for (const u of m.unacked) { me.yaw = u.yaw; me.pitch = u.pitch; walk(m, u.input, STEP); }
   if (newRound || !me.alive) { me.yaw = row[3] / A; me.pitch = row[4] / A; m.unacked.length = 0; } // a new round faces the spawn's way

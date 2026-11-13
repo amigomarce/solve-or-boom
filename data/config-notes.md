@@ -42,8 +42,20 @@ holds no comments. The values themselves are in `data/config.json`.
 - `loss_bonus`: extra per loss in a row
 
 ---- Weapons: damage per hit, seconds between shots, magazine, reserve, spread (radians)
-- `sniper_spread`: unscoped; scoped is near zero
+- `sniper_spread`: not aiming; aimed is sniper_aim_spread
 - `move_spread`: added while running
+- `pistol_aim_fov`: view angle in degrees while aiming with this gun (72 is the normal view; smaller zooms more); mouse turn scales with it
+- `pistol_aim_spread`: shot spread in radians while aiming (replaces the gun spread and move_spread)
+- `pistol_aim_speed`: walk speed multiplier while aiming
+- `smg_aim_fov`: view angle in degrees while aiming with this gun (72 is the normal view; smaller zooms more); mouse turn scales with it
+- `smg_aim_spread`: shot spread in radians while aiming (replaces the gun spread and move_spread)
+- `smg_aim_speed`: walk speed multiplier while aiming
+- `rifle_aim_fov`: view angle in degrees while aiming with this gun (72 is the normal view; smaller zooms more); mouse turn scales with it
+- `rifle_aim_spread`: shot spread in radians while aiming (replaces the gun spread and move_spread)
+- `rifle_aim_speed`: walk speed multiplier while aiming
+- `sniper_aim_fov`: view angle in degrees while aiming with this gun (72 is the normal view; smaller zooms more); mouse turn scales with it
+- `sniper_aim_spread`: shot spread in radians while aiming (replaces the gun spread and move_spread)
+- `sniper_aim_speed`: walk speed multiplier while aiming
 
 ---- Bots: the challenge ramps from round 1 to round 1 + ramp_rounds ------------------
 - `bot_react_start`: s before a bot fires at a new target

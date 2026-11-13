@@ -31,7 +31,7 @@ export interface PlayerInput {
   lookYaw: number; lookPitch: number;
   /** Pressed: open or close the buy menu (and a buy card). */
   shop: boolean;
-  /** Pressed: prone toggle, jump, primary gun, pistol, swap guns, reload, sniper scope. */
+  /** Pressed: prone toggle, jump, primary gun, pistol, swap guns, reload. Held: scope, aiming down the sights. */
   prone: boolean; jump: boolean; primary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
   /** Pressed: the number choices 0..4 (keys 1..5), ascending: a card's answer or a shop item. */
   digits: number[];
@@ -127,7 +127,12 @@ export function stanceStep(match: Match, p: Loose, dt: number, inp: PlayerInput,
     me.vy -= tune.gravity * dt; me.jumpY += me.vy * dt;
     if (me.jumpY <= 0) { me.jumpY = 0; me.vy = 0; if (live && !quiet) makeNoise(match, p.x, p.z, tune.bot_hear_land, p.squad, p.st.y); } // the landing is heard
   }
-  me.sprint = sprintKey && !uiOpen(deskOf(match, p)) && !planting && !me.prone && me.proneT === 0;
+  // Aim (story 013): a held control. A gun switch, a reload, a menu, the bomb or death ends it until the button is let go.
+  if (!inp.scope || !p.alive || planting || uiOpen(deskOf(match, p))) me.aimGun = '';
+  else if (me.aimGun === '') me.aimGun = p.reloadT > 0 ? '!' : p.cur;
+  else if (me.aimGun !== p.cur || p.reloadT > 0) me.aimGun = '!';
+  p.scoped = me.aimGun !== '' && me.aimGun !== '!';
+  me.sprint = sprintKey && !uiOpen(deskOf(match, p)) && !planting && !p.scoped && !me.prone && me.proneT === 0;
   const crouch = !me.prone && !me.sprint && inp.crouch;
   me.stance = me.prone ? 'prone' : crouch ? 'crouch' : 'stand';
   const eyeTo = (me.proneT > 0 ? !me.prone : me.prone) ? tune.prone_eye : crouch ? tune.crouch_eye : EYE;
@@ -156,7 +161,7 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
   // Move.
   let sp = walk ? tune.walk_speed : me.sprint ? tune.sprint_speed : tune.run_speed;
   if (p.cur === 'sniper') sp *= tune.sniper_speed_mult;
-  if (p.scoped) sp *= 0.5;
+  if (p.scoped) sp *= tune[p.cur + '_aim_speed'];
   if (me.stance === 'prone') sp *= tune.prone_speed_mult; else if (me.stance === 'crouch') sp *= tune.crouch_speed_mult;
   if ((f || s) && !planting && me.proneT === 0) {
     const n = Math.hypot(f, s), fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
@@ -201,7 +206,6 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   if (inp.pistol && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
   if (inp.swap && p.primary) { p.cur = p.cur === 'pistol' ? p.primary : 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
   if (inp.reload) startReload(match, p);
-  if (inp.scope && p.cur === 'sniper' && p.reloadT <= 0) p.scoped = !p.scoped;
   if (live) {
     const auto = WEAPON[p.cur].auto;
     const trig = auto ? inp.fire : inp.firePress;

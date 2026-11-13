@@ -34,7 +34,7 @@ export function kill(match: Match, t: Loose, from: Loose): void {
     if (me && sideOf(match, me) === 'att') say(match, t === me ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
   }
   if (match.bomb.defuser === t) match.bomb.defuser = null;
-  if (t.human) { t.scoped = false; closeDesk(match, t); if (t === me) { match.spec = 0; nextSpec(match); } }
+  if (t.human) { t.scoped = false; t.st.aimGun = ''; closeDesk(match, t); if (t === me) { match.spec = 0; nextSpec(match); } }
   match.events.push({ type: 'kill', who: t.name, by: from ? from.name : '' });
 }
 
@@ -47,7 +47,6 @@ export function humanShoot(match: Match, p: Loose): void {
   const spread = humanSpread(match, p), eye = p.st.eye + p.st.jumpY;
   const yaw = p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (match.rng() - 0.5) * 2 * spread;
   p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
-  if (w === 'sniper') p.scoped = false;
   const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
   // walls and crates along the flat ray, or the floor when aimed down
   let wallT = 200;
@@ -80,9 +79,9 @@ export function humanShoot(match: Match, p: Loose): void {
   }
   void cp;
 }
-/** The human's shot spread now, in radians: the gun, moving, the scope, then the stance and the air multipliers. */
+/** The human's shot spread now, in radians: aimed, the gun's own aimed spread; otherwise the gun and moving. Then the stance and the air multipliers. */
 export function humanSpread(match: Match, p: Loose): number {
-  const s = p.cur === 'sniper' && p.scoped ? 0.002 : tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0);
+  const s = p.scoped ? tune[p.cur + '_aim_spread'] : tune[p.cur + '_spread'] + (p.moving ? tune.move_spread : 0);
   const st = p.st, stance = st.stance === 'prone' ? tune.prone_spread_mult : st.stance === 'crouch' ? tune.crouch_spread_mult : 1;
   return s * stance * (st.jumpY > 0 || st.vy !== 0 ? tune.air_spread_mult : 1);
 }

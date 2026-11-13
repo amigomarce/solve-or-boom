@@ -1,0 +1,14 @@
+Reviewed-Content-Hash: src/main.ts b1ce00e63bce0e964420e7d2ad9e63b53d327df1
+Reviewed-Content-Hash: src/keys.ts bb11068e4254df3edcfe3bc66e2322e44c544dde
+Reviewed-Content-Hash: data/keybinds.json e70a17942c980bb441031a2e5e7208736056cc0b
+Reviewed-Content-Hash: data/config-notes.md b8d6573487311ed513499bba4495b40d8094fb1c
+Reviewed-Content-Hash: data/config.json f2bd3a4f480521a7f14be9982e6e41bd64f40598
+Reviewed-Content-Hash: src/net/snapshot.ts 5579a9b530fa7a32ec4f82d6d24479fa972ae144
+Reviewed-Content-Hash: src/net/protocol.ts ade41e536174455a72c30024a2be7f2104e49a39
+Reviewed-Content-Hash: src/net/mirror.ts 498482f819a29cd01b6a2811abc468a0948c37a9
+Reviewed-Content-Hash: src/server/room.ts 28749d653dd3f5e4a2e7d5841b29b3dcb3b3721e
+Reviewed-Content-Hash: src/server/profesor.html b56659573844987964e3f709e256e466c6ca42a2
+Reviewed-Content-Hash: src/game/state.ts 2362f7ffdf979bf50917b565291c2435608edbf6
+Reviewed-Content-Hash: src/game/player.ts 95ad27dcf9c6937608dd119d1efb17b52ed6bc05
+Reviewed-Content-Hash: src/game/combat.ts 5d2534d49a7ad33aff5e7dcd749a0cc87df7d82c
+Reviewed-Content-Hash: src/game/rounds.ts f1481978dd401bd8f9f538eafd81bd1d081bce08

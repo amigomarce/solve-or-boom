@@ -70,7 +70,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Characters (polished block style): more detailed block models, distinct per side, animated when walking, crouching, prone and dying
 - [x] Scenery (polished block style): walls and floor with texture and relief, varied crates and props, clearly marked A and B sites, a gradient sky
 - [x] Two-floor map: at least one new map with a ground floor and a first floor joined by stairs or ramps; shooting between floors, the minimap and the bots handle the height
-- [ ] Aim with every gun: hold right click to aim down the sights with every gun, each with its own zoom (pistol and SMG light, rifle medium, sniper strong); only the sniper shows the black scope circle, the others aim through their own sights
+- [x] Aim with every gun: hold right click to aim down the sights with every gun, each with its own zoom (pistol and SMG light, rifle medium, sniper strong); only the sniper shows the black scope circle, the others aim through their own sights
 - [ ] Mobile play (Android and iOS, in the phone or tablet browser, landscape): touch controls — a left stick to move, drag on the right half to aim, buttons to fire, jump, crouch, reload, buy and plant/defuse; question cards, menus and the session screen work by touch; a lighter graphics level on phones; both modes, and a student joins the class by opening the teacher's address in the browser
 
 ## Your systems
