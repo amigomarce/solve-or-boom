@@ -29,7 +29,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `headshot_mult`: the player's shots only
 
 ---- Rounds -------------------------------------------------------------------------
-- `buy_time`: s; gates closed, buying open
+- `buy_time`: s; gates closed, buying open. The default of a match (35); the session screen steps it by `step` between `min` and `max`, and a teacher's choice is clamped to that range
 - round time: s until defenders win by time; each map has its own, `round_time` in data/maps/<map>.json (Pequeño 105, Grande 150, Patio 140, Pasillos 180, Dos pisos 150)
 - `bomb_time`: s from plant to boom
 - `plant_time`: s holding E on a site
@@ -63,6 +63,12 @@ holds no comments. The values themselves are in `data/config.json`.
 ---- Bots: the challenge ramps from round 1 to round 1 + ramp_rounds ------------------
 - `bot_react_start`: s before a bot fires at a new target
 - `bot_acc_start`: base hit chance per shot
+- `bot_facil_react_mult`: bot level Fácil: multiplies `bot_react_start/end` (a bot's reaction time); above 1 is slower
+- `bot_facil_acc_mult`: bot level Fácil: multiplies `bot_acc_start/end` (a bot's hit chance)
+- `bot_normal_react_mult`: bot level Normal: multiplies `bot_react_start/end` (a bot's reaction time); 1 is the game as before
+- `bot_normal_acc_mult`: bot level Normal: multiplies `bot_acc_start/end` (a bot's hit chance); 1 is the game as before
+- `bot_dificil_react_mult`: bot level Difícil: multiplies `bot_react_start/end` (a bot's reaction time); above 1 is slower
+- `bot_dificil_acc_mult`: bot level Difícil: multiplies `bot_acc_start/end` (a bot's hit chance)
 - `bot_fire_slow`: bots fire this much slower than the gun allows
 - `bot_speed_rusher`: m/s
 - `bot_view_range`: m

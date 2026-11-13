@@ -49,6 +49,7 @@ export function createMirror(begin: BeginMessage): Mirror {
   if (MAP_ID !== begin.map) loadMap(begin.map);
   const match = blankMatch(0, [begin.seat]);
   match.classroom = true; match.opts.map = begin.map; match.opts.subject = begin.subject; match.opts.level = begin.level as Level;
+  match.opts.friendlyFire = begin.friendlyFire; match.opts.buyTime = begin.buyTime; // the room's match options (story 017)
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
   return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };
@@ -189,7 +190,9 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
     case 'gate': match.gateT = 0.01; say(match, sideOf(match, me) === 'att' ? '¡Puertas abiertas: adelante!' : '¡Puertas abiertas: defiende los sitios!', 2.5); break;
     case 'kill': {
       const mine = e.by === m.name || e.who === m.name;
-      feed(match, `${e.by || 'La bomba'} ${e.by === m.name ? 'eliminaste a' : 'eliminó a'} ${e.who === m.name ? 'ti' : e.who}`, mine);
+      const iShot = e.by === m.name, iDied = e.who === m.name; // "Tú eliminaste a Beto", "Ana te eliminó", "Ana eliminó a Beto"
+      const what = iShot ? (iDied ? 'te eliminaste' : `eliminaste a ${e.who}`) : iDied ? 'te eliminó' : `eliminó a ${e.who}`;
+      feed(match, `${iShot ? 'Tú' : e.by || 'La bomba'} ${what}${e.ff ? ' (fuego amigo)' : ''}`, mine);
       break;
     }
     case 'plant': say(match, `¡Bomba plantada en ${e.site}! ${tune.bomb_time} segundos`, 4); break;

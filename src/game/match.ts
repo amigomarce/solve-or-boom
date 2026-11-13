@@ -6,7 +6,7 @@
 //   for (let i = 0; i < 600; i++) { step(m, { [m.human.id]: { ...idleInput(), moveF: 1 } }, STEP); m.events.length = 0; }
 //   m.round, m.score, m.players[0].money, m.bomb.state
 import { MAP_ID, loadMap, mapState } from './map';
-import { tune } from './tune';
+import { tune, CONFIG } from './tune';
 import { updateBomb } from './bomb';
 import { botUpdate } from './bots';
 import { humanUpdate, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
@@ -26,7 +26,13 @@ export function createMatch(opts: MatchOptions): Match {
   if (MAP_ID !== opts.map) loadMap(opts.map);
   const match = blankMatch(opts.seed, opts.humans ?? [0]);
   match.classroom = !!opts.classroom;
-  match.opts = { subject: opts.subject, level: opts.level, map: opts.map };
+  // Story 017: absent = today's game (friendly fire off, the config's buy time, bots Normal); a classroom's bots are always Normal.
+  const bt = Number(opts.buyTime), lim = CONFIG.buy_time;
+  match.opts = {
+    subject: opts.subject, level: opts.level, map: opts.map, friendlyFire: !!opts.friendlyFire,
+    buyTime: Number.isFinite(bt) ? Math.min(lim.max, Math.max(lim.min, bt)) : tune.buy_time,
+    botLevel: !opts.classroom && (opts.botLevel === 'facil' || opts.botLevel === 'dificil') ? opts.botLevel : 'normal',
+  };
   const topics = opts.subject === QUESTIONS.CUSTOM ? [] : opts.topics;
   match.deck = QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, match.rng);
   // A classroom student's own deck (deskOf): same choices, its own seeded random, so it never draws from match.rng.

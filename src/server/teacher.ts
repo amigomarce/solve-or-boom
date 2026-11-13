@@ -2,9 +2,11 @@
 // sees. It has no network code: net.ts hands it each parsed TeacherMessage and sends what it returns.
 //
 // Rules chosen here (the story did not say):
-//  - The session (subject, level, topics, map, CSV) applies to every room built or STARTED after it is set.
+//  - The session (subject, level, topics, map, CSV, match options) applies to every room built or STARTED after it is set.
 //    A waiting room is rebuilt from the session at the moment it starts; a running or paused room keeps its match
 //    until the teacher ends it (a new room then takes the new session).
+//  - The match options (story 017: friendly fire, buy time) are part of the session like the map: every room's next match.
+//    The buy time must be whole seconds inside data/config.json's buy_time min..max (not snapped to its step).
 //  - Teacher rooms never rematch: a won match ends the room and its students reach the results screen.
 //  - "Repartir automáticamente" refuses while any room runs or is paused, replaces the waiting rooms, and makes
 //    ceil(students / 8) rooms with the students spread evenly (so nobody is left out: 10 students make two rooms of 5,
@@ -13,6 +15,7 @@ import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
 import { parseCSV, decodeCSV, type ParsedQuestion } from '../game/csv';
 import * as QUESTIONS from '../questions';
+import { CONFIG, tune } from '../game/tune';
 import { PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
 import { rebuildMatch, type Room } from './room';
 import type { Rooms } from './rooms';
@@ -40,12 +43,14 @@ export interface Teacher {
  * @example const teacher = createTeacher({ csvMaxBytes: 262144, csvMaxQuestions: 500, maxRooms: 16, finishedShown: 8 }, { rooms, lobby, log });
  */
 export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
-  const session = { subject: 'matematicas', level: 'medio' as Level, topics: ['arith', 'mult'], map: MAP_IDS[0], custom: [] as ParsedQuestion[], customName: '', skipped: 0 };
+  const session = { subject: 'matematicas', level: 'medio' as Level, topics: ['arith', 'mult'], map: MAP_IDS[0], custom: [] as ParsedQuestion[], customName: '', skipped: 0,
+    friendlyFire: false, buyTime: Number(tune.buy_time) };
+  const buyRange = CONFIG.buy_time as { min: number; max: number; step: number };
   const v = PROTOCOL_VERSION;
   const err = (code: string, text: string): TeacherReply => ({ v, t: 'terror', code, text });
   const matchChoices = () => ({
     subject: session.subject, level: session.level, topics: session.subject === QUESTIONS.CUSTOM ? [] : [...session.topics],
-    custom: session.custom, customName: session.customName, map: session.map,
+    custom: session.custom, customName: session.customName, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
   });
   const seed = (): number => (Math.random() * 2 ** 31) >>> 0;
   const make = (): Room | null => (deps.rooms.all().length >= lim.maxRooms ? null
@@ -79,7 +84,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       v, t: 'tinfo', levels: LEVELS.map(id => ({ id, name: QUESTIONS.LEVEL_NAMES[id] })), maps: MAP_LIST.map(m => ({ ...m })), weakBelowPct: lim.weakBelowPct, weakMinAnswers: lim.weakMinAnswers,
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
-      csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions,
+      csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
     }),
     state() {
       const students = deps.lobby.list();
@@ -94,7 +99,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       });
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
-        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map,
+        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
           csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
           available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
         results: deps.results.view(),
@@ -108,9 +113,11 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         case 'tsession': {
           const topics = [...new Set(msg.topics)];
           if (!MAP_IDS.includes(msg.map)) return err('mapa', 'Ese mapa no existe.');
+          if (msg.buyTime < buyRange.min || msg.buyTime > buyRange.max) return err('compra', `El tiempo de compra va de ${buyRange.min} a ${buyRange.max} segundos.`);
+          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime };
           if (msg.subject === QUESTIONS.CUSTOM) {
             if (!session.custom.length) return err('sin_csv', 'Primero sube un archivo CSV de preguntas.');
-            Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map });
+            Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map, ...options });
             return null;
           }
           if (!Object.hasOwn(QUESTIONS.SUBJECTS, msg.subject)) return err('materia', 'Esa materia no existe.');
@@ -118,7 +125,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           if (!topics.length || !topics.every(t => Object.hasOwn(known, t))) return err('temas', 'Elige al menos un tema de la materia.');
           const n = QUESTIONS.availableCount(msg.subject, topics, msg.level, session.custom);
           if (n !== null && n < 1) return err('sin_preguntas', 'Esa elección no tiene preguntas.');
-          Object.assign(session, { subject: msg.subject, level: msg.level, topics, map: msg.map });
+          Object.assign(session, { subject: msg.subject, level: msg.level, topics, map: msg.map, ...options });
           return null;
         }
         case 'tcsv': {

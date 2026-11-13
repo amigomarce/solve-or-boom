@@ -1,0 +1,30 @@
+tinfo.buyTime {"min":10,"max":60,"step":5}; default session friendlyFire false, buyTime 35
+refusals: compra "El tiempo de compra va de 10 a 60 segundos." | bad_field "Un campo del mensaje no es válido." | bad_field "Un campo del mensaje no es válido."; session after: ff false, buy 35
+session now: {"subject":"matematicas","level":"medio","map":"dospisos","friendlyFire":true,"buyTime":15,"csv":null}
+seated: Ana room sala-1 team 0 seat 0; Beto room sala-1 team 1 seat 4
+same team: Ana seat 0, Beto seat 1, squads 0/0
+started: server match.opts {"subject":"matematicas","level":"medio","map":"dospisos","friendlyFire":true,"buyTime":15,"botLevel":"normal"}; phase buy phaseT 15.00
+[16.5 s] Beto's mirror shows the hit: own hp 35
+[16.6 s] Ana's shot hurts teammate Beto on the server: Beto hp 100 -> 35 (pistol_dmg 26); bot behind hp 100 -> 100; Ana shots 1
+[16.9 s] teammate killed: no money, no kill for Ana: Ana money 1250 -> 1250, kills 0 -> 0; Beto deaths 1
+[16.9 s] kill event at Ana: {"type":"kill","who":"Beto","by":"Ana","ff":true}
+[16.9 s] feed "(fuego amigo)" at Ana: "Tú eliminaste a Beto (fuego amigo)"
+[16.9 s] kill event at Beto: {"type":"kill","who":"Beto","by":"Ana","ff":true}
+[16.9 s] feed "(fuego amigo)" at Beto: "Ana te eliminó (fuego amigo)"
+scenario A (friendlyFire true, buyTime 15); map dospisos; PROTOCOL_VERSION 7; 16.9 s; room running; round 1; stage at stop done
+server buy phase: 900 steps = 15.00 s (opts.buyTime 15)
+Ana mirror: begins [{"match":0,"seat":0,"friendlyFire":true,"buyTime":15}]; opts ff true buy 15; first buy snapshot pt 14.95 s; buy seen 14.95 s (first buy snap to first live snap, + its pt)
+Beto mirror: begins [{"match":0,"seat":1,"friendlyFire":true,"buyTime":15}]; opts ff true buy 15; first buy snapshot pt 14.95 s; buy seen 14.95 s (first buy snap to first live snap, + its pt)
+server steps 963, dropped 0, mean step 0.097 ms, max 3.39 ms; warnings 0
+server sent 642 snapshots, 518 bytes each; 1936 messages accepted, 0 refused
+Ana seat 0: 321 snaps; versions 7; correction n 0 mean 0.000 m max 0.000 m (first correction after the harness teleport: #-1); events {"gate":1,"shot":2,"hit":2,"kill":1}
+Beto seat 1: 321 snaps; versions 7; correction n 1 mean 4.800 m max 4.800 m (first correction after the harness teleport: #1); events {"gate":1,"shot":2,"hurt":2,"kill":1}
+  yes Ana's shot hurts teammate Beto on the server: Beto hp 100 -> 35 (pistol_dmg 26); bot behind hp 100 -> 100; Ana shots 1
+  yes Beto's mirror shows the hit: own hp 35
+  yes kill event at Ana: {"type":"kill","who":"Beto","by":"Ana","ff":true}
+  yes kill event at Beto: {"type":"kill","who":"Beto","by":"Ana","ff":true}
+  yes feed "(fuego amigo)" at Ana: "Tú eliminaste a Beto (fuego amigo)"
+  yes feed "(fuego amigo)" at Beto: "Ana te eliminó (fuego amigo)"
+  yes teammate killed: no money, no kill for Ana: Ana money 1250 -> 1250, kills 0 -> 0; Beto deaths 1
+server log lines with "rror": 0
+no errors (server or client)

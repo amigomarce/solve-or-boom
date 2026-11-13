@@ -28,6 +28,9 @@
   .chip:has(input:checked) { background: var(--gold); color: #1b2232; border-color: #fff3c4; font-weight: 600; }
   .chip input { margin: 0; }
   .chip.off { opacity: .55; cursor: default; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button { min-width: 40px; font-size: 18px; font-weight: 600; padding: 4px 10px; }
+  .stepper .val { min-width: 64px; justify-content: center; background: var(--gold); color: #1b2232; border-color: #fff3c4; font-weight: 600; cursor: default; }
   .topics label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 15px; cursor: pointer; }
   .topics input { width: 18px; height: 18px; }
   button { font: inherit; font-size: 15px; color: var(--text); background: var(--btn); border: 1px solid #47557a; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
@@ -101,6 +104,11 @@
       <div id="available" class="csvline"></div>
       <h3>Mapa</h3>
       <div id="maps" class="chips"></div>
+      <h3>Partida</h3>
+      <div class="hint" style="margin-bottom:4px">Tiempo de compra</div>
+      <div id="buytime" class="stepper"></div>
+      <div class="hint" style="margin:8px 0 4px">Fuego amigo (los disparos dañan a los compañeros)</div>
+      <div id="ff" class="chips"></div>
       <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
     </section>
     <section class="panel" aria-labelledby="h-students">
@@ -132,7 +140,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 6;
+const V = 7;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -162,7 +170,7 @@ function connect() {
     else if (m.t === 'terror') say(m.text);
     else if (m.t === 'texported') download(m);
     // A refused choice leaves the server's session as it was: rebuild the session panel so it shows that again.
-    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps']) delete last[k]; if (st && info) render(); }
+    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps', 'buytime', 'ff']) delete last[k]; if (st && info) render(); }
   };
   ws.onclose = () => {
     $('conn').textContent = 'Sin conexión · reconectando…'; $('conn').className = 'off';
@@ -180,7 +188,8 @@ function put(id, html) {
 }
 
 function sendSession(over) {
-  const s = Object.assign({ subject: st.session.subject, level: st.session.level, topics: st.session.topics, map: st.session.map }, over);
+  const ss = st.session;
+  const s = Object.assign({ subject: ss.subject, level: ss.level, topics: ss.topics, map: ss.map, friendlyFire: ss.friendlyFire, buyTime: ss.buyTime }, over);
   if (s.subject === CUSTOM) s.topics = [];
   send('tsession', s);
 }
@@ -197,6 +206,12 @@ function render() {
       + (s.csv.skipped ? ` · <span class="skip">${s.csv.skipped === 1 ? '1 fila omitida' : s.csv.skipped + ' filas omitidas'}</span>` : '')
     : `<span class="hint">Todavía no hay archivo. Máximo ${Math.floor(info.csvMaxBytes / 1024)} KB y ${info.csvMaxQuestions} preguntas.</span>`);
   put('maps', info.maps.map(m => `<label class="chip"><input type="radio" name="map" value="${esc(m.id)}"${m.id === s.map ? ' checked' : ''}>${esc(m.name)}</label>`).join(''));
+  // The match options (story 017): the buy time steps by tinfo's step inside its range; friendly fire Sí / No.
+  const bt = info.buyTime;
+  put('buytime', `<button type="button" data-buy="-1" aria-label="Menos tiempo de compra"${s.buyTime > bt.min ? '' : ' disabled'}>−</button>`
+    + `<span class="chip val" aria-live="polite">${s.buyTime} s</span>`
+    + `<button type="button" data-buy="1" aria-label="Más tiempo de compra"${s.buyTime < bt.max ? '' : ' disabled'}>+</button>`);
+  put('ff', [[true, 'Sí'], [false, 'No']].map(([on, label]) => `<label class="chip"><input type="radio" name="ff" value="${on ? 1 : 0}"${s.friendlyFire === on ? ' checked' : ''}>${label}</label>`).join(''));
 
   put('available', s.available === null ? '<span class="hint">Preguntas: se generan sin límite.</span>'
     : `<span class="${s.available ? 'good' : 'skip'}">${s.available === 1 ? '1 pregunta disponible' : s.available + ' preguntas disponibles'}</span>`);
@@ -270,6 +285,12 @@ $('subjects').addEventListener('change', e => {
 });
 $('levels').addEventListener('change', e => sendSession({ level: e.target.value }));
 $('maps').addEventListener('change', e => sendSession({ map: e.target.value }));
+$('buytime').addEventListener('click', e => {
+  const b = e.target.closest('button[data-buy]'); if (!b || b.disabled) return;
+  const bt = info.buyTime;
+  sendSession({ buyTime: Math.min(bt.max, Math.max(bt.min, st.session.buyTime + Number(b.dataset.buy) * bt.step)) });
+});
+$('ff').addEventListener('change', e => sendSession({ friendlyFire: e.target.value === '1' }));
 $('topics').addEventListener('change', () => sendSession({ topics: [...$('topics').querySelectorAll('input:checked')].map(i => i.value) }));
 $('upload').onclick = () => $('file').click();
 $('file').addEventListener('change', () => {

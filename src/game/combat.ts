@@ -15,16 +15,20 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
     if (t === match.human) match.flashT = 0.35;
     match.events.push({ type: 'hurt', p: t.id, yaw });
     if (t === match.human) match.hurt.push({ yaw, t: 1.0 });
-  } else {
+  } else if (!friendly(from, t)) { // a bot hit by a teammate (friendly fire) has no enemy to take cover from
     t.alertT = 1.5; t.alertYaw = yawTo(from.x - t.x, from.z - t.z); if (t.defusing) t.defusing = false;
     t.wantCover = true; t.threatX = from.x; t.threatZ = from.z;
   }
   if (t.hp <= 0) kill(match, t, from);
 }
+/** A hit by a teammate (friendly fire, story 017): the same squad, not oneself. */
+const friendly = (from: Loose, t: Loose): boolean => !!from && from !== t && from.squad === t.squad;
 export function kill(match: Match, t: Loose, from: Loose): void {
   t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
-  match.count?.kill(from && from !== t ? from : null, t);
-  if (from && from !== t) {
+  // A teammate's death (friendly fire) counts for nothing: no kill, no money, no first-kill bonus, and no penalty to the shooter.
+  const team = friendly(from, t);
+  match.count?.kill(from && from !== t && !team ? from : null, t);
+  if (from && from !== t && !team) {
     from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money);
     if (!match.firstKill) { // the round's first kill pays a bonus (story 016)
       match.firstKill = true; from.money = Math.min(tune.max_money, from.money + tune.first_kill_bonus);
@@ -36,16 +40,19 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: t.x - 0.3, z: t.z, y: t.st.y, age: 0 },
     { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: t.x + 0.3, z: t.z, y: t.st.y, age: 0 });
   const me = match.human;
-  feed(match, `${from ? from.name : 'La bomba'} ${from && from === me ? 'eliminaste a' : 'eliminó a'} ${t === me ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
+  // "Tú eliminaste a Bot Kira", "Bot Kira te eliminó", "Bot Kira eliminó a Bot Rex", "La bomba te eliminó"
+  const killer = from ? (from === me ? 'Tú' : from.name) : 'La bomba';
+  const what = from && from === me ? (t === me ? 'te eliminaste' : `eliminaste a ${t.name}`) : t === me ? 'te eliminó' : `eliminó a ${t.name}`;
+  feed(match, `${killer} ${what}${team ? ' (fuego amigo)' : from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
     (from && from === me) || t === me);
-  if (from && from.human && from !== t) { if (from === me) match.killT = 0.4; match.events.push({ type: 'killmark', p: from.id }); }
+  if (from && from.human && from !== t && !team) { if (from === me) match.killT = 0.4; match.events.push({ type: 'killmark', p: from.id }); }
   if (match.bomb.state === 'carried' && match.bomb.carrier === t) {
     match.bomb.state = 'dropped'; match.bomb.x = t.x; match.bomb.z = t.z; match.bomb.y = t.st.y; match.bomb.carrier = null;
     if (me && sideOf(match, me) === 'att') say(match, t === me ? '¡Soltaste la bomba!' : '¡La bomba quedó en el suelo!');
   }
   if (match.bomb.defuser === t) match.bomb.defuser = null;
   if (t.human) { t.scoped = false; t.st.aimGun = ''; closeDesk(match, t); if (t === me) { match.spec = 0; nextSpec(match); } }
-  match.events.push({ type: 'kill', who: t.name, by: from ? from.name : '' });
+  match.events.push(team ? { type: 'kill', who: t.name, by: from.name, ff: true } : { type: 'kill', who: t.name, by: from ? from.name : '' }); // ff: a teammate's kill, for the classroom feed (protocol 7)
 }
 
 export function humanShoot(match: Match, p: Loose): void {
@@ -69,7 +76,7 @@ export function humanShoot(match: Match, p: Loose): void {
   const wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp, melee ? tune.melee_range : 200, true);
   let best = null, bestT = wallT, head = false;
   for (const e of match.players) {
-    if (!e.alive || e.squad === p.squad) continue;
+    if (!e.alive || e === p || (e.squad === p.squad && !match.opts.friendlyFire)) continue;
     const ox = e.x - p.x, oz = e.z - p.z, along = ox * hx + oz * hz;
     if (along <= 0) continue;
     const perp2 = ox * ox + oz * oz - along * along, r = 0.42;
@@ -149,7 +156,8 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
   a.mag--; b.cool = tune[w + '_rate'] * tune.bot_fire_slow * (0.85 + match.rng() * 0.3);
   const d = Math.hypot(t.x - b.x, t.z - b.z);
   const stanceHit = !t.human ? 1 : t.st.stance === 'prone' ? tune.prone_hit_mult : t.st.stance === 'crouch' ? tune.crouch_hit_mult : 1;
-  const chance = hitChance(level(match), tune.bot_acc_start, tune.bot_acc_end, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
+  const am = tune[`bot_${match.opts.botLevel}_acc_mult`]; // the bot level (story 017); Normal is 1
+  const chance = hitChance(level(match), tune.bot_acc_start * am, tune.bot_acc_end * am, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
   const hitIt = match.rng() < chance;
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;
@@ -158,5 +166,18 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
   match.events.push({ type: 'shot', human: false, by: b.id, w, x: b.x, z: b.z, from: [gx, b.st.y + 1.3, gz], to: [t.x - fz * miss, t.st.y + (hitIt ? 1.2 : 1.0 + match.rng() * 1.2) * body + lift, t.z + fx * miss], spark: false });
   b.flashT = 0.06;
   makeNoise(match, b.x, b.z, tune.bot_hear_shot, b.squad, b.st.y);
-  if (hitIt) applyDamage(match, t, tune[w + '_dmg'], b);
+  if (hitIt) {
+    // Friendly fire (story 017): a teammate standing in the line, nearer than the target, takes the shot. No random numbers are drawn here.
+    let victim = t;
+    if (match.opts.friendlyFire) {
+      const dx = (t.x - b.x) / (d || 1), dz = (t.z - b.z) / (d || 1);
+      let near = d;
+      for (const q of match.players) {
+        if (q === b || q === t || !q.alive || q.squad !== b.squad || Math.abs(q.st.y - b.st.y) > 1.5) continue;
+        const ox = q.x - b.x, oz = q.z - b.z, along = ox * dx + oz * dz, perp = Math.abs(ox * dz - oz * dx);
+        if (along > 0.5 && along < near && perp < 0.42) { victim = q; near = along; }
+      }
+    }
+    applyDamage(match, victim, tune[w + '_dmg'], b);
+  }
 }

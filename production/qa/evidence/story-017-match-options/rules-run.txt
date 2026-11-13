@@ -1,0 +1,11 @@
+OK   default buy phase 35 s (opts {"subject":"matematicas","level":"medio","map":"pequeno","friendlyFire":false,"buyTime":35,"botLevel":"normal"})
+OK   buyTime 45 -> 45
+OK   buyTime 999 -> 60 (clamped), 'x' -> 35
+OK   round 2 also starts with 15.00 s
+OK   classroom botLevel dificil -> normal
+OK   friendly fire OFF: teammate hp after 20 shots' steps 100, alive true
+OK   friendly fire ON: teammate hp after 20 steps 35, then dead true, shooter money +0, kills +0, firstKill false; feed: {"s":"Tú eliminaste a Bot Kira (fuego amigo)","t":5.983333333333333,"mine":true}
+OK   bot shot with a teammate in the line: OFF target 70/400, mate 0; ON target 0, mate 70
+OK   bot level facil: acc mult 0.6, react mult 1.6; hit rate 0.122 vs configured 0.114
+OK   bot level normal: acc mult 1, react mult 1; hit rate 0.199 vs configured 0.190
+OK   bot level dificil: acc mult 1.4, react mult 0.65; hit rate 0.262 vs configured 0.266

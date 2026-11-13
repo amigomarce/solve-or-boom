@@ -23,7 +23,7 @@
     { "id": "mute", "label": "Silencio", "key": "KeyM" }
   ],
   "names": {
-    "Mouse2": "Clic derecho", "Space": "Espacio", "ShiftLeft": "Mayús izq.", "ShiftRight": "Mayús der.",
+    "Mouse0": "Clic izquierdo", "Mouse2": "Clic derecho", "Space": "Espacio", "ShiftLeft": "Mayús izq.", "ShiftRight": "Mayús der.",
     "ControlLeft": "Ctrl izq.", "ControlRight": "Ctrl der.", "AltLeft": "Alt", "AltRight": "Alt Gr",
     "MetaLeft": "Cmd izq.", "MetaRight": "Cmd der.", "Enter": "Intro", "NumpadEnter": "Intro num.",
     "Backspace": "Retroceso", "Tab": "Tabulador", "CapsLock": "Bloq Mayús", "Delete": "Supr",

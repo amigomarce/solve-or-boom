@@ -1,0 +1,14 @@
+# Story 017 evidence: Match options
+
+From a classroom playtest: a longer time to answer at the start, Disparar on the left button, a friendly-fire option, and bot levels in single player.
+
+- d1-d2 (desktop) and p1-p2 (emulated phone 844x390, touch): the session screen with the new options row ("Tiempo de compra" − 35 s +, "Fuego amigo: No/Sí", "Bots" Fácil / Normal / Difícil); p3 a phone match started with friendly fire on, 40 s and Fácil.
+- d3-d4: Controles, "Disparar" waiting for a key with the "Usar el clic izquierdo" button, then bound to "Clic izquierdo".
+- d5: the session screen with a 2-row CSV: "Pocas preguntas: se repetirán" sits above "1 pregunta disponible" (an overlap the engine check found, fixed).
+- f1: the kill feed after a teammate kill: "Tú eliminaste a Bot Kira (fuego amigo)".
+- teacher-options-*.png: the teacher page's new "Partida" block (Tiempo de compra − value +, range 10-60 step 5, Fuego amigo Sí/No), at 35 s / No, at 10 s / Sí with − disabled, and at 15 s / Sí. The page header seen mid-image is the sticky header in a full-page capture.
+- rules-run.txt (Node, bounded): buy phase 35 s by default, 45 kept, 999 clamped to 60, a bad value falls back to 35, round 2 keeps the chosen time; a classroom match given Difícil plays Normal; a teammate shot with friendly fire off does nothing, on hurts and kills with no money, kill or bonus for the shooter; a bot's shot hits a teammate in its line only with friendly fire on; bot hit rate per level close to the configured chance (Fácil 0.122, Normal 0.199, Difícil 0.262).
+- room-run-ff-on.txt (headless room, protocol 7, set up through the teacher's tsession / taddroom / tmove / troom start): friendly fire on and 15 s: the server buy phase lasted 15.00 s and both students' begin and snapshots showed it; Ana's shot hurt teammate Beto (100 -> 35) and the kill event carried ff to both; the feeds read "Tú eliminaste a Beto (fuego amigo)" and "Ana te eliminó (fuego amigo)"; Ana got no money or kill; out-of-range teacher values refused with the session unchanged; no errors, 0 dropped steps. room-run-defaults.txt: no teacher session sent: 35 s, friendly fire off (the shot passed Beto and hit the bot behind); no errors. The one 4.8 m correction on Beto is the harness teleporting him.
+- Kill feed wording fixed in both modes (pre-existing): "Tú eliminaste a X", "X te eliminó", "X eliminó a Y" (was "Ana eliminaste a Beto", "X eliminó a ti").
+- Same-seed replay: changed only by the buy phase going from 25 to 35 s (at 60 s the clock shows 2:06 instead of 1:56); shown to the person and accepted 2026-11-13. With buyTime 25 the new code gives the old hashes on three maps.
+- Screens d1-d4, f1, p1-p3 and the teacher shots were taken before the CSV warning move and the feed wording fix; neither changes them except d5 and the feed text.

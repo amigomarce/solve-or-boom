@@ -74,7 +74,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Mobile play (Android and iOS, in the phone or tablet browser, landscape): touch controls — a left stick to move, drag on the right half to aim, buttons to fire, jump, crouch, reload, buy and plant/defuse; question cards, menus and the session screen work by touch; a lighter graphics level on phones; both modes, and a student joins the class by opening the teacher's address in the browser
 - [x] Shooting fixes (from the classroom playtest): an aimed shot and its tracer leave from the sights, not the shoulder; shots are not stopped by a crate's edge when the shooter stands close to it; the spread of every gun, standing and moving, is tightened to what players expect
 - [x] Combat and economy (from the classroom playtest): a money bonus for the first kill of each round; a kill counter (on PC a players table with kills and deaths while holding Tab, on phones a small number with a kill icon under the minimap); medkits to buy that heal; dead players drop a medkit and ammo that others can pick up; a melee hit (fists or the gun) when out of bullets
-- [ ] Match options (from the classroom playtest): a longer buy phase that the teacher and the single-player session screen can set; firing can be bound to the left mouse button in Controles; a friendly-fire option; bot difficulty levels in single player
+- [x] Match options (from the classroom playtest): a longer buy phase that the teacher and the single-player session screen can set; firing can be bound to the left mouse button in Controles; a friendly-fire option; bot difficulty levels in single player
 
 ## Your systems
 - buying weapons and ammo with answers · in the slice

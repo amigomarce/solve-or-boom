@@ -19,7 +19,7 @@ import {
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
-  createMatch, blankMatch, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say,
+  createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say,
   ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
@@ -994,6 +994,8 @@ const session = {
   level: 'medio' as Level,
   topics: Object.fromEntries(Object.entries(QUESTIONS.SUBJECTS).map(([k, s]) => [k, Object.keys(s.topics)])),
   custom: [] as ParsedQuestion[], customName: '', status: '',
+  /** Match options (story 017), passed to createMatch as friendlyFire, buyTime and botLevel. */
+  buyTime: Number(tune.buy_time), friendlyFire: false, botLevel: 'normal' as BotLevel,
   /** Rows the last CSV upload skipped. */
   skipped: 0,
   /** Questions available for the current subject, topics and level (after the level fallback); null = generated. */
@@ -1015,6 +1017,7 @@ function startMatch(): void {
   state = createMatch({
     seed: seedFrom(CONFIG.seed), subject: session.subject, level: session.level, map: session.map,
     topics: session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject], custom: session.custom, customName: session.customName,
+    friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel,
   });
   playEvents();
 }
@@ -1131,6 +1134,10 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       // The map: C steps through them, a click picks one; the flyover behind shows it.
       if (pressed('KeyC')) pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
       if (act && act.startsWith('map:')) pickMap(act.slice(4));
+      // The match options (story 017): the buy time steps by its config step within its range, friendly fire toggles, the bots' level is picked.
+      if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
+      if (act === 'ff') session.friendlyFire = !session.friendlyFire;
+      if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
       if (pressed('Enter') || pressed('Space') || act === 'start') {
@@ -1182,8 +1189,12 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('key:')) Object.assign(ctl, { sel: Number(act.slice(4)), capture: true, note: '' });
       else if (act === 'keysreset') { resetKeys(); Object.assign(ctl, { capture: false, note: 'Teclas por defecto restablecidas' }); }
       else if (act === 'back') { scene = ctl.from; return; }
-      else if (ctl.capture) {
-        const code = [...hit].find(c => c !== 'Mouse0'); // the right button can be bound; the left one is the click that picked the row
+      else if (act === 'bindleft' && ctl.capture && ACTIONS[ctl.sel].id === 'shoot') { // the left button is bound by its own button: the click that picks a row never lands here
+        const a = ACTIONS[ctl.sel], other = setKey(a.id, 'Mouse0');
+        ctl.capture = false;
+        ctl.note = other ? `${other.label} pasa a ${keyName(bind[other.id])}` : `${a.label}: ${keyName('Mouse0')}`;
+      } else if (ctl.capture) {
+        const code = [...hit].find(c => c !== 'Mouse0'); // the right button can be bound by clicking; the left one only through its button (a click on a row or a button is never a key)
         if (code === 'Escape') Object.assign(ctl, { capture: false, note: 'Cambio cancelado' });
         else if (code && code.startsWith('Arrow')) ctl.note = 'Las flechas giran la vista: elige otra tecla';
         else if (code) {
@@ -1236,6 +1247,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
         text(k, x + 520 - kw / 2, y + 20, 18, '#ffe7a8');
       });
       if (ctl.note) text(ctl.note, W / 2, 618, 18, '#9ff08a');
+      if (ctl.capture && ACTIONS[ctl.sel].id === 'shoot') button(W / 2 - 160, 602, 320, 38, 'Usar el clic izquierdo', 'bindleft', { size: 20 }); // Disparar can take the left mouse button
       const sel = (i: number) => ctl.sel === i ? { stroke: '#fff3c4', fill: '#33415c' } : {};
       button(W / 2 - 340, 644, 320, 52, 'Restablecer', 'keysreset', { size: 22, ...sel(n) });
       button(W / 2 + 20, 644, 320, 52, 'Volver', 'back', { size: 22, ...sel(n + 1) });
@@ -1929,19 +1941,19 @@ function drawTitle() {
   button(40, 24, 180, 48, TOUCH ? 'Menú' : 'Menú (Esc)', 'mainmenu', { size: 22 });
   const custom = session.subject === QUESTIONS.CUSTOM;
   // 1. subject
-  rr(40, 170, 330, 400, 16, 'rgba(14,19,30,0.9)', null);
+  rr(40, 170, 330, 378, 16, 'rgba(14,19,30,0.9)', null);
   text('1. Asignatura', 64, 200, 24, '#ffd06a', 'left');
   SUBJECT_LIST.forEach((s, i) => {
     const on = session.subject === s;
     const label = s === QUESTIONS.CUSTOM ? QUESTIONS.CUSTOM_NAME + ' (CSV)' : QUESTIONS.SUBJECTS[s].name;
-    button(60, 222 + i * 58, 290, 48, label, 'subj:' + s, { align: 'left', fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff' });
+    button(60, 222 + i * 54, 290, 46, label, 'subj:' + s, { align: 'left', fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff' });
   });
   if (!TOUCH) {
-    text('Arriba / Abajo: asignatura', 205, 530, 15, '#aab4c8', 'center', 'normal');
-    text('Izquierda / Derecha: nivel', 205, 552, 15, '#aab4c8', 'center', 'normal');
+    text('Arriba / Abajo: asignatura', 205, 508, 15, '#aab4c8', 'center', 'normal');
+    text('Izquierda / Derecha: nivel', 205, 530, 15, '#aab4c8', 'center', 'normal');
   }
   // 2. contents: the level, then the topics (or the custom file), then what that choice gives
-  rr(390, 170, 450, 400, 16, 'rgba(14,19,30,0.9)', null);
+  rr(390, 170, 450, 378, 16, 'rgba(14,19,30,0.9)', null);
   text('2. Contenido', 414, 200, 24, '#ffd06a', 'left');
   text('Nivel', 414, 242, 18, custom ? '#8a93a3' : '#fff', 'left');
   LEVELS.forEach((l, k) => {
@@ -1958,7 +1970,7 @@ function drawTitle() {
       wrapText(TOUCH ? 'Todavía no hay archivo. Sube un CSV con el botón de la derecha.' : 'Todavía no hay archivo. Sube un CSV con el botón de la derecha o suelta el archivo en esta ventana.', 400, 18)
         .forEach((l, i) => text(l, 414, 318 + i * 26, 18, '#fff', 'left', 'normal'));
     }
-    if (session.custom.length > 0 && session.custom.length < 4) text('Pocas preguntas: se repetirán', 615, 556, 16, '#ffb366');
+    if (session.custom.length > 0 && session.custom.length < 4) text('Pocas preguntas: se repetirán', 615, 508, 16, '#ffb366'); // above the count line (532)
   } else {
     const subj = QUESTIONS.SUBJECTS[session.subject];
     Object.entries(subj.topics).forEach(([id, name], i) => {
@@ -1974,7 +1986,7 @@ function drawTitle() {
   text(n === null ? 'Las preguntas de matemáticas se generan sin límite' : n === 1 ? '1 pregunta disponible' : `${n} preguntas disponibles`,
     615, 532, 16, '#e4e9f4');
   // 3. your own questions
-  rr(860, 170, 380, 400, 16, 'rgba(14,19,30,0.9)', null);
+  rr(860, 170, 380, 378, 16, 'rgba(14,19,30,0.9)', null);
   text('Tus preguntas', 884, 200, 24, '#ffd06a', 'left');
   button(880, 222, 340, 50, TOUCH ? 'Subir CSV' : 'Subir CSV (U)', 'upload', { size: 22 });
   // The accepted shapes: a format line is bold blue and never wraps (it has no spaces), so the long one is split by hand.
@@ -1986,28 +1998,41 @@ function drawTitle() {
   for (const [s, fmt] of help) for (const l of fmt ? [s] : wrapText(s, 336, 15)) {
     text(l, 884, hy, 15, fmt ? '#9fd8ff' : '#e4e9f4', 'left', fmt ? 'bold' : 'normal'); hy += 20;
   }
-  if (session.status) wrapText(session.status, 336, 16).slice(0, 2).forEach((l, i) => text(clip(l, 336, 16), 884, 506 + i * 22, 16, '#ffe28a', 'left'));
-  if (session.skipped > 0) text(session.skipped === 1 ? '1 fila omitida' : `${session.skipped} filas omitidas`, 884, 552, 16, '#ffb38a', 'left');
+  if (session.status) wrapText(session.status, 336, 16).slice(0, 2).forEach((l, i) => text(clip(l, 336, 16), 884, 488 + i * 22, 16, '#ffe28a', 'left'));
+  if (session.skipped > 0) text(session.skipped === 1 ? '1 fila omitida' : `${session.skipped} filas omitidas`, 884, 532, 16, '#ffb38a', 'left');
+  // 5. the match options (story 017): buy time, friendly fire, the bots' level. Every button is 42 px tall, like the level and topic buttons.
+  rr(40, 552, 1200, 50, 12, 'rgba(14,19,30,0.9)', null);
+  { const bt = CONFIG.buy_time;
+    text('Tiempo de compra', 60, 577, 18, '#ffd06a', 'left');
+    button(220, 556, 56, 42, '-', session.buyTime > bt.min ? 'buyt:-1' : null, { size: 26, fill: session.buyTime > bt.min ? undefined : '#1b2232', color: session.buyTime > bt.min ? '#fff' : '#8a93a3' });
+    text(`${session.buyTime} s`, 336, 577, 22, '#fff');
+    button(396, 556, 56, 42, '+', session.buyTime < bt.max ? 'buyt:1' : null, { size: 26, fill: session.buyTime < bt.max ? undefined : '#1b2232', color: session.buyTime < bt.max ? '#fff' : '#8a93a3' }); }
+  button(476, 556, 250, 42, `Fuego amigo: ${session.friendlyFire ? 'Sí' : 'No'}`, 'ff', { size: 20, fill: session.friendlyFire ? '#ffd06a' : undefined, color: session.friendlyFire ? '#1b2232' : '#fff', stroke: session.friendlyFire ? '#fff3c4' : undefined });
+  text('Bots', 752, 577, 18, '#ffd06a', 'left');
+  ([['facil', 'Fácil'], ['normal', 'Normal'], ['dificil', 'Difícil']] as const).forEach(([id, name], k) => {
+    const on = session.botLevel === id;
+    button(818 + k * 140, 556, 132, 42, name, 'bot:' + id, { size: 20, fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff', stroke: on ? '#fff3c4' : undefined });
+  });
   // 4. the map: a button each, with its size; the chosen one lit
-  rr(40, 584, 760, 80, 16, 'rgba(14,19,30,0.9)', null);
-  text('Mapa', 60, 612, 24, '#ffd06a', 'left');
-  if (!TOUCH) text('Tecla C', 60, 642, 15, '#aab4c8', 'left', 'normal');
+  rr(40, 608, 760, 68, 16, 'rgba(14,19,30,0.9)', null);
+  text('Mapa', 60, 634, 24, '#ffd06a', 'left');
+  if (!TOUCH) text('Tecla C', 60, 658, 15, '#aab4c8', 'left', 'normal');
   const step = Math.min(158, Math.floor(632 / MAP_IDS.length)), bw = step - 8; // four maps keep 158 px; more share the panel's 632 px
   MAP_IDS.forEach((id, i) => {
     const on = session.map === id, m = MAPS[id], bx = 160 + i * step;
-    button(bx, 592, bw, 64, '', 'map:' + id, { fill: on ? '#ffd06a' : undefined, stroke: on ? '#fff3c4' : undefined });
-    text(m.name, bx + bw / 2, 614, 20, on ? '#1b2232' : '#fff');
-    text(`${m.width * CELL} x ${m.height * CELL} m`, bx + bw / 2, 640, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
+    button(bx, 612, bw, 60, '', 'map:' + id, { fill: on ? '#ffd06a' : undefined, stroke: on ? '#fff3c4' : undefined });
+    text(m.name, bx + bw / 2, 632, 20, on ? '#1b2232' : '#fff');
+    text(`${m.width * CELL} x ${m.height * CELL} m`, bx + bw / 2, 656, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
   });
   // start
-  button(820, 592, 420, 64, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  button(820, 612, 420, 60, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
   const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
     : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
-  text(clip(line, W - 40, ls, 'normal'), W / 2, 684, ls, '#e4e9f4', 'center', 'normal');
-  text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 708, 15, '#aab4c8', 'center', 'normal');
+  text(clip(line, W - 40, ls, 'normal'), W / 2, 694, ls, '#e4e9f4', 'center', 'normal');
+  text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 713, 14, '#aab4c8', 'center', 'normal');
 }
 function drawResults() {
   buttons.length = 0;

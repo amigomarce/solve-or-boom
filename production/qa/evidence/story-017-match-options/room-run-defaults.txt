@@ -1,0 +1,21 @@
+tinfo.buyTime {"min":10,"max":60,"step":5}; default session friendlyFire false, buyTime 35
+refusals: compra "El tiempo de compra va de 10 a 60 segundos." | bad_field "Un campo del mensaje no es válido." | bad_field "Un campo del mensaje no es válido."; session after: ff false, buy 35
+session now: {"subject":"matematicas","level":"medio","map":"dospisos","friendlyFire":false,"buyTime":35,"csv":null}
+seated: Ana room sala-1 team 0 seat 0; Beto room sala-1 team 1 seat 4
+same team: Ana seat 0, Beto seat 1, squads 0/0
+started: server match.opts {"subject":"matematicas","level":"medio","map":"dospisos","friendlyFire":false,"buyTime":35,"botLevel":"normal"}; phase buy phaseT 35.00
+[2.9 s] buy time cut by the harness (scenario B): server phaseT 32.98 -> 0.5
+[4.2 s] friendly fire off: the shot passes Beto and hurts the bot behind: Beto hp 100 -> 100; bot 4 hp 100 -> 35; Ana shots 1
+[4.6 s] kill event at Ana: {"type":"kill","who":"Bot Rex","by":"Ana"}
+[4.6 s] kill event at Beto: {"type":"kill","who":"Bot Rex","by":"Ana"}
+scenario B (default session); map dospisos; PROTOCOL_VERSION 7; 5.2 s; room running; round 1; stage at stop done
+server buy phase: 152 steps = 2.53 s (opts.buyTime 35)
+Ana mirror: begins [{"match":0,"seat":0,"friendlyFire":false,"buyTime":35}]; opts ff false buy 35; first buy snapshot pt 34.95 s; buy seen 2.50 s (first buy snap to first live snap, + its pt)
+Beto mirror: begins [{"match":0,"seat":1,"friendlyFire":false,"buyTime":35}]; opts ff false buy 35; first buy snapshot pt 34.95 s; buy seen 2.50 s (first buy snap to first live snap, + its pt)
+server steps 260, dropped 0, mean step 0.278 ms, max 6.58 ms; warnings 0
+server sent 172 snapshots, 530 bytes each; 516 messages accepted, 0 refused
+Ana seat 0: 86 snaps; versions 7; correction n 0 mean 0.000 m max 0.000 m (first correction after the harness teleport: #-1); events {"gate":1,"shot":5,"hit":2,"say":1,"killmark":1,"kill":1}
+Beto seat 1: 86 snaps; versions 7; correction n 1 mean 4.800 m max 4.800 m (first correction after the harness teleport: #1); events {"gate":1,"shot":5,"kill":1}
+  yes friendly fire off: the shot passes Beto and hurts the bot behind: Beto hp 100 -> 100; bot 4 hp 100 -> 35; Ana shots 1
+server log lines with "rror": 0
+no errors (server or client)

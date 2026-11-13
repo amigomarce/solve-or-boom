@@ -9,8 +9,8 @@
 import type { PlayerInput } from '../game/player';
 import { LEVELS, type Level } from '../game/types';
 
-/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). 6: the input's `medkit` (a press) and digits up to 5, the own row ends with the medkits carried, snap carries the dropped pickups `d`, events `melee` and `pickup` (story 016). */
-export const PROTOCOL_VERSION = 6;
+/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). 6: the input's `medkit` (a press) and digits up to 5, the own row ends with the medkits carried, snap carries the dropped pickups `d`, events `melee` and `pickup` (story 016). 7: the match options (story 017): tsession, tstate's session and begin carry `friendlyFire` and `buyTime`, tinfo the buy time's range `buyTime`, and a `kill` event of a teammate carries `ff: true`. */
+export const PROTOCOL_VERSION = 7;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -93,6 +93,8 @@ export interface BeginMessage {
   names: string[];
   /** The session's subject id and level: the buy menu shows each item's question level from them. */
   subject: string; level: string;
+  /** The match options (story 017, protocol 7): shots hurt teammates; the buy phase's length in seconds (the HUD's timer itself comes from each snapshot's `pt`). */
+  friendlyFire: boolean; buyTime: number;
 }
 /** The wire codes of the guns (index in this list), as snapshots carry them. */
 export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper'] as const;
@@ -159,7 +161,7 @@ export interface SnapMessage {
   b: BombRow; p: PlayerRow[]; y: OwnRow;
   /** The pickups on the floor (protocol 6), the same for every student. */
   d: PickupRow[];
-  /** Events, as the rules push them (src/game/), filtered for this student; `shot.human` is true for their own shots. */
+  /** Events, as the rules push them (src/game/), filtered for this student; `shot.human` is true for their own shots; `kill.ff` is true when a teammate killed (friendly fire, protocol 7). */
   e: Record<string, unknown>[];
   /** This student's buy menu is open (1/0), and their open question card (null for none). */
   m: number; c: CardView | null;
@@ -324,7 +326,9 @@ export function parseServerMessage(text: string): ServerMessage | null {
     case 'begin':
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
         && Array.isArray(raw.names) && raw.names.length === SEATS && raw.names.every(isStr) && isStr(raw.subject) && isStr(raw.level) && (LEVELS as readonly string[]).includes(raw.level)
-        ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level } : null;
+        && typeof raw.friendlyFire === 'boolean' && typeof raw.buyTime === 'number' && raw.buyTime > 0
+        ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level,
+          friendlyFire: raw.friendlyFire, buyTime: raw.buyTime } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
         && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 16)
@@ -364,8 +368,11 @@ export const TEACHER_WS_PATH = '/ws-profesor';
 /** Every message type only the teacher may send. */
 export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear'] as const;
 
-/** Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'. */
-export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string }
+/**
+ * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
+ * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7).
+ */
+export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number }
 /** Teacher to server: a CSV of questions. `data` is the file's bytes in base64 (the server decodes UTF-8, else Windows-1252, like single player). */
 export interface TCsvMessage { v: number; t: 'tcsv'; name: string; data: string }
 /** Teacher to server: "Repartir automáticamente": replace the waiting rooms by rooms of up to 4 v 4 holding the connected students. */
@@ -396,6 +403,8 @@ export interface TeacherInfoMessage {
   weakBelowPct: number; weakMinAnswers: number;
   /** Largest CSV (bytes) and most questions the server accepts. */
   csvMaxBytes: number; csvMaxQuestions: number;
+  /** The buy time's range and step in seconds (data/config.json buy_time), for the page's selector (story 017). */
+  buyTime: { min: number; max: number; step: number };
 }
 /** One seat as the teacher sees it: `student` is the id used by tmove (null for a bot). */
 export interface TeacherSeat { index: number; team: number; kind: 'human' | 'bot'; name: string; student: number | null }
@@ -410,6 +419,8 @@ export interface TeacherStudent { id: number; name: string; connected: boolean; 
 /** The session as set (applied to every room's next match). */
 export interface TeacherSession {
   subject: string; level: Level; topics: string[]; map: string;
+  /** The match options (story 017): shots hurt teammates; the buy phase's length in seconds. */
+  friendlyFire: boolean; buyTime: number;
   /** The CSV loaded (null for none): kept when another subject is chosen. */
   csv: { name: string; count: number; skipped: number } | null;
   /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
@@ -439,7 +450,7 @@ export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsv
 export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
-  tsession: ['v', 't', 'subject', 'level', 'topics', 'map'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
+  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
   tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], ping: ['v', 't'],
 };
 /**
@@ -466,7 +477,8 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'tsession':
       if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
       if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;
-      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map } };
+      if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime)) return bad; // the range is the server's check (teacher.ts)
+      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime } };
     case 'tcsv':
       if (!isStr(raw.name) || raw.name.length < 1 || raw.name.length > 80 || !isStr(raw.data) || !B64.test(raw.data)) return bad;
       return { ok: true, msg: { v, t: 'tcsv', name: raw.name.replace(/[\u0000-\u001f<>]/g, '').trim() || 'preguntas.csv', data: raw.data } };

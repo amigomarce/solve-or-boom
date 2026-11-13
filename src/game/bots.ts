@@ -170,7 +170,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       if (d < bestD) { best = e; bestD = d; }
     }
     if (best) {
-      if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level(match)) * (0.8 + match.rng() * 0.4); }
+      if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level(match)) * tune[`bot_${match.opts.botLevel}_react_mult`] * (0.8 + match.rng() * 0.4); }
       b.target = best; b.lastX = best.x; b.lastZ = best.z; b.lastY = best.st.y; b.lastSeenT = match.t;
       best.spotT = match.t;
       siteAlert(match, b, best.x, best.z);

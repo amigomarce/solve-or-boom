@@ -39,7 +39,15 @@ export interface MatchOptions {
    * defuses through their own question card and deck (deskOf). Default false.
    */
   classroom?: boolean;
+  /** Friendly fire (story 017): shots hurt teammates. Default false (absent = off). Read in src/game/combat.ts. */
+  friendlyFire?: boolean;
+  /** The buy phase's length in seconds, every round (story 017). Default tune.buy_time; clamped to that entry's min..max. Read in src/game/rounds.ts. */
+  buyTime?: number;
+  /** The bots' level (story 017): 'facil' | 'normal' | 'dificil'. Default 'normal'; a classroom match is always 'normal'. Read in src/game/bots.ts and combat.ts. */
+  botLevel?: BotLevel;
 }
+/** A bot level: multipliers on the bots' reaction and accuracy ramps, in data/config.json (bot_<level>_react_mult, bot_<level>_acc_mult). */
+export type BotLevel = 'facil' | 'normal' | 'dificil';
 
 /**
  * The match. Built field by field in blankMatch(); typing still to do (`Loose` keys).
@@ -70,7 +78,7 @@ export interface Match {
   /** The match's seeded random numbers: every rules module draws from this, never from Math.random. */
   rng: () => number;
   /** The subject, level and map the match was built with. */
-  opts: { subject: string; level: Level; map: string };
+  opts: { subject: string; level: Level; map: string; friendlyFire: boolean; buyTime: number; botLevel: BotLevel };
   /** True once the match is won: step() does nothing more. */
   over: boolean;
   /** What the dead dropped this round (story 016): taken by walking over, gone after pickup_life and at the round's start. */
@@ -173,7 +181,7 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
     bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
     wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, gatesClosed: true, rtrT: 0, bombSeen: false,
-    events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
+    events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '', friendlyFire: false, buyTime: tune.buy_time, botLevel: 'normal' }, over: false,
     pickups: [], // made non-enumerable below
   };
   Object.defineProperty(match, 'classroom', { value: false, enumerable: false, writable: true });
