@@ -73,6 +73,8 @@ export interface Match {
   opts: { subject: string; level: Level; map: string };
   /** True once the match is won: step() does nothing more. */
   over: boolean;
+  /** What the dead dropped this round (story 016): taken by walking over, gone after pickup_life and at the round's start. */
+  pickups: Pickup[];
   [k: string]: Loose;
 }
 
@@ -98,7 +100,14 @@ export const SHOP: { id: string; name: string; price: string; desc: string }[] =
   { id: 'sniper', name: 'Francotirador', price: 'price_sniper', desc: 'Mata de un tiro, lento. Clic derecho: mira' },
   { id: 'armor', name: 'Blindaje', price: 'price_armor', desc: 'Absorbe la mitad de cada impacto' },
   { id: 'ammo', name: 'Munición', price: 'price_ammo', desc: 'Rellena tu munición de reserva' },
+  { id: 'medkit', name: 'Botiquín', price: 'price_medkit', desc: 'Se guarda y cura vida cuando lo usas' },
 ];
+
+/**
+ * Something a dead player left on the floor (story 016): a medkit or ammo for one gun. `id` is unique in the match
+ * (match.nextPickupId), `x`, `z` and `y` (feet height) say where, and `age` is the seconds it has lain there.
+ */
+export interface Pickup { id: number; kind: 'medkit' | 'ammo'; gun: string; x: number; z: number; y: number; age: number }
 
 /** The simulation step in seconds; motion is per second, never per frame. */
 export const STEP = 1 / 60;
@@ -141,11 +150,12 @@ function newPlayer(r: Loose, i: number, human: boolean): Loose {
     ...(human ? {} : botFresh()),
   };
   // Not enumerable, like Match.classroom: the same-seed replay compares the serialised state, which must not change.
-  return Object.defineProperty(p, 'st', { value: freshStance(), enumerable: false, writable: true });
+  // `medkits` (story 016), the bought medkits carried, is hidden for the same reason.
+  return Object.defineProperties(p, { st: { value: freshStance(), enumerable: false, writable: true }, medkits: { value: 0, enumerable: false, writable: true } });
 }
-/** Takes a player's primary gun and armour away and gives back the pistol with a full magazine. */
+/** Takes a player's primary gun, armour and medkits away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {
-  p.primary = null; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
+  p.primary = null; p.medkits = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
   p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
 }
 
@@ -164,6 +174,7 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
     wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, gatesClosed: true, rtrT: 0, bombSeen: false,
     events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '' }, over: false,
+    pickups: [], // made non-enumerable below
   };
   Object.defineProperty(match, 'classroom', { value: false, enumerable: false, writable: true });
   Object.defineProperty(match, 'count', { value: null, enumerable: false, writable: true });
@@ -171,6 +182,11 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
   match.me = (match.human ?? match.players[0]).st;
   // The bomb's height (feet level, like p.st.y): not enumerable, so the same-seed replay's serialised state is unchanged.
   Object.defineProperty(match.bomb, 'y', { value: 0, enumerable: false, writable: true });
+  // Story 016, hidden for the same reason: what the dead dropped (Pickup[]), the next pickup id, and whether this round's first kill is made.
+  Object.defineProperties(match, {
+    pickups: { value: [], enumerable: false, writable: true }, nextPickupId: { value: 1, enumerable: false, writable: true },
+    firstKill: { value: false, enumerable: false, writable: true },
+  });
   match.players.forEach(resetGuns);
   return match;
 }

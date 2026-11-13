@@ -188,3 +188,11 @@ holds no comments. The values themselves are in `data/config.json`.
 - `fx_scope_tracer_skip`: metres of the own sniper tracer left undrawn when seen through the scope (story 015): the 22° view magnifies the first metres into a white blob
 - `fx_scope_tracer_w`: the own sniper tracer's width when seen through the scope (story 015)
 - `CRATE_TOP` (src/game/map.ts, not config: the models' size): a player's shot passes over a crate cell above its drawn height, crate 2.2, barrel 2.62, pallet 2.12, sandbag 1.5 m (story 015)
+- `first_kill_bonus` $500 (story 016): paid on top of `kill_money` to whoever makes the first kill of each round (a bot too); a person sees "Primera baja: +$500". Not paid for a bomb or self kill.
+- `price_medkit` $400 (story 016): the buy menu's Botiquín; it is carried (at most `medkit_max`, 2) and used with its own key (G) or the touch button; it is lost on death and at half-time.
+- `medkit_heal` 50 hp: what a used medkit gives, and what a medkit picked up from the floor gives (never over `max_hp`).
+- `drop_ammo_mags` 1: a dead player drops this many magazines of the gun they held (the ammo adds to a gun's reserve, up to its `<gun>_reserve`); they also drop one medkit.
+- `pickup_radius` 1 m, `pickup_reach_y` 1.5 m: how close (flat distance, and feet height apart on a map with heights) a living person must be to take a dropped item by walking over it.
+- `pickup_life` 30 s: a dropped item vanishes after this long, and always at the end of the round.
+- `melee_dmg` 35, `melee_range` 1.6 m, `melee_rate` 0.6 s (story 016): with the magazine and reserve both empty, firing is a strike: a short ray like a shot's, no headshot bonus, quiet (bots do not hear it). `melee_time` 0.3 s is how long the swing animation lasts.
+- `question_step_medkit` 0: the medkit's question is the match level.

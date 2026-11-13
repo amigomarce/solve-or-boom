@@ -1,0 +1,14 @@
+OK   medkit buy opens a question card
+OK   medkit bought: medkits 1, money 1250 -> 850
+OK   round live
+OK   first kill pays 800 (kill_money 300 + bonus 500); message "Primera baja: +$500"
+OK   drops: [["medkit","",16.2,34.5,0],["ammo","smg",16.8,34.5,0]]
+OK   second kill pays 300
+FAIL medkit pickup: hp 40 -> 100, pickups 4 -> 2
+OK   smg ammo left on the floor by a player with only a pistol
+OK   pistol ammo pickup: reserve 0 -> 12
+OK   medkit used: hp 30 -> 80, medkits 0
+OK   melee hit: bot hp 100 -> 65, events melee,hit
+OK   melee cooldown 0.60
+OK   out of reach: a swing that misses
+OK   new round 2: pickups 0, firstKill reset

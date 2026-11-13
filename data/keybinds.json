@@ -9,6 +9,8 @@
     { "id": "reload", "label": "Recargar", "key": "KeyR" },
     { "id": "buy", "label": "Comprar", "key": "KeyB" },
     { "id": "use", "label": "Plantar / desactivar", "key": "KeyE" },
+    { "id": "medkit", "label": "Usar botiquín", "key": "KeyG" },
+    { "id": "scores", "label": "Marcador (mantener)", "key": "Tab" },
     { "id": "swap", "label": "Cambiar arma", "key": "KeyQ" },
     { "id": "primary", "label": "Arma principal", "key": "Digit1" },
     { "id": "pistol", "label": "Pistola", "key": "Digit2" },

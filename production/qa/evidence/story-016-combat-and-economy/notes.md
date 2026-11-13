@@ -1,0 +1,11 @@
+# Story 016 evidence: Combat and economy
+
+From a classroom playtest: money for the first kill, every player's kills, medkits, loot from the dead, and a melee hit when out of bullets.
+
+- d1-d5 (single player, real Chrome, GPU): the buy menu with the Botiquín row ($400, heals 50, key G); "Primera baja: +$500"; a medkit and an ammo box dropped by a dead player; the MARCADOR table while Tab is held (kills and deaths, dead greyed out); a melee swing into a bot with "Sin balas: golpe".
+- p1-p2 (emulated phone, 844x390, touch): the skull and kill count under the minimap with the Tabla button and the Botiquín button; the table opened by Tabla.
+- c1-c2 (class mode, real aula server and teacher page, two students in Chrome, Dos pisos): pickups on the floor that came from the server; the MARCADOR table with the kills and deaths the snapshots carried. Ana's camera was moved on her own page for one drawn frame to frame the pickups.
+- rules-run.txt (Node, on the repo after the copy): medkit bought by answering; first kill pays 800 (300 + 500) with the message, the second 300; drops at the victim's feet; a pistol player leaves SMG ammo and takes pistol ammo; medkit used 30 -> 80; melee 100 -> 65 with a 0.6 s cooldown, a miss out of reach; round 2 starts with no pickups and the bonus reset. The one FAIL line is the check's own expectation: two medkits lay on the same spot (two kills there) and both were taken, so health reached 100, not 90; the rules work as written.
+- room-run.txt (headless room, protocol 6, two students and six bots, about 5 s, the event range raised to 1000 m only to show another student receiving a melee event): first-kill bonus, medkit bought and used, pickups in both students' mirrors and gone from both when taken, the pickup event only to the taker, melee damage, Beto sees Ana's melee; no errors, 0 dropped steps, prediction correction max 0.007 m. room-run-default-range.txt: the same with the default 100 m range, where Beto (141 m away) correctly gets no melee event.
+- Same-seed replay: match yes (the 60 s replay has no kill, so the first-kill bonus does not show). dist-single 786,626 bytes; class and server builds at protocol 6.
+- Not run: the local swing in class mode (netStep in src/main.ts) is covered only by typecheck and build.

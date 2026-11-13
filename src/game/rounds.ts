@@ -11,7 +11,7 @@ export function startRound(match: Match) {
   match.round++;
   match.phase = 'buy'; match.phaseT = tune.buy_time; match.roundT = MAP.round_time;
   for (const p of match.players) if (p.human) closeDesk(match, p);
-  match.alert = null; match.banner = null; match.plantT = 0;
+  match.alert = null; match.banner = null; match.plantT = 0; match.pickups.length = 0; match.firstKill = false;
   mapState.gatesClosed = match.gatesClosed = true; match.gateT = 0;
   for (const p of match.players) Object.assign(p.st, freshStance());
   const sides: Record<string, number> = { att: 0, def: 0 };

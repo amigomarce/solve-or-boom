@@ -122,6 +122,9 @@ function netStep(inp: PlayerInput): void {
   if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
     && me.reloadT <= 0 && net.cool <= 0 && a && a.mag > 0) {
     a.mag--; net.cool = tune[me.cur + '_rate']; me.flashT = 0.05; SFX.shot(me.cur); // the snapshot puts the server's magazine back
+  } else if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
+    && me.reloadT <= 0 && net.cool <= 0 && a && a.mag === 0 && a.res === 0) {
+    net.cool = tune.melee_rate; swing[me.id] = tune.melee_time; SFX.swing(); // story 016: the strike's look only; the server judges the hit
   }
   if (!me.alive && (inp.spectate || inp.spectateKey || !match.specP?.alive)) {
     const mates = match.players.filter(q => q.alive && q.squad === me.squad), pool = mates.length ? mates : match.players.filter(q => q.alive);
@@ -944,6 +947,20 @@ for (let i = 0; i < 16; i++) {
   m.visible = false; world.add(m); decals.push({ m, t: 0 });
 }
 let decalI = 0;
+/** Story 016: seconds left of each player's melee swing (by player id), set by a 'melee' event and run down in placeModels. */
+const swing: number[] = ROSTER.map(() => 0);
+/** Story 016: the dropped medkits and ammo boxes, pooled (a pickup in match.pickups shows the next free one of its kind). */
+const pickupMeshes: Record<string, THREE.Group[]> = { medkit: [], ammo: [] };
+for (let i = 0; i < 16; i++) {
+  const kit = new THREE.Group(), box = (g: THREE.Group, w: number, h: number, d: number, c: number, y: number): void => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c })); m.position.y = y; g.add(m);
+  };
+  box(kit, 0.46, 0.22, 0.34, 0xf2f2ee, 0.11); box(kit, 0.26, 0.012, 0.08, 0xd02020, 0.226); box(kit, 0.08, 0.012, 0.26, 0xd02020, 0.226);
+  const ammo = new THREE.Group();
+  box(ammo, 0.4, 0.2, 0.26, 0x4c5a2e, 0.1); box(ammo, 0.42, 0.04, 0.28, 0xd8a838, 0.17);
+  for (const g of [kit, ammo]) { g.visible = false; world.add(g); }
+  pickupMeshes.medkit.push(kit); pickupMeshes.ammo.push(ammo);
+}
 let lastPlace = 0; // the clock of the last placeModels call (character animation)
 const hitTint: Record<number, number> = {}; // player id -> the match time its red hit flash ends (set on the hit, cleared at a round's start)
 // The explosion: a white flash ball, a fireball, a flat shockwave ring and a tall column that clears the walls.
@@ -1013,9 +1030,9 @@ function readInput(act: string | undefined): PlayerInput {
     lookYaw -= touch.dx * k; lookPitch -= touch.dy * k; touch.dx = 0; touch.dy = 0;
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
-  inp.shop = press('buy'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
+  inp.shop = press('buy'); inp.medkit = press('medkit'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
   inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
-  inp.digits = [0, 1, 2, 3, 4].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
+  inp.digits = [0, 1, 2, 3, 4, 5].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
   inp.spectateKey = pressed('Space');
   if (act && act.startsWith('buy:')) inp.buyItem = act.slice(4);
   if (act && act.startsWith('ans:')) inp.answer = Number(act.slice(4));
@@ -1065,6 +1082,8 @@ function playEvents(list: Loose[] = state.events): void {
       case 'lowAmmo': SFX.lowAmmo(); break;
       case 'reload': SFX.reload(e.w); break;
       case 'click': SFX.click(); break;
+      case 'melee': if (!(e.human && CLASS_MODE)) { swing[e.p] = tune.melee_time; SFX.swing(); } break; // story 016: the swing, first person and on the model (class mode played its own on the trigger)
+      case 'pickup': SFX.pickup(); break;
       case 'buy': SFX.buy(); break;
       case 'answer': (e.right ? SFX.right : SFX.wrong)(); break;
       case 'plant': SFX.plant(); break;
@@ -1195,9 +1214,10 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (TOUCH) { // no keys to bind: what each finger does
         const rows: [string, string][] = [['Palanca de la izquierda', 'moverte'], ['Arrastrar por la derecha', 'mirar a tu alrededor'], ['Fuego (mantener)', 'disparar; también gira si arrastras desde él'],
           ['Apuntar (mantener)', 'mirar por el arma'], ['Saltar', 'saltar'], ['Agachar', 'agacharte; pulsa otra vez para levantarte'], ['Recargar', 'recargar el arma'],
-          ['Arma', 'cambiar de arma'], ['Comprar', 'abrir o cerrar el menú de compra'], ['Plantar / Desactivar (mantener)', 'la bomba, junto a ella'], ['Pausa', 'detener la partida']];
+          ['Arma', 'cambiar de arma'], ['Comprar', 'abrir o cerrar el menú de compra'], ['Botiquín', 'curarte con un botiquín comprado'], ['Plantar / Desactivar (mantener)', 'la bomba, junto a ella'],
+          ['Tabla', 'ver las bajas y muertes de todos; toca otra vez para cerrarla'], ['Pausa', 'detener la partida']];
         rows.forEach(([a, d], i) => {
-          const y = 104 + i * 46;
+          const y = 104 + i * 42;
           rr(120, y - 19, 1040, 40, 8, 'rgba(255,255,255,0.06)', null);
           text(a, 144, y, 21, '#ffe7a8', 'left'); text(d, 560, y, 20, '#fff', 'left', 'normal');
         });
@@ -1207,13 +1227,13 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       text('Clic en una acción (o flechas y Intro) y pulsa la tecla nueva. Esc cancela.', W / 2, 94, 17, '#e4e9f4', 'center', 'normal');
       const n = ACTIONS.length, half = Math.ceil(n / 2);
       ACTIONS.forEach((a, i) => {
-        const x = i < half ? 80 : 660, y = 118 + (i % half) * 48, on = ctl.sel === i, cap = on && ctl.capture;
-        button(x, y, 540, 42, '', 'key:' + i, { fill: cap ? '#ffd06a' : on ? '#33415c' : undefined, stroke: on ? '#fff3c4' : undefined });
-        text(a.label, x + 20, y + 21, 19, cap ? '#1b2232' : '#fff', 'left');
+        const x = i < half ? 80 : 660, y = 118 + (i % half) * 44, on = ctl.sel === i, cap = on && ctl.capture;
+        button(x, y, 540, 40, '', 'key:' + i, { fill: cap ? '#ffd06a' : on ? '#33415c' : undefined, stroke: on ? '#fff3c4' : undefined });
+        text(a.label, x + 20, y + 20, 19, cap ? '#1b2232' : '#fff', 'left');
         const k = cap ? 'Pulsa una tecla…' : keyName(bind[a.id]);
         ctx.font = `bold 18px ${FONT}`; const kw = Math.max(64, ctx.measureText(k).width + 28);
-        rr(x + 520 - kw, y + 5, kw, 32, 8, cap ? '#1b2232' : '#0d1220', '#ffd06a', 2);
-        text(k, x + 520 - kw / 2, y + 21, 18, '#ffe7a8');
+        rr(x + 520 - kw, y + 4, kw, 32, 8, cap ? '#1b2232' : '#0d1220', '#ffd06a', 2);
+        text(k, x + 520 - kw / 2, y + 20, 18, '#ffe7a8');
       });
       if (ctl.note) text(ctl.note, W / 2, 618, 18, '#9ff08a');
       const sel = (i: number) => ctl.sel === i ? { stroke: '#fff3c4', fill: '#33415c' } : {};
@@ -1290,6 +1310,14 @@ function toggleTopic(t: string): void {
 // ---- Drawing: the 3D view ----------------------------------------------------------------
 function placeModels() {
   const now = performance.now(), dt = Math.min(0.1, Math.max(0.001, (now - lastPlace) / 1000)), clock = now / 1000; lastPlace = now;
+  for (let i = 0; i < swing.length; i++) swing[i] = Math.max(0, swing[i] - dt);
+  const used: Record<string, number> = { medkit: 0, ammo: 0 };
+  for (const k of state.pickups ?? []) { // a slow turn so it reads as something to take
+    const g = pickupMeshes[k.kind][used[k.kind]++];
+    if (!g) continue;
+    g.visible = true; g.position.set(k.x, k.y, k.z); g.rotation.y = clock * 1.5 + k.id;
+  }
+  for (const kind of ['medkit', 'ammo']) for (let i = used[kind]; i < pickupMeshes[kind].length; i++) pickupMeshes[kind][i].visible = false;
   for (const p of state.players) {
     const m = models[p.id];
     if (hitTint[p.id] > 0) { const on = state.t < hitTint[p.id] && state.t > hitTint[p.id] - 1; m.team.color.setHex(on ? 0xff2a1a : SIDE_HEX[sideOf(state, p)]); if (!on) hitTint[p.id] = 0; } // a hit flashes the model red for fx_hit_tint of match time (a new match's clock restarting ends it too)
@@ -1299,6 +1327,7 @@ function placeModels() {
     m.group.position.set(x, p.st?.y ?? 0, z); m.group.rotation.set(0, p.yaw, 0); // at the feet height (story 011; 0 on a flat map)
     setSide(m, sideOf(state, p)); setHeld(m, p.cur);
     poseSoldier(m, p, dist, dt, clock);
+    if (swing[p.id] > 0) m.aim.rotation.x += Math.sin((1 - swing[p.id] / tune.melee_time) * Math.PI) * 1.1; // the strike: arms and gun chop forward
     m.flash.visible = p.alive && p.flashT > 0 && m.hold.visible;
     m.flash.rotation.z = state.t * 40; m.flash.scale.setScalar((tune['fx_' + p.cur + '_flash'] ?? 0.45) / 0.45); // 0.45: the soldier flash's own size (makeSoldier); an unknown gun keeps it
     const bb = backBombs[p.id].group, planting = p.alive && (p.plantT > 0 || (state.plantT > 0 && state.bomb.carrier === p));
@@ -1389,6 +1418,10 @@ function drawWorld() {
     else g.position.set(0.22 + bob * 0.012, -0.21 + Math.abs(bob) * 0.01 - rl * 0.22 + p.recoil * 0.6, -0.5 + p.recoil * 1.6);
     g.scale.setScalar(0.75);
     g.rotation.set(p.recoil * 2 - rl * 0.6, 0.05, 0);
+    if (swing[p.id] > 0) { // story 016: the melee strike, the gun swung forward and across
+      const s = Math.sin((1 - swing[p.id] / tune.melee_time) * Math.PI);
+      g.position.x -= s * 0.16; g.position.y += s * 0.06; g.position.z -= s * 0.22; g.rotation.x -= s * 0.9; g.rotation.z += s * 0.5;
+    }
     viewGuns[p.cur].flash.visible = p.flashT > 0;
     viewGuns[p.cur].flash.rotation.z = state.t * 50; viewGuns[p.cur].flash.scale.setScalar(tune['fx_' + p.cur + '_flash']);
     renderer.clearDepth(); renderer.render(gunScene, gunCam);
@@ -1520,6 +1553,10 @@ function drawHUD(paused?: boolean): void {
   }
   drawBombMarker(b, mySide);
   drawMinimap(22, 22);
+  if (TOUCH) { // story 016: your kills under the minimap, beside the Tabla button (touch.ts places it at logical y 176)
+    rr(16, 176, 112, 44, 10, 'rgba(15,20,32,0.78)', null);
+    drawSkull(44, 198, 26); text(String(p.kills), 92, 198, 26, '#fff');
+  }
   // score and timer, top centre
   const theirSide = mySide === 'att' ? 'def' : 'att';
   rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
@@ -1562,10 +1599,16 @@ function drawHUD(paused?: boolean): void {
     drawCross(48, H - 50, 28, '#ff6a5a'); text(`${Math.ceil(p.hp)}`, 98, H - 50, 32, '#fff');
     drawShield(160, H - 50, 28, p.armor > 0 ? '#7fb8ff' : '#55606e'); text(`${Math.ceil(p.armor)}`, 210, H - 50, 32, p.armor > 0 ? '#fff' : '#8893a3');
     text(`$${p.money}`, 280, H - 50, 22, '#9ff08a', 'center');
+    if (p.medkits > 0) { // story 016: the carried medkits and the control that uses one
+      rr(326, H - 82, 96, 64, 12, 'rgba(15,20,32,0.78)', null);
+      rr(340, H - 66, 32, 26, 5, '#f2f2ee', null); drawCross(356, H - 53, 18, '#d02020');
+      text(`×${p.medkits}`, 398, H - 53, 24, '#fff'); text(TOUCH ? 'Botiquín' : keyName(bind.medkit), 374, H - 30, 13, '#c8d2e6', 'center', 'normal');
+    }
     const a = p.ammo[p.cur];
     rr(W - 290, H - 82, 272, 64, 12, 'rgba(15,20,32,0.78)', null);
     text(WEAPON[p.cur].name, W - 270, H - 50, 20, '#c8d2e6', 'left');
-    text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
+    if (a.mag === 0 && a.res === 0) text('Sin balas: golpe', W - 34, H - 50, 22, '#ffb366', 'right'); // story 016: fire strikes
+    else text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
     // stance: a drawn figure and its word, above the health box, only when not just standing
     const word = state.me.proneT > 0 || state.me.stance === 'prone' ? 'tumbado' : state.me.stance === 'crouch' ? 'agachado' : state.me.sprint ? 'corriendo' : '';
     if (word) {
@@ -1627,6 +1670,7 @@ function drawHUD(paused?: boolean): void {
     text(aula.retry, W / 2, 314, 20, '#ffe28a');
   }
   if (!paused) { if (state.menu && !state.card) drawShop(); if (state.card) drawCard(); }
+  if (!paused && !uiOpen(state) && down.has(bind.scores)) drawScores();
 }
 /** The banner over a match the teacher paused: centred, in ROOM_STATE.paused's words and colour. */
 function drawTeacherPause(): void {
@@ -1636,9 +1680,31 @@ function drawTeacherPause(): void {
   text(words, W / 2, H / 2 - 16, 40, colour);
   text('La partida sigue cuando el profesor la reanude.', W / 2, H / 2 + 34, 20, '#e8eef8', 'center', 'normal');
 }
+/** A small skull for the kill counter (story 016), centred on (x, y), s high: canvas paths, no font symbol. */
+function drawSkull(x: number, y: number, s: number): void {
+  ctx.fillStyle = '#f2f2ee'; ctx.beginPath(); ctx.arc(x, y - s * 0.1, s * 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(x - s * 0.24, y + s * 0.15, s * 0.48, s * 0.3);
+  ctx.fillStyle = '#1b2232'; ctx.beginPath(); ctx.arc(x - s * 0.15, y - s * 0.08, s * 0.1, 0, Math.PI * 2); ctx.arc(x + s * 0.15, y - s * 0.08, s * 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(x - s * 0.1, y + s * 0.3, s * 0.05, s * 0.15); ctx.fillRect(x + s * 0.05, y + s * 0.3, s * 0.05, s * 0.15);
+}
+/** The score table (story 016), shown while the scores key (Tab) is held or the touch Tabla button is on: every player's kills and deaths, your squad first. */
+function drawScores(): void {
+  const me = state.human, x = W / 2 - 330, y = 110, w = 660;
+  rr(x, y, w, 120 + 8 * 40, 16, 'rgba(14,19,30,0.92)', '#ffd06a', 3);
+  text('MARCADOR', x + 28, y + 36, 28, '#ffd06a', 'left');
+  text('Bajas', x + w - 170, y + 74, 17, '#c8d2e6'); text('Muertes', x + w - 70, y + 74, 17, '#c8d2e6');
+  const rows = [...state.players].sort((a, b) => (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1) || b.kills - a.kills || a.deaths - b.deaths);
+  rows.forEach((q, i) => {
+    const ry = y + 96 + i * 40 + (q.squad === me.squad ? 0 : 12);
+    if (q === me) rr(x + 16, ry - 2, w - 32, 36, 8, 'rgba(255,208,106,0.16)', null);
+    rr(x + 28, ry + 8, 18, 18, 4, SIDE_CSS[sideOf(state, q)], null);
+    text(q.human ? q.name : `${q.name} (${ROLE_NAME[q.role]})`, x + 60, ry + 17, 20, q.alive ? '#fff' : '#7d8799', 'left');
+    text(String(q.kills), x + w - 170, ry + 17, 22, '#fff'); text(String(q.deaths), x + w - 70, ry + 17, 22, '#fff');
+  });
+}
 function drawShop() {
   const p = state.human, x = W / 2 - 330, y = 120, w = 660;
-  rr(x, y, w, 440, 16, 'rgba(14,19,30,0.94)', '#ffd06a', 3);
+  rr(x, y, w, 500, 16, 'rgba(14,19,30,0.94)', '#ffd06a', 3);
   text('MENÚ DE COMPRA', x + 28, y + 36, 28, '#ffd06a', 'left');
   text(`$${p.money}`, x + w - 28, y + 36, 28, '#9ff08a', 'right');
   text('Cada objeto hace una pregunta. Responde bien para conseguirlo.', x + 28, y + 72, 17, '#c8d2e6', 'left', 'normal');
@@ -1647,13 +1713,14 @@ function drawShop() {
     button(x + 24, by, w - 48, 54, '', why ? null : 'buy:' + it.id, { fill: why ? '#1b2232' : undefined });
     rr(x + 36, by + 11, 32, 32, 8, '#ffd06a', null); text(String(i + 1), x + 52, by + 27, 20, '#1b2232');
     text(it.name, x + 84, by + 18, 21, why ? '#7d8799' : '#fff', 'left');
-    text(TOUCH ? it.desc.replace('Clic derecho', 'Botón Apuntar') : it.desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
+    const desc = it.id === 'medkit' ? `Cura ${tune.medkit_heal} de vida cuando lo usas (${TOUCH ? 'botón Botiquín' : 'tecla ' + keyName(bind.medkit)}). Tienes ${p.medkits}` : it.desc;
+    text(TOUCH ? desc.replace('Clic derecho', 'Botón Apuntar') : desc, x + 84, by + 40, 15, why ? '#6a7383' : '#c8d2e6', 'left', 'normal');
     text(why || `$${tune[it.price]}`, x + w - 44, by + 20, 20, why ? '#ff9a8a' : '#9ff08a', 'right');
     const ql = questionLevel(state, it.id); // the level of the item's question (none for a custom CSV)
     if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
-  if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + 418, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + 398, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
-  else text(`1-5 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 418, 16, '#c8d2e6', 'center', 'normal');
+  if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + 478, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + 458, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
+  else text(`1-6 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 478, 16, '#c8d2e6', 'center', 'normal');
 }
 /** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
 function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {
@@ -1935,8 +2002,8 @@ function drawTitle() {
   // start
   button(820, 592, 420, 64, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
-  const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar y Bomba: botones  |  Pausa: botón de arriba'
-    : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
+  const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
+    : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 684, ls, '#e4e9f4', 'center', 'normal');

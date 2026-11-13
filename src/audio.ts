@@ -158,4 +158,8 @@ export const SFX = {
   win() { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.2, 'triangle', 0.25, i * 0.12)); },
   lose() { [392, 330, 262].forEach((f, i) => tone(f, 0.25, 'triangle', 0.22, i * 0.15)); },
   click() { tone(900, 0.03, 'square', 0.1); },
+  /** A melee swing through the air (story 016); a strike that lands also plays hit(). */
+  swing() { noise(0.12, 900, 0.25, 1.2, 'bandpass'); },
+  /** Something taken from the floor, or a medkit used (story 016). */
+  pickup() { tone(780, 0.06, 'triangle', 0.2); tone(1170, 0.1, 'triangle', 0.2, 0.05); },
 };

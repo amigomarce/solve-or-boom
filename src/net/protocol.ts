@@ -9,8 +9,8 @@
 import type { PlayerInput } from '../game/player';
 import { LEVELS, type Level } from '../game/types';
 
-/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). */
-export const PROTOCOL_VERSION = 5;
+/** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). 6: the input's `medkit` (a press) and digits up to 5, the own row ends with the medkits carried, snap carries the dropped pickups `d`, events `melee` and `pickup` (story 016). */
+export const PROTOCOL_VERSION = 6;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -110,12 +110,22 @@ export const FLAG = { alive: 1, human: 2, moving: 4, defusing: 8, flash: 16, sco
 export type PlayerRow = number[];
 /**
  * The receiving student's own player, private to them: [hp, armor, money, mag, reserve, reloadT, primary (-1 none),
- * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
- * aim (protocol 5) is 0 not aiming, 1 aiming with the current gun, 2 an aim ended that waits for the button to be let go.
+ * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim, medkits] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
+ * aim (protocol 5) is 0 not aiming, 1 aiming with the current gun, 2 an aim ended that waits for the button to be let go;
+ * medkits (protocol 6) is the count of bought medkits carried.
  */
 export type OwnRow = number[];
 /** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1), y?]; `y` (SCALE.pos), the bomb's height, only on a map with heights (protocol 4). */
 export type BombRow = number[];
+/**
+ * Something a dead player dropped (protocol 6, story 016): [id, kind (PICKUP_KINDS index), x, z, y?] (SCALE.pos); `y`, the
+ * height it lies at, only on a map with heights. Everybody gets the same list; the server removes one when it is taken.
+ */
+export type PickupRow = number[];
+/** The pickup kinds, by their code in PickupRow. */
+export const PICKUP_KINDS = ['medkit', 'ammo'] as const;
+/** The most pickups a snapshot may carry (2 per death, each player dies at most once a round). */
+export const PICKUPS_MAX = 2 * SEATS;
 /**
  * The receiving student's open question card, private to them. It never says which choice is right: the server
  * judges the answer (`answer` in an input) and the card shows the verdict through `pk` with `w` or `ok`.
@@ -147,6 +157,8 @@ export interface SnapMessage {
   /** Round number, score by squad, the attacking squad, gates closed (1/0), the carrier's plant progress (SCALE.time). */
   r: number; s: number[]; as: number; g: number; pl: number;
   b: BombRow; p: PlayerRow[]; y: OwnRow;
+  /** The pickups on the floor (protocol 6), the same for every student. */
+  d: PickupRow[];
   /** Events, as the rules push them (src/game/), filtered for this student; `shot.human` is true for their own shots. */
   e: Record<string, unknown>[];
   /** This student's buy menu is open (1/0), and their open question card (null for none). */
@@ -215,8 +227,8 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   moveF: isAxis, moveS: isAxis, walk: isBool, sprint: isBool, crouch: isBool, use: isBool, usePress: isBool,
   fire: isBool, firePress: isBool, lookLeft: isBool, lookRight: isBool, lookUp: isBool, lookDown: isBool,
   lookYaw: isLook, lookPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, pistol: isBool,
-  swap: isBool, reload: isBool, scope: isBool,
-  digits: v => Array.isArray(v) && v.length <= 5 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 4),
+  swap: isBool, reload: isBool, scope: isBool, medkit: isBool,
+  digits: v => Array.isArray(v) && v.length <= 6 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 5),
   buyItem: v => typeof v === 'string' && v.length <= 16 && /^[a-z]*$/.test(v),
   answer: v => Number.isInteger(v) && (v as number) >= -1 && (v as number) <= 3,
   closeShop: isBool, closeCard: isBool, spectate: isBool, spectateKey: isBool,
@@ -315,13 +327,14 @@ export function parseServerMessage(text: string): ServerMessage | null {
         ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
-        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 15)
+        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 16)
+        && Array.isArray(raw.d) && raw.d.length <= PICKUPS_MAX && raw.d.every(r => (isNums(r, 4) || isNums(r, 5)) && isInt(r[0]) && (r[1] === 0 || r[1] === 1))
         && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => (isNums(r, 12) || isNums(r, 13)) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
         && Array.isArray(raw.e) && raw.e.every(e => isObject(e) && isStr(e.type)) && (raw.m === 0 || raw.m === 1) && (raw.c === null || isCard(raw.c));
       if (!ok) return null;
       // JSON.parse built every array and object fresh, so they are kept as they are.
       return { v, t: 'snap', k: raw.k as number, a: raw.a as number, ph: raw.ph as string, pt: raw.pt as number, rt: raw.rt as number, r: raw.r as number,
-        s: raw.s as number[], as: raw.as as number, g: raw.g as number, pl: raw.pl as number, b: raw.b as number[], p: raw.p as number[][], y: raw.y as number[],
+        s: raw.s as number[], as: raw.as as number, g: raw.g as number, pl: raw.pl as number, b: raw.b as number[], p: raw.p as number[][], y: raw.y as number[], d: raw.d as number[][],
         e: raw.e as Record<string, unknown>[], m: raw.m as number, c: raw.c as CardView | null };
     }
     case 'results': {

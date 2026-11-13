@@ -33,7 +33,9 @@ export interface PlayerInput {
   shop: boolean;
   /** Pressed: prone toggle, jump, primary gun, pistol, swap guns, reload. Held: scope, aiming down the sights. */
   prone: boolean; jump: boolean; primary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
-  /** Pressed: the number choices 0..4 (keys 1..5), ascending: a card's answer or a shop item. */
+  /** Pressed: use a carried medkit (story 016). */
+  medkit: boolean;
+  /** Pressed: the number choices 0..5 (keys 1..6), ascending: a card's answer or a shop item. */
   digits: number[];
   /** Clicked: buy this shop item id ('' for none). */
   buyItem: string;
@@ -49,7 +51,7 @@ export interface PlayerInput {
 export function idleInput(): PlayerInput {
   return {
     moveF: 0, moveS: 0, walk: false, sprint: false, crouch: false, use: false, usePress: false, fire: false, firePress: false,
-    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false,
+    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, medkit: false,
     prone: false, jump: false, primary: false, pistol: false, swap: false, reload: false, scope: false, digits: [],
     buyItem: '', answer: -1, closeShop: false, closeCard: false, spectate: false, spectateKey: false,
   };
@@ -60,6 +62,7 @@ export function inOwnBase(match: Match, p: Loose): boolean { const z = zone[idx(
 /** Why an item cannot be bought now, as the menu shows it (empty when it can). */
 export function shopBlock(p: Loose, it: typeof SHOP[number]): string {
   if (it.id === 'armor' && p.armor >= 100) return 'Lleno';
+  if (it.id === 'medkit' && p.medkits >= tune.medkit_max) return 'Lleno';
   if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Lleno';
   if (p.primary === it.id) return 'Comprada';
   if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
@@ -70,6 +73,7 @@ export function grant(match: Match, p: Loose, id: string): void {
   const it = SHOP.find(s => s.id === id)!;
   p.money -= tune[it.price];
   if (id === 'armor') p.armor = 100;
+  else if (id === 'medkit') p.medkits++;
   else if (id === 'ammo') for (const [w, a] of Object.entries(p.ammo as Record<string, Loose>)) a.res = tune[w + '_reserve'];
   else { p.primary = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
   if (p === match.human) feed(match, `Compraste: ${it.name}`, true);
@@ -201,6 +205,20 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     p.moving = false; return;
   }
   moveStep(match, p, dt, inp);
+  // Medkits (story 016): a carried one heals tune.medkit_heal when used; a dropped one heals the same on contact, ammo adds to a held gun's reserve. Only a need is met: full health keeps the medkit.
+  if (inp.medkit) {
+    if (p.hp >= tune.max_hp) tell(match, p, 'Ya tienes toda la vida');
+    else if (p.medkits <= 0) tell(match, p, 'No tienes botiquines: se compran en el menú');
+    else { p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
+  }
+  for (let i = match.pickups.length - 1; i >= 0; i--) {
+    const k = match.pickups[i], a = p.ammo[k.gun];
+    if (Math.hypot(k.x - p.x, k.z - p.z) > tune.pickup_radius || Math.abs(k.y - me.y) > tune.pickup_reach_y) continue;
+    if (k.kind === 'medkit' ? p.hp >= tune.max_hp : !a || a.res >= tune[k.gun + '_reserve']) continue;
+    if (k.kind === 'medkit') { p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); tell(match, p, `Botiquín: +${tune.medkit_heal} de vida`, 2); }
+    else { a.res = Math.min(tune[k.gun + '_reserve'], a.res + Math.ceil(tune[k.gun + '_mag'] * tune.drop_ammo_mags)); tell(match, p, `Munición: ${WEAPON[k.gun].name}`, 2); }
+    match.pickups.splice(i, 1); personal(match, p, { type: 'pickup', kind: k.kind });
+  }
   // Weapons.
   if (inp.primary && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
   if (inp.pistol && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }

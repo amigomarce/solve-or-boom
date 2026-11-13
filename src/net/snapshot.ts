@@ -1,14 +1,14 @@
 // The server's side of a snapshot: what one student may see of the match, built from the rules' state and
 // events. Shared code (no browser, no Node): src/server/ builds snapshots with it; the browser reads them with
 // src/net/mirror.ts. Never in a snapshot: another player's health, armour, money, ammo or question card, nor which choice is right.
-import { FLAG, PROTOCOL_VERSION, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type SnapMessage } from './protocol';
+import { FLAG, PICKUP_KINDS, PROTOCOL_VERSION, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type SnapMessage } from './protocol';
 import { deskOf, sideOf, type Match } from '../game/state';
 import { hasHeights } from '../game/map';
 import type { Loose } from '../game/types';
 
-/** Events only the player in their `p` field gets (their own hits, hurts, reloads, empty clicks, and their menu and card's: unlock, click, answer, buy, say). */
-const OWN_EVENTS = new Set(['hurt', 'killmark', 'hit', 'empty', 'lowAmmo', 'reload', 'unlock', 'click', 'answer', 'buy', 'say']);
-/** Events everybody in the room gets. 'shot' is sent by distance. */
+/** Events only the player in their `p` field gets (their own hits, hurts, reloads, empty clicks, pickups and medkits used, and their menu and card's: unlock, click, answer, buy, say). */
+const OWN_EVENTS = new Set(['hurt', 'killmark', 'hit', 'empty', 'lowAmmo', 'reload', 'unlock', 'click', 'answer', 'buy', 'say', 'pickup']);
+/** Events everybody in the room gets. 'shot' and 'melee' are sent by distance. */
 const ROOM_EVENTS = new Set(['kill', 'plant', 'defused', 'beep', 'boom', 'gate', 'round', 'roundEnd', 'matchEnd', 'match']);
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -16,7 +16,8 @@ const q = (n: number, k: number): number => Math.round(n * k);
 
 /**
  * The events of `events` that seat `seat` needs: its own personal ones, the room's, and the shots within
- * `rangeM` metres of it (or its own). Copies, with `shot.human` true only for its own shots and `round.side` its side.
+ * `rangeM` metres of it (or its own), and the same for melee strikes (story 016). Copies, with `shot.human` and `melee.human`
+ * true only for its own (the client already played those on the trigger) and `round.side` its side.
  */
 export function eventsFor(match: Match, seat: number, events: Loose[], rangeM: number): Record<string, unknown>[] {
   const me = match.players[seat], out: Record<string, unknown>[] = [];
@@ -25,6 +26,12 @@ export function eventsFor(match: Match, seat: number, events: Loose[], rangeM: n
     if (e.type === 'shot') {
       if (e.by !== seat && Math.hypot(e.x - me.x, e.z - me.z) > rangeM) continue;
       out.push({ type: 'shot', human: e.by === seat, by: e.by, w: e.w, x: r2(e.x), z: r2(e.z), from: e.from.map(r2), to: e.to.map(r2), spark: e.spark });
+      continue;
+    }
+    if (e.type === 'melee') {
+      const by = match.players[e.p];
+      if (e.p !== seat && Math.hypot(by.x - me.x, by.z - me.z) > rangeM) continue;
+      out.push({ type: 'melee', p: e.p, hit: e.hit, human: e.p === seat });
       continue;
     }
     if (!ROOM_EVENTS.has(e.type)) continue;
@@ -46,7 +53,7 @@ function playerRow(match: Match, p: Loose): number[] {
 }
 
 /**
- * The snapshot for seat `seat`: every player's public row, its own private row, the bomb, the round and the
+ * The snapshot for seat `seat`: every player's public row, its own private row, the bomb, the pickups, the round and the
  * events it needs. `ack` is the last input seq played for it, `tick` the room's step count.
  * @example const snap = buildSnapshot(room.match, 2, 517, room.stats.steps, room.pending, 100); ws.send(JSON.stringify(snap));
  */
@@ -60,7 +67,9 @@ export function buildSnapshot(match: Match, seat: number, ack: number, tick: num
     p: match.players.map(p => playerRow(match, p)),
     y: [Math.ceil(me.hp), Math.ceil(me.armor), me.money, a.mag, a.res, q(me.reloadT, T), WEAPON_IDS.indexOf(me.primary),
       st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T),
-      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1],
+      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1, me.medkits],
+    // The dropped medkits and ammo (story 016): the same list for everybody, the height only where there are heights.
+    d: match.pickups.map(k => [k.id, PICKUP_KINDS.indexOf(k.kind), q(k.x, P), q(k.z, P), ...(hasHeights ? [q(k.y, P)] : [])]),
     e: eventsFor(match, seat, events, rangeM),
     m: d.menu ? 1 : 0,
     // The card without its answer index: the student learns right or wrong only from the server's verdict.

@@ -93,6 +93,8 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
     else { p.moving = false; if (p === human && (!match.specP || !match.specP.alive)) nextSpec(match); }
   }
   for (const p of match.players) if (!p.human && p.alive) botUpdate(match, p, dt);
+  for (const k of match.pickups) k.age += dt; // dropped items fade after pickup_life (story 016)
+  match.pickups = match.pickups.filter(k => k.age < tune.pickup_life);
   for (const p of match.players) if (!p.alive) p.deadT += dt;
   updateBomb(match, dt);
   checkRound(match);

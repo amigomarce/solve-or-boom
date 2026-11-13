@@ -154,6 +154,9 @@ if (TOUCH) {
   make('reload', 'Recargar', u, `${right(colC)};bottom:${above(0)}`);
   make('swap', 'Arma', u, `${right(colC)};bottom:${above(u + g)}`);
   make('buy', 'Comprar', u, `${right(colC)};bottom:${above(2 * (u + g))}`);
+  make('medkit', 'Botiquín', u, `${right(colB)};bottom:${above(2 * (u + g))}`); // story 016: use a carried medkit
+  // Story 016: the score table, opened and closed by a tap, beside the kill counter under the minimap (drawn by main.ts at logical y 176..220).
+  make('scores', 'Tabla', Math.round(u * 0.8), `left:calc(50% - var(--k) * 640px + var(--k) * 142px);top:calc(var(--bar) + var(--k) * 176px)`, true);
   make('pause', 'Pausa', Math.round(u * 0.8), `left:calc(50% + var(--k) * 240px + 6px);top:calc(var(--bar) + 8px)`);
 
   /** Where the canvas sits (the same maths as fit() in screen.ts), for the positions that follow it. */

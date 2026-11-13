@@ -88,7 +88,7 @@ export interface Room {
 }
 
 /** The controls that only last one step: cleared when a seat's held controls are repeated. */
-const PRESSED: (keyof PlayerInput)[] = ['usePress', 'firePress', 'shop', 'prone', 'jump', 'primary', 'pistol', 'swap', 'reload', 'closeShop', 'closeCard', 'spectate', 'spectateKey'];
+const PRESSED: (keyof PlayerInput)[] = ['usePress', 'firePress', 'shop', 'prone', 'jump', 'primary', 'pistol', 'swap', 'reload', 'closeShop', 'closeCard', 'spectate', 'spectateKey', 'medkit'];
 const freshInputs = (): SeatInputs => ({ queue: [], held: idleInput(), ack: -1, lastSeq: -1, starved: 0, dropped: 0 });
 /**
  * Starts counting the room's current match: an empty tally, and a Match.count that adds each answer and kill of a

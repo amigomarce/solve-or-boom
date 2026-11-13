@@ -1,0 +1,31 @@
+teacher start: true, seats 0,4
+[2.9 s] medkit bought (own row medkits): medkits 1, money 850
+[3.7 s] first-kill message: "Primera baja: +$500", money 850 -> 1650 (kill_money 300 + first_kill_bonus 500)
+[3.7 s] pickups in both mirrors: Ana [1:medkit,2:ammo] Beto [1:medkit,2:ammo] at y 0.00,0.00
+[4.1 s] pickup event heal at Ana: {"type":"pickup","kind":"heal","p":0}
+[4.7 s] medkit used: server hp 30 -> 80 (medkit_heal 50), carried 0; Ana's mirror hp 80, medkits 0
+[5.1 s] pickup event medkit at Ana: {"type":"pickup","kind":"medkit","p":0}
+[5.1 s] taken pickup gone from both mirrors: id 1; Ana [2:ammo] Beto [2:ammo]
+[5.1 s] pickup event ammo at Ana: {"type":"pickup","kind":"ammo","p":0}
+[6.0 s] first melee at Ana: {"type":"melee","p":0,"hit":true,"human":true} dist to striker 0.0 m
+[6.0 s] melee hit event at Ana: {"type":"melee","p":0,"hit":true,"human":true}
+[6.0 s] first melee at Beto: {"type":"melee","p":0,"hit":true,"human":false} dist to striker 141.2 m
+[6.0 s] melee hit event at Beto: {"type":"melee","p":0,"hit":true,"human":false}
+[6.0 s] melee damage on the server: bot 6 hp 100 -> 65 (melee_dmg 35); Ana's mirror mag/res 0/0
+map dospisos (hasHeights true); PROTOCOL_VERSION 6; 6.0 s; room running; round 1; stage at stop melee
+Ana-Beto distance at the end 141.2 m (event range 1000 m)
+server steps 301, dropped 0, mean step 0.352 ms, max 5.50 ms; warnings 0
+server sent 200 snapshots, 545 bytes each, 9025 B/s per student; 600 messages accepted, 0 refused
+Ana seat 0: 100 snaps; versions 6; own row lengths 16; pickup row lengths 5; correction n 26 mean 0.001 m max 0.007 m; events {"round":1,"match":1,"unlock":2,"answer":1,"buy":1,"gate":1,"say":4,"shot":1,"hit":2,"killmark":1,"kill":1,"pickup":3,"melee":1}
+Beto seat 4: 100 snaps; versions 6; own row lengths 16; pickup row lengths 5; correction n 0 mean 0.000 m max 0.000 m; events {"round":1,"match":1,"gate":1,"shot":1,"kill":1,"melee":1}
+  yes first-kill message: "Primera baja: +$500", money 850 -> 1650 (kill_money 300 + first_kill_bonus 500)
+  yes medkit bought (own row medkits): medkits 1, money 850
+  yes medkit used: server hp 30 -> 80 (medkit_heal 50), carried 0; Ana's mirror hp 80, medkits 0
+  yes pickups in both mirrors: Ana [1:medkit,2:ammo] Beto [1:medkit,2:ammo] at y 0.00,0.00
+  yes taken pickup gone from both mirrors: id 1; Ana [2:ammo] Beto [2:ammo]
+  yes pickup event medkit at Ana: {"type":"pickup","kind":"medkit","p":0}
+  yes melee hit event at Ana: {"type":"melee","p":0,"hit":true,"human":true}
+  yes melee hit event at Beto: {"type":"melee","p":0,"hit":true,"human":false}
+  yes melee damage on the server: bot 6 hp 100 -> 65 (melee_dmg 35); Ana's mirror mag/res 0/0
+both mirrors held the same pickups at some point: true
+no errors (server or client)

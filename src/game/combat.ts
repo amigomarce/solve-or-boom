@@ -4,7 +4,7 @@ import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } f
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeDesk, feed, level, nextSpec, say, sideOf, WEAPON, type Match } from './state';
+import { closeDesk, feed, level, nextSpec, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive) return;
@@ -24,7 +24,17 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
 export function kill(match: Match, t: Loose, from: Loose): void {
   t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
   match.count?.kill(from && from !== t ? from : null, t);
-  if (from && from !== t) { from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money); }
+  if (from && from !== t) {
+    from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money);
+    if (!match.firstKill) { // the round's first kill pays a bonus (story 016)
+      match.firstKill = true; from.money = Math.min(tune.max_money, from.money + tune.first_kill_bonus);
+      tell(match, from, `Primera baja: +$${tune.first_kill_bonus}`, 3);
+    }
+  }
+  // What the dead leave (story 016): a medkit and ammo for the gun in hand, side by side, at the feet's height. Carried medkits are lost.
+  t.medkits = 0;
+  match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: t.x - 0.3, z: t.z, y: t.st.y, age: 0 },
+    { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: t.x + 0.3, z: t.z, y: t.st.y, age: 0 });
   const me = match.human;
   feed(match, `${from ? from.name : 'La bomba'} ${from && from === me ? 'eliminaste a' : 'eliminó a'} ${t === me ? 'ti' : t.name}${from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
     (from && from === me) || t === me);
@@ -41,16 +51,22 @@ export function kill(match: Match, t: Loose, from: Loose): void {
 export function humanShoot(match: Match, p: Loose): void {
   const w = p.cur, a = p.ammo[w];
   if (p.reloadT > 0 || p.cool > 0) return;
-  if (a.mag <= 0) { match.events.push({ type: 'empty', p: p.id }); p.cool = 0.25; if (a.res > 0) startReload(match, p); return; }
-  a.mag--; p.cool = tune[w + '_rate'];
-  if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) match.events.push({ type: 'lowAmmo', p: p.id });
-  const spread = humanSpread(match, p), eye = p.st.eye + p.st.jumpY;
-  const yaw = p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (match.rng() - 0.5) * 2 * spread;
-  p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
+  // No ammo at all (story 016): the trigger is a strike with the hands or the gun, a short ray along the aim, and quiet.
+  const melee = a.mag <= 0 && a.res <= 0;
+  if (a.mag <= 0 && !melee) { match.events.push({ type: 'empty', p: p.id }); p.cool = 0.25; startReload(match, p); return; }
+  if (melee) p.cool = tune.melee_rate;
+  else {
+    a.mag--; p.cool = tune[w + '_rate'];
+    if (a.mag > 0 && a.mag <= Math.ceil(tune[w + '_mag'] * 0.2)) match.events.push({ type: 'lowAmmo', p: p.id });
+  }
+  const spread = melee ? 0 : humanSpread(match, p), eye = p.st.eye + p.st.jumpY;
+  // A strike draws no random numbers (no spread), so the match's random sequence goes on as if the trigger had clicked empty.
+  const yaw = melee ? p.yaw : p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (melee ? 0 : (match.rng() - 0.5) * 2 * spread);
+  if (!melee) p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
   const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
   // Walls, the floor, and on maps with heights floors, ceilings and ramps (story 011); crates as drawn (story 015): not out to
   // their cell's edge, and only up to their drawn height, so a shot over a crate's top flies on. The same ray on every map.
-  const wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp, 200, true);
+  const wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp, melee ? tune.melee_range : 200, true);
   let best = null, bestT = wallT, head = false;
   for (const e of match.players) {
     if (!e.alive || e.squad === p.squad) continue;
@@ -62,6 +78,11 @@ export function humanShoot(match: Match, p: Loose): void {
     const y = eye + tp * t + (p.st.y - e.st.y); // height over the target's feet
     if (y < 0 || y > 1.88 || t >= bestT) continue;
     best = e; bestT = t; head = y > 1.46;
+  }
+  if (melee) {
+    match.events.push({ type: 'melee', p: p.id, hit: !!best });
+    if (best) { if (p === match.human) match.hitT = 0.15; match.events.push({ type: 'hit', p: p.id }); applyDamage(match, best, tune.melee_dmg, p); }
+    return;
   }
   const ex = p.x + hx * bestT, ez = p.z + hz * bestT, ey = p.st.y + eye + tp * bestT;
   // Where the shot and its tracer leave (story 015): the gun in the hand, or on the centre line at the sights when aimed (never the shoulder).
