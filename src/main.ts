@@ -15,7 +15,7 @@ import {
   CELL, MW, MH, WALL_H, EYE, grid, zone, isGate, idx, CRATES, SITE, siteCells, mapState,
   center, cellOf, walkable, solidSight, hitsWall, moveBody, losClear, walkClear, bfs,
   MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell, type MapData,
-  hasHeights, grid1, rampAt, rampHeight, levelHeight,
+  hasHeights, grid1, zone1, rampAt, rampHeight, levelHeight, levelOfY, canStepXY,
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
@@ -366,13 +366,93 @@ const sky = ((): THREE.Mesh => {
 }
 const BARREL_COL = [0xc2432f, 0x2f6fb3, 0xd9a82e, 0x4f8a45], BAG_COL = [0xc9b27a, 0xbfa76d, 0xd2bd88, 0xb59f66];
 // The map's meshes: built for the loaded map (src/game/map.ts, from data/maps/), thrown away for the next.
-let mapGroup: THREE.Group | null = null, floorTex: THREE.CanvasTexture | null = null, builtFor = '';
+let mapGroup: THREE.Group | null = null, floorTex: THREE.CanvasTexture | null = null, slabTex: THREE.CanvasTexture | null = null, builtFor = '';
 const gates: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>[] = [];
 /**
  * Builds the 3D world of the loaded map (floor, walls, crates and props, site and base marks, gates), disposing the previous map's.
  * Story 010 (Brief MVP feature 23): everything is drawn or built once; the props, posts and flags of a map are merged into a
  * few meshes. Props only dress cells that are crates in the grid (data/maps/*.json `props`), so nothing the rules read changes.
  */
+/**
+ * The first floor (story 012; rules in story 011): drawn only on a map with heights, so the flat maps are untouched.
+ * The slab is a concrete box per cell (its underside is the ceiling of the rooms under it) with a painted top in the
+ * floor's style; open edges get a fascia and a low rail (drawing only: the rules have no rails, you see and shoot over
+ * it); first-floor crates stand in two, like the ground's; ramps are drawn as solid stairs with yellow nosings and
+ * stepped side cheeks. Everything goes into the merged buckets of buildWorld: no per-frame cost but the triangles.
+ */
+type PutFn = (key: string, mat: () => THREE.Material, geo: THREE.BufferGeometry, x: number, y: number, z: number, ry?: number, color?: number) => void;
+function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: number, y: number, z: number, color: number) => void): void {
+  const H1 = levelHeight(), T = tune.scn_slab_thick, R = tune.scn_rail_height, P = 40;
+  const up = (x: number, y: number): number => (x < 0 || y < 0 || x >= MW || y >= MH ? 0 : grid1[idx(x, y)]);
+  slabTex = canvasTex(MW * P, MH * P, (g) => { // the slab's top: the floor's slabs in a cooler grey, the first-floor site's border and letter
+    g.fillStyle = '#77736a'; g.fillRect(0, 0, MW * P, MH * P);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const i = idx(x, y);
+      if (!grid1[i]) continue;
+      for (let k = 0; k < 2; k++) {
+        const v = hash3(x, y * 2 + k, 3) * 20 - 10;
+        g.fillStyle = rgbCss(196 + v, 190 + v, 176 + v); g.fillRect(x * P, y * P + k * P / 2, P, P / 2);
+        g.fillStyle = 'rgba(60,55,45,0.3)'; g.fillRect(x * P, y * P + k * P / 2, P, 2); g.fillRect(x * P + ((y * 2 + k) & 1) * P / 2, y * P + k * P / 2, 2, P / 2);
+      }
+      if (zone1[i] >= 3) for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // a dashed red and white border where the site ends
+        const nx = x + dx, ny = y + dy;
+        if (up(nx, ny) === 1 && zone1[idx(nx, ny)] === zone1[i]) continue;
+        const ex = dx > 0 ? (x + 1) * P - 8 : x * P, ey = dy > 0 ? (y + 1) * P - 8 : y * P;
+        g.fillStyle = '#d2452f'; g.fillRect(ex, ey, dx === 0 ? P : 8, dy === 0 ? P : 8);
+        g.fillStyle = '#ffffff'; for (let t = 0; t < P; t += 16) g.fillRect(dx === 0 ? x * P + t + 8 : ex, dy === 0 ? y * P : ey + t + 8, 8, 8);
+      }
+    }
+    for (const [k, st] of Object.entries(SITE)) {
+      if (st.lv !== 1) continue;
+      g.save(); g.translate((st.cx + 0.5) * P, (st.cy + 0.5) * P);
+      g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineJoin = 'round'; g.strokeText(k, 0, 6);
+      g.fillStyle = '#d2452f'; g.fillText(k, 0, 6); g.restore();
+    }
+  });
+  const tex = slabTex, topMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: tex });
+  const crateMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: crateTex });
+  const crateGeo = new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92);
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const g1 = grid1[idx(x, y)];
+    if (!g1) continue;
+    bx(CELL, T, CELL, center(x), H1 - T / 2 - 0.01, center(y), 0x9a9488); // the slab; its underside is the ceiling below
+    const top = new THREE.PlaneGeometry(CELL, CELL); top.rotateX(-Math.PI / 2);
+    const uv = top.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (x + uv.getX(i)) / MW, 1 - (y + 1 - uv.getY(i)) / MH);
+    put('slabtop', topMat, top, center(x), H1, center(y)); top.dispose(); // put() keeps a clone
+    if (g1 === 2) { put('crate1', crateMat, crateGeo, center(x), H1 + 0.55, center(y)); put('crate1', crateMat, crateGeo, center(x), H1 + 1.65, center(y), ((x + y) % 3) * 0.2); }
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // an open edge: not more slab, not a wall, not the top of a stair
+      const nx = x + dx, ny = y + dy;
+      if (up(nx, ny) || nx < 0 || ny < 0 || nx >= MW || ny >= MH || grid[idx(nx, ny)] === 0) continue;
+      if (rampAt(nx, ny) && canStepXY(nx, ny, 0, x, y, 1)) continue;
+      const ex = center(x) + dx * (CELL / 2 - 0.05), ez = center(y) + dy * (CELL / 2 - 0.05), w = dx === 0 ? CELL : 0.1, d = dx === 0 ? 0.1 : CELL;
+      bx(dx === 0 ? CELL : 0.14, T + 0.12, dx === 0 ? 0.14 : CELL, center(x) + dx * CELL / 2, H1 - T / 2, center(y) + dy * CELL / 2, 0x6e6a62); // the fascia
+      bx(w + (dx === 0 ? 0 : 0.02), 0.08, d + (dy === 0 ? 0 : 0.02), ex, H1 + R, ez, 0x3a3f47); bx(w, 0.05, d, ex, H1 + R / 2, ez, 0x3a3f47); // top and middle bars
+      for (const t of [-0.5, 0, 0.5]) bx(0.08, R, 0.08, ex + (dx === 0 ? t * CELL * 0.98 : 0), H1 + R / 2, ez + (dy === 0 ? t * CELL * 0.98 : 0), 0x3a3f47); // posts
+    }
+  }
+  crateGeo.dispose(); // put() kept clones
+  const n = tune.scn_stair_steps_per_cell;
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const dir = rampAt(x, y);
+    if (!dir) continue;
+    const ax = dir === 1 ? 1 : dir === 2 ? -1 : 0, az = dir === 3 ? 1 : dir === 4 ? -1 : 0, along = ax !== 0;
+    for (let k = 0; k < n; k++) { // step k: its centre along the axis, its tread at the slope's height there
+      const f = (k + 0.5) / n - 0.5, sx = center(x) + (along ? f * CELL : 0), sz = center(y) + (along ? 0 : f * CELL);
+      const h = Math.max(0.05, rampHeight(x, y, Math.min(Math.max(sx, x * CELL), (x + 1) * CELL - 1e-4), Math.min(Math.max(sz, y * CELL), (y + 1) * CELL - 1e-4)));
+      const sw = along ? CELL / n : CELL, sd = along ? CELL : CELL / n;
+      bx(sw, h, sd, sx, h / 2, sz, (k & 1) ? 0xb0aa9c : 0xa49e90);
+      const nose = (along ? -ax : 0) * CELL / n / 2, noseZ = (along ? 0 : -az) * CELL / n / 2; // the yellow nosing on the step's low edge
+      bx(along ? 0.08 : CELL, 0.03, along ? CELL : 0.08, sx + nose * 0.9, h + 0.015, sz + noseZ * 0.9, 0xe0b830);
+      for (const side of [-1, 1]) { // stepped side cheeks where the stair has no stair beside it
+        const cx = x + (along ? 0 : side), cy = y + (along ? side : 0);
+        if (rampAt(cx, cy)) continue;
+        bx(along ? CELL / n : 0.16, h + 0.9, along ? 0.16 : CELL / n, sx + (along ? 0 : side * (CELL / 2 - 0.08)), (h + 0.9) / 2, sz + (along ? side * (CELL / 2 - 0.08) : 0), 0x8e887c);
+      }
+    }
+  }
+}
 function buildWorld(): void {
   if (mapGroup) {
     mapGroup.traverse(o => {
@@ -382,7 +462,7 @@ function buildWorld(): void {
       if (o instanceof THREE.InstancedMesh) o.dispose();
     });
     world.remove(mapGroup);
-    floorTex?.dispose();
+    floorTex?.dispose(); slabTex?.dispose(); slabTex = null;
   }
   const group = new THREE.Group();
   const isWall = (x: number, y: number): boolean => x < 0 || y < 0 || x >= MW || y >= MH || grid[idx(x, y)] === 0;
@@ -424,7 +504,9 @@ function buildWorld(): void {
       if (!grid[idx(Math.min(MW - 1, cx / P | 0), Math.min(MH - 1, cy / P | 0))]) continue;
       gr.addColorStop(0, 'rgba(80,62,40,0.22)'); gr.addColorStop(1, 'rgba(80,62,40,0)'); g.fillStyle = gr; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
     }
+    if (hasHeights) for (let i = 0; i < MW * MH; i++) if (grid1[i]) { g.fillStyle = 'rgba(30,22,14,0.3)'; g.fillRect((i % MW) * P, ((i / MW) | 0) * P, P, P); } // the ground under the first floor, shaded
     for (const [k, s] of Object.entries(SITE)) {
+      if (s.lv === 1) continue; // a first-floor site is painted on the slab (story 012)
       g.save(); g.translate((s.cx + 0.5) * P, (s.cy + 0.5) * P);
       g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineJoin = 'round'; g.strokeText(k, 0, 6);
@@ -485,21 +567,7 @@ function buildWorld(): void {
   };
   mark('A', corners((x, y) => zone[idx(x, y)] === 3), 0xd2452f); mark('B', corners((x, y) => zone[idx(x, y)] === 4), 0xd2452f);
   mark('att', corners((x, y) => zone[idx(x, y)] === 1), SIDE_HEX.att); mark('def', corners((x, y) => zone[idx(x, y)] === 2), SIDE_HEX.def);
-  if (hasHeights) { // story 011: just enough of a first floor to read a test map (a slab, its crates, the ramps); story 012 draws the real one
-    const slabMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: wallTex }), H1 = levelHeight(), T = tune.scn_slab_thick;
-    const slabGeo = new THREE.BoxGeometry(CELL, T, CELL), crateGeo = new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92);
-    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-      const g1 = grid1[idx(x, y)];
-      if (g1 === 1 || g1 === 2) put('slab', slabMat, slabGeo, center(x), H1 - T / 2, center(y));
-      if (g1 === 2) put('crate1', () => new THREE.MeshLambertMaterial({ map: crateTex }), crateGeo, center(x), H1 + 0.55, center(y));
-      if (rampAt(x, y)) { // the ramp's top follows rampHeight at its four corners; a slab of the same thickness under it
-        const top = new THREE.PlaneGeometry(CELL, CELL); top.rotateX(-Math.PI / 2);
-        const pos = top.getAttribute('position');
-        for (let i = 0; i < pos.count; i++) { const wx = center(x) + pos.getX(i), wz = center(y) + pos.getZ(i); pos.setY(i, rampHeight(x, y, Math.min(wx, (x + 1) * CELL - 1e-4), Math.min(wz, (y + 1) * CELL - 1e-4)) + 0.01); }
-        top.computeVertexNormals(); put('slab', slabMat, top, center(x), 0, center(y));
-      }
-    }
-  }
+  if (hasHeights) drawFirstFloor(put, bx); // story 012: the slab, its trim, rails, crates and the stairs
   for (const b of buckets.values()) { const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat); m.matrixAutoUpdate = false; group.add(m); b.geos.forEach(g => g.dispose()); }
   { // walls touching the floor, and the wooden crates (the rest of the crate cells are props), as instanced boxes
     const wallCells = [], sideNear: number[] = [];
@@ -522,7 +590,7 @@ function buildWorld(): void {
       walls.setColorAt(i, col);
     });
     walls.matrixAutoUpdate = false; group.add(walls);
-    const wood = CRATES.filter(([x, y]) => !kinds.has(idx(x, y)));
+    const wood = CRATES.filter(([x, y, l]) => l !== 1 && !kinds.has(idx(x, y))); // first-floor crates are drawn with the first floor
     const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * 0.92, 1.1, CELL * 0.92), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
     wood.forEach(([x, y], i) => {
       m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
@@ -1341,25 +1409,49 @@ function drawBombMarker(b: Loose, mySide: string): void {
 const MINIMAP_W = 180, MINIMAP_H = 120; // the minimap's box in pixels; any map is scaled to fit it
 function drawMinimap(x0: number, y0: number): void {
   const k = Math.min(MINIMAP_W / MW, MINIMAP_H / MH), px = (c: number): number => Math.floor(c * k); // whole pixels: no seams
-  rr(x0 - 6, y0 - 6, MW * k + 12, MH * k + 12, 8, 'rgba(15,20,32,0.72)', null);
+  rr(x0 - 6, y0 - 6, MW * k + 12, MH * k + 12 + (hasHeights ? 20 : 0), 8, 'rgba(15,20,32,0.72)', null);
+  const me = state.human, b = state.bomb, view = me.alive || !state.specP ? me : state.specP;
+  const myLv = hasHeights ? levelOfY(view.st?.y ?? 0) : 0; // story 012: the level the screen shows from
+  if (myLv === 1) ctx.globalAlpha = 0.35; // on the first floor the ground below is dimmed
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = idx(x, y);
     if (!grid[i]) continue;
     ctx.fillStyle = grid[i] === 2 ? '#8a6a44' : zone[i] === 1 ? '#c98a50' : zone[i] === 2 ? '#5ea79e' : zone[i] >= 3 ? '#b49a6c' : '#cbbd9c';
+    if (hasHeights && rampAt(x, y)) ctx.fillStyle = '#e0b030'; // a stair, either level
     ctx.fillRect(x0 + px(x), y0 + px(y), px(x + 1) - px(x), px(y + 1) - px(y));
   }
-  text('A', x0 + (SITE.A.cx + 0.5) * k, y0 + (SITE.A.cy + 0.5) * k, 16, '#a3241a');
-  text('B', x0 + (SITE.B.cx + 0.5) * k, y0 + (SITE.B.cy + 0.5) * k, 16, '#a3241a');
-  const me = state.human, b = state.bomb;
+  ctx.globalAlpha = 1;
+  if (hasHeights) for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const g1 = grid1[idx(x, y)];
+    if (!g1) continue;
+    const X = x0 + px(x), Y = y0 + px(y), w = px(x + 1) - px(x), h = px(y + 1) - px(y);
+    if (myLv === 1) { ctx.fillStyle = g1 === 2 ? '#8a6a44' : zone1[idx(x, y)] >= 3 ? '#b49a6c' : '#e8e2d2'; ctx.fillRect(X, Y, w, h); }
+    else { ctx.fillStyle = 'rgba(40,50,80,0.35)'; ctx.fillRect(X, Y, w, h); } // on the ground: the first floor overhead as a shade
+  }
+  for (const S of ['A', 'B'] as const) {
+    const st = SITE[S], other = hasHeights && st.lv !== myLv;
+    if (other) ctx.globalAlpha = 0.5;
+    text(other ? (st.lv > myLv ? S + '↑' : S + '↓') : S, x0 + (st.cx + 0.5) * k, y0 + (st.cy + 0.5) * k, 16, '#a3241a');
+    ctx.globalAlpha = 1;
+  }
+  const mark = (y: number | undefined, X: number, Y: number): void => { // a marker on the other level: dimmed, with an arrow up or down beside it
+    if (!hasHeights) return;
+    const lv = levelOfY(y ?? 0);
+    if (lv !== myLv) { ctx.globalAlpha = 1; text(lv > myLv ? '↑' : '↓', X + 8, Y - 6, 12, '#ffffff'); ctx.globalAlpha = 0.5; }
+  };
   if (b.state === 'planted' || b.state === 'dropped' || (b.state === 'carried' && sideOf(state, me) === 'att' && b.carrier && b.carrier !== me)) {
-    if (b.state !== 'carried' || sideOf(state, me) === 'att') drawBombIcon(x0 + b.x / CELL * k, y0 + b.z / CELL * k, 12);
+    if (b.state !== 'carried' || sideOf(state, me) === 'att') { const X = x0 + b.x / CELL * k, Y = y0 + b.z / CELL * k; mark(b.state === 'carried' ? b.carrier?.st?.y : b.y, X, Y); drawBombIcon(X, Y, 12); ctx.globalAlpha = 1; }
   }
   for (const p of state.players) {
     if (!p.alive) continue;
     const mine = p.squad === me.squad;
     if (!mine && state.t - p.spotT > 1.5) continue;
-    drawArrow(x0 + p.x / CELL * k, y0 + p.z / CELL * k, p.yaw, p === me ? 6 : 5, p === me ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
+    const X = x0 + p.x / CELL * k, Y = y0 + p.z / CELL * k;
+    if (p !== view) mark(p.st?.y, X, Y);
+    drawArrow(X, Y, p.yaw, p === me ? 6 : 5, p === me ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
+    ctx.globalAlpha = 1;
   }
+  if (hasHeights) text(myLv === 1 ? 'Piso 1' : 'Planta baja', x0 + MW * k / 2, y0 + MH * k + 8, 14, myLv === 1 ? '#ffd06a' : '#e4e9f4');
 }
 function drawHUD(paused?: boolean): void {
   buttons.length = 0;
@@ -1793,11 +1885,12 @@ function drawTitle() {
   rr(40, 584, 760, 80, 16, 'rgba(14,19,30,0.9)', null);
   text('Mapa', 60, 612, 24, '#ffd06a', 'left');
   text('Tecla C', 60, 642, 15, '#aab4c8', 'left', 'normal');
+  const step = Math.min(158, Math.floor(632 / MAP_IDS.length)), bw = step - 8; // four maps keep 158 px; more share the panel's 632 px
   MAP_IDS.forEach((id, i) => {
-    const on = session.map === id, m = MAPS[id], bx = 160 + i * 158;
-    button(bx, 592, 150, 64, '', 'map:' + id, { fill: on ? '#ffd06a' : undefined, stroke: on ? '#fff3c4' : undefined });
-    text(m.name, bx + 75, 614, 20, on ? '#1b2232' : '#fff');
-    text(`${m.width * CELL} x ${m.height * CELL} m`, bx + 75, 640, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
+    const on = session.map === id, m = MAPS[id], bx = 160 + i * step;
+    button(bx, 592, bw, 64, '', 'map:' + id, { fill: on ? '#ffd06a' : undefined, stroke: on ? '#fff3c4' : undefined });
+    text(m.name, bx + bw / 2, 614, 20, on ? '#1b2232' : '#fff');
+    text(`${m.width * CELL} x ${m.height * CELL} m`, bx + bw / 2, 640, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
   });
   // start
   button(820, 592, 420, 64, 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });

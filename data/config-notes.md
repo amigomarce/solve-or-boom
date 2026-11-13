@@ -4,7 +4,7 @@ What `prototypes/solve-or-boom/config.js` said beside its values, kept here beca
 holds no comments. The values themselves are in `data/config.json`.
 
 - `seed`: every gameplay random call reads rng(), seeded from this (or ?seed= in the address)
-- `default_map`: the map the session screen starts on (pequeno, grande, patio, pasillos: data/maps/<id>.json); C or a click changes it there
+- `default_map`: the map the session screen starts on (pequeno, grande, patio, pasillos, dospisos: data/maps/<id>.json); C or a click changes it there
 
 ---- Player -------------------------------------------------------------------------
 - `mouse_sens`: multiplier; [ and ] on the pause screen
@@ -30,7 +30,7 @@ holds no comments. The values themselves are in `data/config.json`.
 
 ---- Rounds -------------------------------------------------------------------------
 - `buy_time`: s; gates closed, buying open
-- round time: s until defenders win by time; each map has its own, `round_time` in data/maps/<map>.json (Pequeño 105, Grande 150, Patio 140, Pasillos 180)
+- round time: s until defenders win by time; each map has its own, `round_time` in data/maps/<map>.json (Pequeño 105, Grande 150, Patio 140, Pasillos 180, Dos pisos 150)
 - `bomb_time`: s from plant to boom
 - `plant_time`: s holding E on a site
 - `defuse_answers`: right answers to cut the bomb
@@ -73,6 +73,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `bot_corner_look`: s an attacker looks at each entry of a site on arriving there
 - `bot_corner_merge_deg`: entries closer than this angle, seen from the bot, count as one look
 - `bot_sep_dist`: m bots keep from any other body (they spread out instead of walking in single file)
+- `bot_stuck_give_up`: maps with heights: how many stuck re-paths in a row (each after 0.8 s without moving) before a bot gives its current waypoint up
 - `bot_repath_strict`: s a bot that got stuck walks its new path cell centre by cell centre; stuck again within it, it snaps to the cell centre
 
 ---- Question bank ------------------------------------------------------------------
@@ -159,6 +160,8 @@ holds no comments. The values themselves are in `data/config.json`.
 - `chr_stride` 4 rad/m: how fast a character'"'"'s legs cycle per metre walked, so the swing speed follows the speed. `chr_leg_swing` 0.7 rad / `chr_arm_swing` 0.3 rad: the leg and arm swing at full walk. `chr_bob` 0.04 m: how much the body rises with each step. `chr_blend` 12 /s: how fast a pose (crouch, prone, walk or stand) eases in. `chr_death_time` 0.7 s: how long the fall to the floor takes (the body then stays down until the round resets).
 - `scn_clouds` 14: how many blocky clouds float high round the arena (3 or 4 white blocks each, flat bottom, 210 to 260 m away, never in front of the arena). `scn_cloud_size` 16 m: the width of one cloud block. `scn_sun_size` 6 degrees: the radius of the sun disc. `scn_floor_wear` 0.6: soft worn patches on the floor, per floor cell (0 = clean). `scn_base_tint` 0.4: how far the walls round a base turn to its side's colour (0 none, 1 full). `scn_flag_height` 5.8 m: the height of the bomb-site and base flags (the walls are 4.5 m, so the flags show above them from across the arena).
 - `scn_slab_thick` 0.25 m: how thick the first-floor slab and the ramps are drawn (story 011: a stand-in look so a test map with heights reads; story 012 draws the real first floor). Drawing only: the rules treat the slab as a plane at `level_height`.
+- `scn_rail_height` 1.0 m: the low rail drawn along the first floor's open edges (story 012). Drawing only: the rules have no rails, so it stays under eye height (1.6 m) and you see and shoot over it.
+- `scn_stair_steps_per_cell` 6: how many steps a ramp cell is drawn as (story 012; 6 gives 0.5 m treads and 0.25 m risers on a 2-cell stair). Drawing only: the rules walk the smooth slope.
 - `level_height` 3 m: how high the first floor is above the ground (story 011; a map with a first floor or ramps only). The walls are 4.5 m and the eye 1.6 m, so a person on the first floor has the eye at 4.6 m, just over the wall tops. Under it there is 3 m of headroom for the 1.8 m body and a jump (0.83 m).
 - `step_height` 0.5 m: the most a body steps up when walking (a ramp is climbed continuously; a floor higher than this is a wall to it). A drop of more than this is a fall: the body is set down on the lower floor with the landing noise (no damage).
 - `ramp_max_slope` 0.6: the steepest a ramp or stair may be (rise over run); the map check names a steeper one. With level_height 3 a ramp must be 2 cells (6 m) long or more (slope 0.5).

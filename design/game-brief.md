@@ -18,7 +18,7 @@ After play: este juego tiene un fin multiplayer para jugar en un curso completo 
 
 **Genre:** first-person team shooter (attack / defend the bomb) + educational quiz
 
-**Controls:** WASD move, mouse aim, click shoot, R reload, Shift sprint, X walk, C crouch, Z prone, Space jump (all rebindable in Controles), B buy menu in your base, 1–4 or click to answer, E hold to plant / E to open the defuse question when defending. *(guessed)*
+**Controls:** WASD move, mouse aim, click shoot, R reload, Shift sprint, X walk, C crouch, Z prone, Space jump (all rebindable in Controles), B buy menu in your base, 1–4 or click to answer, E hold to plant / E to open the defuse question when defending. *(guessed)* On phones and tablets: left stick, drag to aim, on-screen buttons.
 
 **Question:** Do quiz questions under pressure (buy timer, ticking bomb) make you *want* to answer fast and right — instead of feeling like homework bolted onto a shooter?
 
@@ -69,7 +69,9 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Weapons and effects (polished block style): first-person guns with a recognisable shape, muzzle flash, tracers, impact sparks and the bomb's explosion; still offline and smooth on school PCs
 - [x] Characters (polished block style): more detailed block models, distinct per side, animated when walking, crouching, prone and dying
 - [x] Scenery (polished block style): walls and floor with texture and relief, varied crates and props, clearly marked A and B sites, a gradient sky
-- [ ] Two-floor map: at least one new map with a ground floor and a first floor joined by stairs or ramps; shooting between floors, the minimap and the bots handle the height
+- [x] Two-floor map: at least one new map with a ground floor and a first floor joined by stairs or ramps; shooting between floors, the minimap and the bots handle the height
+- [ ] Aim with every gun: hold right click to aim down the sights with every gun, each with its own zoom (pistol and SMG light, rifle medium, sniper strong); only the sniper shows the black scope circle, the others aim through their own sights
+- [ ] Mobile play (Android and iOS, in the phone or tablet browser, landscape): touch controls — a left stick to move, drag on the right half to aim, buttons to fire, jump, crouch, reload, buy and plant/defuse; question cards, menus and the session screen work by touch; a lighter graphics level on phones; both modes, and a student joins the class by opening the teacher's address in the browser
 
 ## Your systems
 - buying weapons and ammo with answers · in the slice

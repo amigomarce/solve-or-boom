@@ -27,4 +27,4 @@ Build order from the brief:
 | 009 | Characters | Visual/Feel | Complete | N/A |
 | 010 | Scenery | Visual/Feel | Complete | N/A |
 | 011 | Heights in the rules | Integration | Complete | N/A |
-| 012 | Two-floor map | Integration | Ready | N/A |
+| 012 | Two-floor map | Integration | Complete | N/A |

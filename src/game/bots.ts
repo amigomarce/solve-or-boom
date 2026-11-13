@@ -1,7 +1,7 @@
 // The bots: each step of a bot (look, take cover, fight, follow its plan) and how it walks.
 // Everything random goes through match.rng(). No browser in here.
 import { grid, zone, zoneAt, idx, siteCells, SITE, center, cellOf, walkable, moveBody, losClear, walkClear, bfs, type Cell,
-  hasHeights, bfs3, canStepXY, cellLevels, floorHeight, levelHeight, levelOfY, rampAt, supportAt, grid1, zone1, MW, MH, RADIUS } from './map';
+  hasHeights, bfs3, canStepXY, cellLevels, floorHeight, levelHeight, levelOfY, rampAt, supportAt, grid1, zone1, MW, MH, RADIUS, rampSide } from './map';
 import { yawTo, angDiff, lerp } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
@@ -28,15 +28,15 @@ export function wpLevel(w: Cell): number { return w.length > 2 ? w[2] : (cellLev
 export function pathFrom(h: Cell, w: Cell): number[][] { return hasHeights ? bfs3(h[0], h[1], h[2] ?? 0, w[0], w[1], wpLevel(w)) : bfs(h[0], h[1], w[0], w[1]); }
 /** True when the bot stands on the level of path step c (always on a flat map). */
 function onLevel(b: Loose, c: Cell): boolean { return !hasHeights || Math.abs(b.st.y - floorHeight(c[0], c[1], c[2] ?? 0)) < levelHeight() / 2; }
-/** True when the bot can walk straight to the centre of path step n (corner cutting): with heights, without dropping and ending on n's level. */
+/** True when the bot can walk straight to the centre of path step n (corner cutting): with heights, without dropping, without crossing a ramp's side, and ending on n's level. */
 function cutClear(b: Loose, n: Cell): boolean {
   const tx = center(n[0]), tz = center(n[1]);
   if (!hasHeights) return walkClear(b.x, b.z, tx, tz);
   const dx = tx - b.x, dz = tz - b.z, k = Math.ceil(Math.hypot(dx, dz) / 0.4);
   let y = b.st.y;
   for (let i = 1; i <= k; i++) {
-    const s = supportAt(b.x + dx * i / k, b.z + dz * i / k, y);
-    if (s === null || s < y - tune.step_height) return false;
+    const px = b.x + dx * i / k, pz = b.z + dz * i / k, s = supportAt(px, pz, y);
+    if (s === null || s < y - tune.step_height || rampSide(px, pz)) return false; // no drop, and never across a ramp's side (moveBody refuses it)
     y = s;
   }
   return Math.abs(y - floorHeight(n[0], n[1], n[2] ?? 0)) < levelHeight() / 2;
@@ -56,14 +56,39 @@ export function botMove(match: Match, b: Loose, dx: number, dz: number, drop = f
   // A bot lands at once (bots have no stance step): the drop is counted and its landing heard.
   if (b.st.jumpY > 0) { b.st.jumpY = 0; b.st.vy = 0; b.drops = (b.drops ?? 0) + 1; makeNoise(match, b.x, b.z, tune.bot_hear_land, b.squad, b.st.y); }
 }
+/** The cell and level a bot stands on, for planning (with heights): the level of its feet, and its centre's cell when that
+ *  cell has a floor at that level; else (the centre over a ledge, a corner holding it up) the cell under its nearest
+ *  corner that has one. Flat maps: [cx, cy]. */
+export function standCell(b: Loose): Cell {
+  const h = cellAt(b.x, b.z, b.st.y);
+  if (!hasHeights || cellLevels(h[0], h[1]).includes(h[2])) return h;
+  let best = h, bd = Infinity;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = cellOf(b.x + sx * RADIUS), cz = cellOf(b.z + sz * RADIUS);
+    if (!cellLevels(cx, cz).includes(h[2])) continue;
+    const d = Math.hypot(center(cx) - b.x, center(cz) - b.z);
+    if (d < bd) { bd = d; best = [cx, cz, h[2]]; }
+  }
+  return best;
+}
+/** A waypoint made safe (with heights): its level moved to the one its cell can be walked on when it names a level with no
+ *  floor there; null when the cell has no floor at all. Flat maps: unchanged. */
+function fixWp(w: Cell): Cell | null {
+  if (!hasHeights) return w;
+  const lv = cellLevels(w[0], w[1]);
+  if (!lv.length) return null;
+  return lv.includes(wpLevel(w)) ? w : [w[0], w[1], lv[0]];
+}
 /** Walks a bot along its waypoints (bfs between them, cutting corners where the straight line is clear), turning
  *  it to face the way it walks unless `look` is false. Stuck: it re-paths from its own cell, cell centre by cell
  *  centre, for bot_repath_strict s; stuck again in that time, it snaps to its cell centre. False once arrived. */
 export function followPath(match: Match, b: Loose, dt: number, speed: number, look = true): boolean {
   if (b.pathI >= b.path.length) {
     if (!b.wps.length) { b.arrived = true; return false; }
-    const w = b.wps[0];
-    b.path = pathFrom(cellAt(b.x, b.z, b.st.y), w); b.pathI = 0;
+    const w = fixWp(b.wps[0]);
+    if (!w) { b.wps.shift(); return true; }
+    b.wps[0] = w;
+    b.path = pathFrom(standCell(b), w); b.pathI = 0;
     if (!b.path.length) { // no path: walk straight at it on its own level, else give the waypoint up
       const tx = center(w[0]), tz = center(w[1]), dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
       if (d > 0.3 && (!hasHeights || botLevel(b) === wpLevel(w))) { botMove(match, b, dx / d * speed * dt, dz / d * speed * dt); if (look) b.yaw = yawTo(dx, dz); return true; }
@@ -76,8 +101,9 @@ export function followPath(match: Match, b: Loose, dt: number, speed: number, lo
   }
   const c = b.path[b.pathI], tx = center(c[0]), tz = center(c[1]);
   const dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
+  if (d < 0.5 && !onLevel(b, c)) { b.path = []; b.pathI = 0; b.repaths = (b.repaths ?? 0) + 1; return true; } // over or under its step: re-plan from where it stands
   if (d < 0.5 && onLevel(b, c)) {
-    b.pathI++;
+    b.pathI++; b.stuckN = 0;
     if (b.pathI >= b.path.length) { b.wps.shift(); b.path = []; b.pathI = 0; }
     return true;
   }
@@ -89,8 +115,10 @@ export function followPath(match: Match, b: Loose, dt: number, speed: number, lo
     b.stuckT += dt;
     if (b.stuckT > 0.8) {
       b.stuckT = 0;
-      if (match.t < b.strictT) { b.path = []; b.pathI = 0; snapToCell(b); }
-      else { const h = cellAt(b.x, b.z, b.st.y), w = b.wps[0]; b.path = [h, ...pathFrom(h, w)]; b.pathI = 0; }
+      // With heights: stuck bot_stuck_give_up times in a row without reaching a path step, it gives that waypoint up.
+      if (hasHeights && (b.stuckN = (b.stuckN ?? 0) + 1) >= tune.bot_stuck_give_up) { b.stuckN = 0; b.wps.shift(); b.path = []; b.pathI = 0; }
+      else if (match.t < b.strictT) { b.path = []; b.pathI = 0; snapToCell(b); }
+      else if (b.wps.length) { const h = standCell(b), w = fixWp(b.wps[0]) ?? h; b.path = [h, ...pathFrom(h, w)]; b.pathI = 0; }
       b.strictT = match.t + tune.bot_repath_strict;
     }
   } else b.stuckT = 0;

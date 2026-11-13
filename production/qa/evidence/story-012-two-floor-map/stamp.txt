@@ -1,0 +1,6 @@
+Reviewed-Content-Hash: data/maps/dospisos.json ffbbb666846bac7ba6677c3c402f3568b4779646
+Reviewed-Content-Hash: src/game/map.ts f3bf2c88a67dca9c431b5983d90213e633839321
+Reviewed-Content-Hash: src/game/bots.ts fd07e35e66fbb2ac55b608f0a2ae7ccae7669e09
+Reviewed-Content-Hash: src/main.ts 33b87d1a0b0292efe885433488e24b72daa3585a
+Reviewed-Content-Hash: data/config.json df30890592722c77d74aba249efef90d76ba1522
+Reviewed-Content-Hash: data/config-notes.md b744e63fd68e24508a7c13596f6ea377bc32a2c4

@@ -1,0 +1,15 @@
+teacher start: true, seats 0,4
+map dospisos (hasHeights true, level_height 3 m); protocol PROTOCOL_VERSION 4; 522 s; room ended (partida terminada); matches 1; final score 0-4; rounds 1:0-0 2:0-1 3:0-2 4:0-3
+server steps 31252, dropped 0, mean step 0.186 ms, max 44.82 ms; warnings 8 refused-need_hello: Mensaje descartado (need_hello) de la conexión 1 | refused-need_hello: Mensaje descartado (need_hello) de la conexión 2 | refused-need_hello: Mensaje descartado (need_hello) de la conexión 1 | refused-need_hello: Mensaje descartado (need_hello) de la conexión 2 | refused-need_hello: Mensaje descartado (need_hello) de la conexión 1
+server sent 20836 snapshots, 538 bytes each, 10736 B/s per student; 62808 messages accepted (60.1/s per student), 8 refused
+Ana seat 0: 10420 msgs in (19.9/s), 10417 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 104.4 s at y 3.00 m; on a ramp 8.1 s; shots seen 1289, from above the first floor 494
+  prediction correction ground: n 2465, mean 0.031 m, max 0.195 m, height part mean 0.000 m max 0.042 m
+  prediction correction ramp:   n 161, mean 0.042 m, max 0.157 m, height part mean 0.005 m max 0.045 m
+  prediction correction floor1: n 2255, mean 0.042 m, max 0.188 m, height part mean 0.000 m max 0.074 m
+Beto seat 4: 10419 msgs in (19.9/s), 10417 snaps; versions seen 4; player row lengths 13, bomb row lengths 8
+  on the first floor (server, feet on the slab, not jumping) 69.6 s at y 3.00 m; on a ramp 6.0 s; shots seen 1289, from above the first floor 494
+  prediction correction ground: n 1645, mean 0.014 m, max 0.179 m, height part mean 0.000 m max 0.141 m
+  prediction correction ramp:   n 125, mean 0.010 m, max 0.101 m, height part mean 0.002 m max 0.045 m
+  prediction correction floor1: n 1528, mean 0.012 m, max 0.117 m, height part mean 0.000 m max 0.074 m
+no errors (server or client)

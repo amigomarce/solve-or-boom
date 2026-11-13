@@ -1,0 +1,45 @@
+seed 5: 3 rounds, 479 s, over true, bots 8
+seed 6: 3 rounds, 494 s, over true, bots 8
+seed 7: 6 rounds, 696 s, over true, bots 8
+seed 8: 3 rounds, 400 s, over true, bots 8
+seed 11: 6 rounds, 788 s, over true, bots 8
+seed 12: 3 rounds, 470 s, over true, bots 8
+seed 13: 3 rounds, 542 s, over true, bots 8
+seed 14: 3 rounds, 480 s, over true, bots 8
+seed 15: 3 rounds, 530 s, over true, bots 8
+seed 16: 3 rounds, 504 s, over true, bots 8
+map problems: []
+match seconds [479,494,696,400,788,470,542,480,530,504] mean 538
+{"defuse A (level 0)":3,"defuse B (level 1)":1,"exploded A":9,"kills across levels":50,"kills by the bomb":19,"kills same level":155,"matches over":10,"planned drops off the edge":57,"plant A (level 0)":22,"plant B (level 1)":6,"ramp centre down":5,"ramp centre up":32,"ramp crossings down":7,"ramp crossings up":174,"ramp east down":1,"ramp east up":105,"ramp west down":1,"ramp west up":37,"round end: defuse":4,"round end: elim of attackers":13,"round end: elim of defenders":17,"round end: explosion":9,"round end: time":3,"rounds won by ATT":26,"rounds won by DEF":20,"rounds":36}
+STUCK > 5 s: 0
+UNCHOSEN level changes: 0
+supportAt null (cell y phase: samples): []
+AFTER PLANT seed 6 r2 planted A at t264 -> end t275 bomb defused defs alive Bot Rex@27,5,L0 gtrue dtrue wps[[27,5,0]] | Bot Mila@26,6,L0 gtrue dfalse wps[[27,5,0]] | Bot Iker@26,7,L0 gtrue dfalse wps[[27,5,0]] | Bot Sol@28,24,L0 gtrue dfalse wps[[27,5,0]]
+AFTER PLANT seed 6 r4 planted A at t449 -> end t489 bomb exploded defs alive Bot You@25,13,L0 gtrue dfalse wps[[25,4,0]] | Bot Ana@25,11,L0 gtrue dfalse wps[[25,4,0]]
+AFTER PLANT seed 7 r1 planted A at t56 -> end t96 bomb exploded defs alive Bot Iker@28,18,L0 gtrue dfalse wps[[25,5,0]] | Bot Sol@30,21,L0 gtrue dfalse wps[[25,5,0]]
+AFTER PLANT seed 7 r2 planted B at t205 -> end t210 bomb planted defs alive 
+AFTER PLANT seed 7 r3 planted B at t317 -> end t322 bomb planted defs alive 
+AFTER PLANT seed 7 r4 planted B at t410 -> end t422 bomb planted defs alive 
+AFTER PLANT seed 7 r5 planted A at t485 -> end t507 bomb planted defs alive 
+AFTER PLANT seed 7 r7 planted A at t681 -> end t691 bomb planted defs alive 
+AFTER PLANT seed 8 r1 planted B at t106 -> end t121 bomb defused defs alive Bot Rex@27,30,L1 gtrue dfalse wps[] | Bot Mila@26,24,L1 gtrue dfalse wps[[27,30,1]] | Bot Iker@12,27,L0 gtrue dfalse wps[[27,30,1]] | Bot Sol@27,30,L1 gtrue dtrue wps[]
+AFTER PLANT seed 8 r4 planted A at t355 -> end t395 bomb exploded defs alive Bot Ana@29,18,L0 gtrue dfalse wps[[27,5,0]]
+AFTER PLANT seed 11 r7 planted A at t743 -> end t783 bomb exploded defs alive 
+AFTER PLANT seed 12 r1 planted A at t100 -> end t140 bomb exploded defs alive Bot Iker@21,15,L0 gtrue dfalse wps[[27,5,0]] | Bot Sol@29,16,L0 gtrue dfalse wps[[27,5,0]]
+AFTER PLANT seed 12 r2 planted A at t225 -> end t252 bomb planted defs alive 
+AFTER PLANT seed 12 r3 planted A at t337 -> end t358 bomb planted defs alive 
+AFTER PLANT seed 12 r4 planted A at t431 -> end t465 bomb defused defs alive Bot You@27,5,L0 gtrue dtrue wps[[27,5,0]] | Bot Tomas@28,10,L0 gtrue dfalse wps[[27,5,0]] | Bot Ana@28,11,L0 gtrue dfalse wps[[27,5,0]]
+AFTER PLANT seed 13 r1 planted A at t83 -> end t123 bomb exploded defs alive 
+AFTER PLANT seed 13 r2 planted A at t227 -> end t240 bomb planted defs alive 
+AFTER PLANT seed 13 r3 planted B at t344 -> end t372 bomb planted defs alive 
+AFTER PLANT seed 14 r1 planted A at t111 -> end t151 bomb exploded defs alive Bot Sol@28,18,L0 gtrue dfalse wps[[27,5,0]]
+AFTER PLANT seed 14 r2 planted B at t236 -> end t252 bomb planted defs alive 
+AFTER PLANT seed 14 r3 planted A at t337 -> end t364 bomb planted defs alive 
+AFTER PLANT seed 14 r4 planted A at t441 -> end t475 bomb defused defs alive Bot You@25,6,L0 gtrue dtrue wps[[25,5,0]]
+AFTER PLANT seed 15 r1 planted A at t167 -> end t207 bomb exploded defs alive 
+AFTER PLANT seed 15 r2 planted A at t270 -> end t303 bomb planted defs alive 
+AFTER PLANT seed 15 r3 planted A at t368 -> end t381 bomb planted defs alive 
+AFTER PLANT seed 16 r1 planted A at t65 -> end t105 bomb exploded defs alive 
+AFTER PLANT seed 16 r2 planted A at t189 -> end t200 bomb planted defs alive 
+AFTER PLANT seed 16 r3 planted A at t313 -> end t319 bomb planted defs alive 
+unmatched kills: []

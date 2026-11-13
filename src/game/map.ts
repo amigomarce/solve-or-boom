@@ -10,6 +10,7 @@ import pequeno from '../../data/maps/pequeno.json';
 import grande from '../../data/maps/grande.json';
 import patio from '../../data/maps/patio.json';
 import pasillos from '../../data/maps/pasillos.json';
+import dospisos from '../../data/maps/dospisos.json';
 
 /** A cell on the grid: [column, row]. In `spawns`, `sites`, `routes` and `anchors` a third number may name the level (0 ground, 1 first floor; default 0). */
 export type Cell = number[];
@@ -52,7 +53,8 @@ export interface MapData {
 }
 
 /** Every map, by id; the order is the selector's. */
-export const MAPS: Record<string, MapData> = { pequeno, grande, patio, pasillos };
+// A JSON import types a ramp's dir as string; mapProblems checks it.
+export const MAPS: Record<string, MapData> = { pequeno, grande, patio, pasillos, dospisos: dospisos as MapData };
 /** The map ids in the selector's order. */
 export const MAP_IDS = Object.keys(MAPS);
 /** The map ids with the name the selector shows. */
@@ -410,7 +412,7 @@ export function canStepXY(ax: number, ay: number, la: number, bx: number, by: nu
   if (la === 1 && lb === 0) {
     if (grid1[ia] !== 1 || !walkable(bx, by)) return false;
     if (rb) return (dx === DIRS[rb][0] * -1 && dy === DIRS[rb][1] * -1) && rampHi[ib] === 1;                 // down the top of a ramp
-    return grid1[ib] !== 1;                                                 // a drop off the edge (never down through the slab itself)
+    return grid1[ib] === 0;                                                 // a drop off the edge, only into open air (never through the slab or a first-floor crate)
   }
   return grid1[ia] === 1 && grid1[ib] === 1;
 }
