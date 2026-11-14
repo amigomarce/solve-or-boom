@@ -103,7 +103,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
   }
   for (const p of match.players) if (!p.human && p.alive) botUpdate(match, p, dt);
   for (const k of match.pickups) k.age += dt; // dropped items fade after pickup_life (story 016)
-  match.pickups = match.pickups.filter(k => k.age < tune.pickup_life);
+  for (let i = match.pickups.length - 1; i >= 0; i--) if (match.pickups[i].age >= tune.pickup_life) match.pickups.splice(i, 1);
   for (const p of match.players) if (!p.alive) p.deadT += dt;
   updateBomb(match, dt);
   checkRound(match);

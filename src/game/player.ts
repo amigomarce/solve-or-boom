@@ -7,7 +7,7 @@ import type { Loose } from './types';
 import { startReload, finishReload, humanShoot, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { routeTo } from './plans';
-import { closeCard, deskOf, feed, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Stance } from './state';
+import { closeCard, deskOf, feed, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
 
 /**
  * One human player's inputs for one step: actions, not keys. "Held" fields are true while the control is
@@ -180,6 +180,15 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
   const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
   if (!quiet && stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad, p.st.y);
 }
+/** When each player last heard "Ya tienes toda la vida", so pressing the medkit key at full health does not repeat it every press. */
+const fullMsgAt = new WeakMap<Loose, number>();
+/** True when `q` is close enough to pickup `k` (radius and height) and can use it: a medkit when hurt, ammo for a gun they hold that is not full. */
+function canTake(q: Loose, k: Pickup): boolean {
+  if (Math.hypot(k.x - q.x, k.z - q.z) > tune.pickup_radius || Math.abs(k.y - q.st.y) > tune.pickup_reach_y) return false;
+  const a = q.ammo[k.gun];
+  return k.kind === 'medkit' ? q.hp < tune.max_hp : !!a && a.res < tune[k.gun + '_reserve'];
+}
+
 /**
  * One step of a person's player: stance, their buy menu and question card (deskOf), movement, weapons,
  * shooting and the bomb. `p` is any human player (the single-player one, or a student in a classroom room).
@@ -211,14 +220,15 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   moveStep(match, p, dt, inp);
   // Medkits (story 016): a carried one heals tune.medkit_heal when used; a dropped one heals the same on contact, ammo adds to a held gun's reserve. Only a need is met: full health keeps the medkit.
   if (inp.medkit) {
-    if (p.hp >= tune.max_hp) tell(match, p, 'Ya tienes toda la vida');
+    if (p.hp >= tune.max_hp) { if (match.t - (fullMsgAt.get(p) ?? -99) > tune.medkit_full_msg_s) { fullMsgAt.set(p, match.t); tell(match, p, 'Ya tienes toda la vida'); } }
     else if (p.medkits <= 0) tell(match, p, 'No tienes botiquines: se compran en el menú');
     else { p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
   }
   for (let i = match.pickups.length - 1; i >= 0; i--) {
-    const k = match.pickups[i], a = p.ammo[k.gun];
-    if (Math.hypot(k.x - p.x, k.z - p.z) > tune.pickup_radius || Math.abs(k.y - me.y) > tune.pickup_reach_y) continue;
-    if (k.kind === 'medkit' ? p.hp >= tune.max_hp : !a || a.res >= tune[k.gun + '_reserve']) continue;
+    const k = match.pickups[i], a = p.ammo[k.gun], dist = Math.hypot(k.x - p.x, k.z - p.z);
+    if (!canTake(p, k)) continue;
+    // Two players over it on the same step: the nearer one takes it, whatever the seat order (each is checked on their own step).
+    if (match.players.some(q => q !== p && q.human && q.alive && canTake(q, k) && Math.hypot(k.x - q.x, k.z - q.z) < dist)) continue;
     if (k.kind === 'medkit') { p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); tell(match, p, `Botiquín: +${tune.medkit_heal} de vida`, 2); }
     else { a.res = Math.min(tune[k.gun + '_reserve'], a.res + Math.ceil(tune[k.gun + '_mag'] * tune.drop_ammo_mags)); tell(match, p, `Munición: ${WEAPON[k.gun].name}`, 2); }
     match.pickups.splice(i, 1); personal(match, p, { type: 'pickup', kind: k.kind });

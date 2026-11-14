@@ -252,7 +252,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 addEventListener('mousemove', e => { // the aim answers the hand at once: no smoothing
   if (!locked || scene !== 'play' || !state.human || !state.human.alive || uiOpen(state)) return;
-  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / 72 : 1); // the turn scales with the zoom
+  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / tune.view_fov : 1); // the turn scales with the zoom
   lookYaw -= e.movementX * k; lookPitch -= e.movementY * k; // the next step turns the aim
 });
 
@@ -296,7 +296,7 @@ const world = new THREE.Scene();
 const SKY = 0xa8daf2;
 world.background = new THREE.Color(SKY);
 world.fog = new THREE.Fog(SKY, 70, 170);
-const camera = new THREE.PerspectiveCamera(72, W / H, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(tune.view_fov, W / H, 0.05, 400);
 world.add(new THREE.HemisphereLight(0xfff4e0, 0x8d7c60, 2.1));
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.2); sun.position.set(30, 60, 18); world.add(sun);
 const lam = (c: number): THREE.MeshLambertMaterial => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
@@ -1032,7 +1032,7 @@ function readInput(act: string | undefined): PlayerInput {
   inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = held('aim');
   inp.lookLeft = down.has('ArrowLeft'); inp.lookRight = down.has('ArrowRight'); inp.lookUp = down.has('ArrowUp'); inp.lookDown = down.has('ArrowDown');
   if (touch.dx || touch.dy) { // the drag on the right half: the same turn per pixel as the mouse's, with its own sensitivity
-    const k = tune.touch_turn * tune.touch_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / 72 : 1);
+    const k = tune.touch_turn * tune.touch_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / tune.view_fov : 1);
     lookYaw -= touch.dx * k; lookPitch -= touch.dy * k; touch.dx = 0; touch.dy = 0;
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
@@ -1323,16 +1323,20 @@ function toggleTopic(t: string): void {
 }
 
 // ---- Drawing: the 3D view ----------------------------------------------------------------
+/** How many pickup models of each kind placeModels used this frame (kept, so nothing is allocated per frame). */
+const used: Record<string, number> = { medkit: 0, ammo: 0 }, PICKUP_DRAW = ['medkit', 'ammo'];
+/** The score table's rows, refilled each frame it shows. */
+const scoreRows: typeof state.players = [];
 function placeModels() {
   const now = performance.now(), dt = Math.min(0.1, Math.max(0.001, (now - lastPlace) / 1000)), clock = now / 1000; lastPlace = now;
   for (let i = 0; i < swing.length; i++) swing[i] = Math.max(0, swing[i] - dt);
-  const used: Record<string, number> = { medkit: 0, ammo: 0 };
+  used.medkit = 0; used.ammo = 0;
   for (const k of state.pickups ?? []) { // a slow turn so it reads as something to take
     const g = pickupMeshes[k.kind][used[k.kind]++];
     if (!g) continue;
     g.visible = true; g.position.set(k.x, k.y, k.z); g.rotation.y = clock * 1.5 + k.id;
   }
-  for (const kind of ['medkit', 'ammo']) for (let i = used[kind]; i < pickupMeshes[kind].length; i++) pickupMeshes[kind][i].visible = false;
+  for (const kind of PICKUP_DRAW) for (let i = used[kind]; i < pickupMeshes[kind].length; i++) pickupMeshes[kind][i].visible = false;
   for (const p of state.players) {
     const m = models[p.id];
     if (hitTint[p.id] > 0) { const on = state.t < hitTint[p.id] && state.t > hitTint[p.id] - 1; m.team.color.setHex(on ? 0xff2a1a : SIDE_HEX[sideOf(state, p)]); if (!on) hitTint[p.id] = 0; } // a hit flashes the model red for fx_hit_tint of match time (a new match's clock restarting ends it too)
@@ -1361,7 +1365,7 @@ function drawWorld() {
     camera.rotation.set(0, view.yaw, 0, 'YXZ');
     models[view.id].group.visible = false;
   }
-  const fov = p.alive && p.scoped ? tune[p.cur + '_aim_fov'] : 72;
+  const fov = p.alive && p.scoped ? tune[p.cur + '_aim_fov'] : tune.view_fov;
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   // gates sink into the floor when the round goes live
   if (state.gateT > 0) for (const g of gates) { g.position.y = 1.5 - Math.min(1, state.gateT / 0.7) * 3.2; g.visible = g.position.y > -1.5; }
@@ -1708,7 +1712,8 @@ function drawScores(): void {
   rr(x, y, w, 120 + 8 * 40, 16, 'rgba(14,19,30,0.92)', '#ffd06a', 3);
   text('MARCADOR', x + 28, y + 36, 28, '#ffd06a', 'left');
   text('Bajas', x + w - 170, y + 74, 17, '#c8d2e6'); text('Muertes', x + w - 70, y + 74, 17, '#c8d2e6');
-  const rows = [...state.players].sort((a, b) => (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1) || b.kills - a.kills || a.deaths - b.deaths);
+  scoreRows.length = 0; for (const q of state.players) scoreRows.push(q);
+  const rows = scoreRows.sort((a, b) => (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1) || b.kills - a.kills || a.deaths - b.deaths);
   rows.forEach((q, i) => {
     const ry = y + 96 + i * 40 + (q.squad === me.squad ? 0 : 12);
     if (q === me) rr(x + 16, ry - 2, w - 32, 36, 8, 'rgba(255,208,106,0.16)', null);
@@ -1718,8 +1723,8 @@ function drawScores(): void {
   });
 }
 function drawShop() {
-  const p = state.human, x = W / 2 - 330, y = 120, w = 660;
-  rr(x, y, w, 500, 16, 'rgba(14,19,30,0.94)', '#ffd06a', 3);
+  const p = state.human, x = W / 2 - 330, y = 120, w = 660, h = 128 + SHOP.length * 62; // 500 with the 6 items today
+  rr(x, y, w, h, 16, 'rgba(14,19,30,0.94)', '#ffd06a', 3);
   text('MENÚ DE COMPRA', x + 28, y + 36, 28, '#ffd06a', 'left');
   text(`$${p.money}`, x + w - 28, y + 36, 28, '#9ff08a', 'right');
   text('Cada objeto hace una pregunta. Responde bien para conseguirlo.', x + 28, y + 72, 17, '#c8d2e6', 'left', 'normal');
@@ -1734,8 +1739,8 @@ function drawShop() {
     const ql = questionLevel(state, it.id); // the level of the item's question (none for a custom CSV)
     if (ql) text(`pregunta ${QUESTIONS.LEVEL_NAMES[ql]}`, x + w - 44, by + 42, 14, why ? '#aab4c8' : '#c8d2e6', 'right', 'normal');
   });
-  if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + 478, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + 458, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
-  else text(`1-6 o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + 478, 16, '#c8d2e6', 'center', 'normal');
+  if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + h - 22, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + h - 42, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
+  else text(`1-${SHOP.length} o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + h - 22, 16, '#c8d2e6', 'center', 'normal');
 }
 /** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
 function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {

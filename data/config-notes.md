@@ -204,3 +204,9 @@ holds no comments. The values themselves are in `data/config.json`.
 - `question_step_medkit` 0: the medkit's question is the match level.
 - `touch_fire_scale`: the touch Fuego button's size as a multiple of touch_button_size (the big button 2 of the HUD layout)
 - `touch_aim_scale`: the touch Apuntar button's size as a multiple of touch_button_size (button 3 of the HUD layout)
+- `view_fov`: the normal view angle in degrees (the camera, and the base the aimed zoom's mouse turn is scaled against) (TD-003)
+- `pickup_offset`: metres a dead player's medkit and ammo lie to each side; a side inside a wall or crate falls back to the spot itself (TD-001)
+- `medkit_full_msg_s`: seconds before "Ya tienes toda la vida" can show again when the medkit key is pressed at full health (TD-002)
+- `hit_radius`: a player's body radius for shots, in metres (the human's shot and the bots' friendly-fire line check) (TD-006)
+- `ff_line_min`: with friendly fire, the nearest a teammate can stand in a bot's line and still take its shot, in metres (TD-006)
+- `ff_line_dy`: with friendly fire, the largest height difference for a teammate to be in a bot's line, in metres (TD-006)

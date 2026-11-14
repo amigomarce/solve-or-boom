@@ -337,7 +337,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
     case 'begin':
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
         && Array.isArray(raw.names) && raw.names.length === SEATS && raw.names.every(isStr) && isStr(raw.subject) && isStr(raw.level) && (LEVELS as readonly string[]).includes(raw.level)
-        && typeof raw.friendlyFire === 'boolean' && typeof raw.buyTime === 'number' && raw.buyTime > 0
+        && typeof raw.friendlyFire === 'boolean' && typeof raw.buyTime === 'number' && Number.isFinite(raw.buyTime) && raw.buyTime >= 1 && raw.buyTime <= 600
         ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level,
           friendlyFire: raw.friendlyFire, buyTime: raw.buyTime } : null;
     case 'snap': {

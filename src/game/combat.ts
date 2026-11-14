@@ -37,8 +37,10 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   }
   // What the dead leave (story 016): a medkit and ammo for the gun in hand, side by side, at the feet's height. Carried medkits are lost.
   t.medkits = 0;
-  match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: t.x - 0.3, z: t.z, y: t.st.y, age: 0 },
-    { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: t.x + 0.3, z: t.z, y: t.st.y, age: 0 });
+  // Side by side, pickup_offset each way along x; a side that would lie inside a wall or crate falls back to the dead player's own spot.
+  const h = t.st.y + 0.5, side = (dx: number): number => (solidAt(t.x + dx, t.z, h, h) ? t.x : t.x + dx);
+  match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: side(-tune.pickup_offset), z: t.z, y: t.st.y, age: 0 },
+    { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: side(tune.pickup_offset), z: t.z, y: t.st.y, age: 0 });
   const me = match.human;
   // "Tú eliminaste a Bot Kira", "Bot Kira te eliminó", "Bot Kira eliminó a Bot Rex", "La bomba te eliminó"
   const killer = from ? (from === me ? 'Tú' : from.name) : 'La bomba';
@@ -79,7 +81,7 @@ export function humanShoot(match: Match, p: Loose): void {
     if (!e.alive || e === p || (e.squad === p.squad && !match.opts.friendlyFire)) continue;
     const ox = e.x - p.x, oz = e.z - p.z, along = ox * hx + oz * hz;
     if (along <= 0) continue;
-    const perp2 = ox * ox + oz * oz - along * along, r = 0.42;
+    const perp2 = ox * ox + oz * oz - along * along, r = tune.hit_radius;
     if (perp2 > r * r) continue;
     const t = along - Math.sqrt(r * r - perp2);
     const y = eye + tp * t + (p.st.y - e.st.y); // height over the target's feet
@@ -173,9 +175,9 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
       const dx = (t.x - b.x) / (d || 1), dz = (t.z - b.z) / (d || 1);
       let near = d;
       for (const q of match.players) {
-        if (q === b || q === t || !q.alive || q.squad !== b.squad || Math.abs(q.st.y - b.st.y) > 1.5) continue;
+        if (q === b || q === t || !q.alive || q.squad !== b.squad || Math.abs(q.st.y - b.st.y) > tune.ff_line_dy) continue;
         const ox = q.x - b.x, oz = q.z - b.z, along = ox * dx + oz * dz, perp = Math.abs(ox * dz - oz * dx);
-        if (along > 0.5 && along < near && perp < 0.42) { victim = q; near = along; }
+        if (along > tune.ff_line_min && along < near && perp < tune.hit_radius) { victim = q; near = along; }
       }
     }
     applyDamage(match, victim, tune[w + '_dmg'], b);
