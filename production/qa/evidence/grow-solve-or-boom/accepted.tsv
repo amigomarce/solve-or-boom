@@ -1,6 +1,7 @@
 browser	/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
-time	2026-11-13 19:10:52
+time	2026-11-14 09:33:37
 render	cheap
+saved	0	localstorage	aula.clave
 webgl	ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)
 ua	HeadlessChrome/157.0.0.0
 scene	0	title
@@ -8,126 +9,126 @@ state	0	title	{"t":0,"score":[0,0],"gained":"","round":0,"attSquad":0,"phase":"b
 scene	1	play
 state	1	play	{"t":0,"score":[0,0],"gained":"","round":1,"attSquad":0,"phase":"buy","phaseT":35,"roundT":150,"players":"[8 items]","human":{"id":0,"name":"Tú","role":"rifleman","squad":0,"human":true,"x":16.5,"z":5
 playinput	64	KeyB
-frame	3481	3fece284
-frame	3482	2f613a4b
-frame	3483	7a3058b5
-frame	3484	1d84868
-frame	3485	871b0f7d
-frame	3486	1c631943
-frame	3487	706bab99
-frame	3488	ed40c214
-frame	3489	642dfe0f
-frame	3490	431f7735
-frame	3491	9d15c2fd
-frame	3492	a08fcc60
-frame	3493	7c99614f
-frame	3494	fd9f7bd7
-frame	3495	66bd60f4
-frame	3496	182157c2
-frame	3497	92281f71
-frame	3498	49aa657d
-frame	3499	3187c3d5
-frame	3500	1071ed9
-frame	3501	f020ae
-frame	3502	e4d13c26
-frame	3503	f4c56abe
-frame	3504	1e895e7a
-frame	3505	7451c0dd
-frame	3506	e069614d
-frame	3507	8db751c2
-frame	3508	44da08e7
-frame	3509	aedb99b9
-frame	3510	f8d8b57c
-frame	3511	bf93bdd7
-frame	3512	6a4994c4
-frame	3513	bff40934
-frame	3514	9b9aa999
-frame	3515	e45f7e72
-frame	3516	3b706e28
-frame	3517	bceebb4d
-frame	3518	ab4d4bb2
-frame	3519	3fd0c70d
-frame	3520	4c685142
-frame	3521	ff063f0e
-frame	3522	c354367e
-frame	3523	ca627645
-frame	3524	73f53277
-frame	3525	1029e971
-frame	3526	25127f9b
-frame	3527	2237df08
-frame	3528	2c276a6c
-frame	3529	1692882a
-frame	3530	5bba533e
-frame	3531	d0fa59e0
-frame	3532	ec2a8ec1
-frame	3533	885edc10
-frame	3534	a5999ed0
-frame	3535	3c5f5f84
-frame	3536	e4228c70
-frame	3537	b8e93d9b
-frame	3538	74cc2786
-frame	3539	e5b1b364
-frame	3540	5657e960
-frame	3541	10567430
-frame	3542	eb5b7df
-frame	3543	a4e36040
-frame	3544	c994846
-frame	3545	ad2c1df9
-frame	3546	7c4f1c1b
-frame	3547	ecd2e8cc
-frame	3548	31ca623
-frame	3549	45710921
-frame	3550	54fdbbb5
-frame	3551	68e31e79
-frame	3552	5923c7d2
-frame	3553	f6451a11
-frame	3554	9a16abc6
-frame	3555	94f743f0
-frame	3556	eff346a
-frame	3557	d97f1616
-frame	3558	45c45022
-frame	3559	655a54c5
-frame	3560	7bd45e89
-frame	3561	1bc25a9d
-frame	3562	74684ba2
-frame	3563	a01604ce
-frame	3564	3df1f3ef
-frame	3565	d83ed07f
-frame	3566	6b8ece47
-frame	3567	46b1889c
-frame	3568	bacd00b
-frame	3569	ed0e4ba7
-frame	3570	39e178b3
-frame	3571	694b9745
-frame	3572	f87f7a8b
-frame	3573	4d67453a
-frame	3574	23ea1d17
-frame	3575	d7dce6d6
-frame	3576	dedf0cc8
-frame	3577	f74c7a59
-frame	3578	93cd55bb
-frame	3579	3a06120d
-frame	3580	880c5a03
-frame	3581	103f548c
-frame	3582	da7f67a3
-frame	3583	34e3a9b
-frame	3584	aa0ce25d
-frame	3585	33754fc9
-frame	3586	63f41c5b
-frame	3587	9166b57c
-frame	3588	9902ad0d
-frame	3589	e1fd59c4
-frame	3590	5028ed56
-frame	3591	d3d4733
-frame	3592	1625ac24
-frame	3593	9a70730e
-frame	3594	508176bd
-frame	3595	b39bab19
-frame	3596	ab648688
-frame	3597	10d10d3e
-frame	3598	ffa35f74
-frame	3599	12db3763
-frame	3600	ea27a9fc
+frame	3481	ac3f0fde
+frame	3482	31560c11
+frame	3483	e955965b
+frame	3484	23b759d6
+frame	3485	ca810b63
+frame	3486	9b5565c1
+frame	3487	b4f2da7f
+frame	3488	d268e296
+frame	3489	327f4f3d
+frame	3490	a79e4c7f
+frame	3491	43e979c3
+frame	3492	a21b7b36
+frame	3493	65efa171
+frame	3494	6e1b4d49
+frame	3495	a19f6ef6
+frame	3496	4df3dd28
+frame	3497	6b2d0fc7
+frame	3498	9eb0c0cf
+frame	3499	ad743cd3
+frame	3500	ab8d72b7
+frame	3501	84b63638
+frame	3502	13949a04
+frame	3503	a28cb7c8
+frame	3504	a4fd6458
+frame	3505	94323fbf
+frame	3506	df04a7
+frame	3507	14deb964
+frame	3508	26102141
+frame	3509	4847eb73
+frame	3510	94fad052
+frame	3511	2fea8f15
+frame	3512	8e1e333a
+frame	3513	4e0355fe
+frame	3514	8f9e0043
+frame	3515	609d722c
+frame	3516	6b7a5cfe
+frame	3517	d7cc2e0f
+frame	3518	92795ee4
+frame	3519	a8d6bdfb
+frame	3520	48275a7c
+frame	3521	c8255a14
+frame	3522	fbaaaad0
+frame	3523	90630b8b
+frame	3524	b4b6aa6d
+frame	3525	bb9bf4f
+frame	3526	ea706fb9
+frame	3527	5623feba
+frame	3528	94e16076
+frame	3529	30fac9ec
+frame	3530	fba2a4d4
+frame	3531	1f7e1666
+frame	3532	773f963f
+frame	3533	26716e12
+frame	3534	d6dc519a
+frame	3535	d46f1fa6
+frame	3536	c6c4d71a
+frame	3537	5c2b4305
+frame	3538	27d94e50
+frame	3539	4bc3d02a
+frame	3540	1939237e
+frame	3541	4a57cb22
+frame	3542	48553511
+frame	3543	aea35f9e
+frame	3544	82a16df0
+frame	3545	274849eb
+frame	3546	7031c585
+frame	3547	8418bbee
+frame	3548	f4be871
+frame	3549	a75cf3df
+frame	3550	a1fe6b97
+frame	3551	2ac1f997
+frame	3552	873a5444
+frame	3553	f880e867
+frame	3554	e6da0f54
+frame	3555	2ddcff8e
+frame	3556	efdbb01c
+frame	3557	f1029a70
+frame	3558	bb4d70d4
+frame	3559	8d97c897
+frame	3560	70ab28cf
+frame	3561	4756ab73
+frame	3562	8df971e8
+frame	3563	cac99b54
+frame	3564	9f8809e9
+frame	3565	f3a6ea41
+frame	3566	83dbf899
+frame	3567	d15bc92e
+frame	3568	8f0bc6ed
+frame	3569	63744e4d
+frame	3570	26d82969
+frame	3571	67641d43
+frame	3572	cdd3a039
+frame	3573	4e87d27c
+frame	3574	3b71c9d
+frame	3575	ba521d4c
+frame	3576	5f2134e
+frame	3577	a1aec3a3
+frame	3578	6300f9c1
+frame	3579	a147c9c3
+frame	3580	aebdf2a9
+frame	3581	5d7a18a2
+frame	3582	6d4c1555
+frame	3583	cf44ec05
+frame	3584	4693d453
+frame	3585	c33beb0f
+frame	3586	26e02769
+frame	3587	1df64a8a
+frame	3588	7230a9bf
+frame	3589	de765cfa
+frame	3590	98e4fa8c
+frame	3591	2bb86211
+frame	3592	49bafdb2
+frame	3593	4e920f44
+frame	3594	a7d11523
+frame	3595	e0dd7ce3
+frame	3596	1f6e31de
+frame	3597	c77d2bb8
+frame	3598	a1c9829e
+frame	3599	550cb11
+frame	3600	432b42be
 state	3600	play	{"t":59.98,"score":[0,0],"gained":"","round":1,"attSquad":0,"phase":"live","phaseT":-0.02,"roundT":125.03,"players":"[8 items]","human":{"id":0,"name":"Tú","role":"rifleman","squad":0,"human":true,"x"
 digits	log	bold 24px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
 digits	log	15px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
@@ -144,13 +145,13 @@ digits	log	bold 14px "Trebuchet MS", "Segoe UI", Verdana, sans-serif	tabular	0
 loop	log	none	no loop() step was marked
 first	log	none	no state.beat
 pressure	none	the game set no number state.margin in play
-steptime	3600	0.015	5.400
-frametime	60	21.7	215.3	3240	13	4
-done	3600	play	stop	60.0	6256
-console	0	[.WebGL-0x10c08f3a800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
-console	0	[.WebGL-0x10c08f3a800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
-console	0	[.WebGL-0x10c08f3a800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
-console	0	[.WebGL-0x10c08f3a800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+steptime	3600	0.021	2.800
+frametime	60	31.2	334.5	3240	58	4
+done	3600	play	stop	60.0	10563
+console	0	[.WebGL-0x13400506000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	0	[.WebGL-0x13400506000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	0	[.WebGL-0x13400506000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+console	0	[.WebGL-0x13400506000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
 measured	1280x720
 text	play	canvas	145,43,155,55	22.1	2.75	inside	A
 text	play	canvas	147,107,154,118	22.1	2.75	inside	B
@@ -167,6 +168,6 @@ text	play	canvas	1011,661,1072,676	27.6	12.50	inside	Pistola
 text	play	canvas	1150,657,1244,679	41.4	18.99	inside	12 / 36
 text	play	canvas	1071,594,1126,607	24.9	13.10	inside	Bomba
 text	play	canvas	397,572,884,593	30.4	15.62	inside	Llevas la bomba: plántala en la A o la B grandes
-screen	3600	play	d6d2e19d	drawn
+screen	3600	play	a5a59bf9	drawn
 uncaught	0
-shot	/Users/marcelo/Desktop/Proyectos/Juegos/my-game/production/qa/evidence/grow-solve-or-boom/story.png	245173
+shot	/Users/marcelo/Desktop/Proyectos/Juegos/my-game/production/qa/evidence/grow-solve-or-boom/story.png	245761

@@ -221,7 +221,19 @@ function requestLock() {
   if (TOUCH) return; // touch aims by dragging: no pointer lock
   try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* no lock here */ }
 }
-canvas.addEventListener('pointermove', e => { const m = toLogical(e); mouse.x = m.x; mouse.y = m.y; });
+canvas.addEventListener('pointermove', e => {
+  const m = toLogical(e); mouse.x = m.x; mouse.y = m.y;
+  // A second mouse button pressed or let go while another is held comes as a pointermove (a chord), never as pointerdown/up:
+  // aiming with the right button and firing with the left one needs it read here.
+  if (e.button >= 0 && e.pointerType === 'mouse' && locked) syncButtons(e.buttons);
+});
+/** Matches the held mouse buttons to the `buttons` mask of a chord: 1 left (Mouse0), 2 right (Mouse2). A newly held one counts as pressed this step. */
+function syncButtons(mask: number): void {
+  for (const [code, bit] of [['Mouse0', 1], ['Mouse2', 2]] as const) {
+    if (mask & bit) { if (!down.has(code)) { down.add(code); hit.add(code); } }
+    else down.delete(code);
+  }
+}
 canvas.addEventListener('pointerdown', e => {
   startAudio();
   const m = toLogical(e); mouse.x = m.x; mouse.y = m.y;
@@ -866,23 +878,23 @@ function makeViewGun(kind: string) {
   const gb = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): THREE.Mesh => { // a block with its dark outline
     const m = box(w, h, d, mat, x, y, z, g); m.rotation.x = rx; m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edge)); return m;
   };
-  let muzzle = 0;
+  let muzzle = 0, sight = 0; // sight: the height of the line through the gun's sights, in the gun's own units
   if (kind === 'pistol') {
     gb(0.055, 0.06, 0.22, metal, 0, 0.02, -0.08); gb(0.058, 0.014, 0.2, accent, 0, 0.056, -0.08);
     gb(0.045, 0.13, 0.06, wood, 0, -0.07, 0.0, 0.25); gb(0.04, 0.012, 0.07, metal, 0, -0.02, -0.06);
-    muzzle = -0.2;
+    muzzle = -0.2; sight = 0.063;
   } else if (kind === 'smg') {
     gb(0.08, 0.1, 0.34, metal, 0, 0, -0.1); gb(0.084, 0.03, 0.3, accent, 0, 0.065, -0.1);
     gb(0.045, 0.22, 0.07, accent, 0, -0.16, -0.14, 0.08); gb(0.03, 0.03, 0.12, metal, 0, 0.01, -0.32);
     gb(0.04, 0.08, 0.05, metal, 0, -0.08, 0.04, 0.2); gb(0.02, 0.03, 0.14, metal, 0, 0.0, 0.2);
     gb(0.02, 0.03, 0.03, metal, 0, 0.1, -0.2);
-    muzzle = -0.38;
+    muzzle = -0.38; sight = 0.115;
   } else if (kind === 'rifle') {
     gb(0.07, 0.1, 0.4, metal, 0, 0, -0.1); gb(0.075, 0.08, 0.24, accent, 0, -0.005, -0.4);
     gb(0.022, 0.022, 0.2, metal, 0, 0.02, -0.65); gb(0.05, 0.17, 0.06, metal, 0, -0.14, -0.1, -0.35);
     gb(0.06, 0.15, 0.24, wood, 0, -0.03, 0.24, -0.12); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.06, 0.25);
     gb(0.02, 0.05, 0.03, metal, 0, 0.075, -0.6); gb(0.03, 0.04, 0.04, metal, 0, 0.075, 0.0);
-    muzzle = -0.77;
+    muzzle = -0.77; sight = 0.1;
   } else {
     gb(0.06, 0.08, 0.62, metal, 0, 0, -0.1); gb(0.03, 0.03, 0.5, metal, 0, 0.015, -0.66); gb(0.05, 0.05, 0.08, accent, 0, 0.015, -0.93);
     gb(0.065, 0.13, 0.3, wood, 0, -0.03, 0.3, -0.08); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.04, 0.25);
@@ -890,13 +902,13 @@ function makeViewGun(kind: string) {
     for (const z of [-0.31, 0.01]) { const lens = cyl(0.048, 0.048, 0.07, 10, accent, 0, 0.1, z, g); lens.rotation.x = Math.PI / 2; }
     gb(0.02, 0.04, 0.03, metal, 0, 0.06, -0.15); gb(0.07, 0.02, 0.05, metal, 0.05, 0.015, 0.1);
     for (const sx of [-1, 1]) gb(0.014, 0.16, 0.014, metal, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
-    muzzle = -0.98;
+    muzzle = -0.98; sight = 0.1;
   }
   box(0.07, 0.07, 0.11, skin, 0, -0.07, 0.04, g);
   box(0.08, 0.08, 0.16, sleeve, 0.02, -0.1, 0.16, g);
   const flash = makeFlash(1); flash.position.set(0, 0.02, muzzle); g.add(flash);
   g.visible = false; gunScene.add(g);
-  return { group: g, flash };
+  return { group: g, flash, sight };
 }
 const viewGuns: Record<string, ReturnType<typeof makeViewGun>> = { pistol: makeViewGun('pistol'), smg: makeViewGun('smg'), rifle: makeViewGun('rifle'), sniper: makeViewGun('sniper') };
 
@@ -1433,10 +1445,16 @@ function drawWorld() {
   } else if (p.alive && !lens) {
     const g = viewGuns[p.cur].group, bob = p.moving ? Math.sin(state.t * 11) : 0;
     const rl = p.reloadT > 0 ? Math.sin(Math.min(1, 1 - p.reloadT / tune.reload_time) * Math.PI) : 0;
-    if (p.scoped) g.position.set(0, -0.15 + Math.abs(bob) * 0.004 + p.recoil * 0.6, -0.5 + p.recoil * 1.6); // aimed: on the centre line, with the sights behind the crosshair
-    else g.position.set(0.22 + bob * 0.012, -0.21 + Math.abs(bob) * 0.01 - rl * 0.22 + p.recoil * 0.6, -0.5 + p.recoil * 1.6);
-    g.scale.setScalar(0.75);
-    g.rotation.set(p.recoil * 2 - rl * 0.6, 0.05, 0);
+    const S = 0.75, z = -0.5 + p.recoil * 1.6;
+    g.scale.setScalar(S);
+    if (p.scoped) { // aimed: the line through the sights lies on the camera's axis, so the sights sit exactly on the crosshair
+      g.position.set(0, -viewGuns[p.cur].sight * S + Math.abs(bob) * 0.004 + p.recoil * 0.6, z - tune.fx_vm_aim_back);
+      g.rotation.set(p.recoil * 2 - rl * 0.6, 0, 0);
+    } else { // from the hip: the barrel turned to meet the crosshair's line `fx_vm_converge` ahead, so it points where the shot goes
+      const x = 0.22 + bob * 0.012, y = -0.21 + Math.abs(bob) * 0.01 - rl * 0.22 + p.recoil * 0.6, ahead = tune.fx_vm_converge - z;
+      g.position.set(x, y, z);
+      g.rotation.set(Math.atan2(-y, ahead) + p.recoil * 2 - rl * 0.6, Math.atan2(x, ahead), 0);
+    }
     if (swing[p.id] > 0) { // story 016: the melee strike, the gun swung forward and across
       const s = Math.sin((1 - swing[p.id] / tune.melee_time) * Math.PI);
       g.position.x -= s * 0.16; g.position.y += s * 0.06; g.position.z -= s * 0.22; g.rotation.x -= s * 0.9; g.rotation.z += s * 0.5;

@@ -182,11 +182,14 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
 }
 /** When each player last heard "Ya tienes toda la vida", so pressing the medkit key at full health does not repeat it every press. */
 const fullMsgAt = new WeakMap<Loose, number>();
-/** True when `q` is close enough to pickup `k` (radius and height) and can use it: a medkit when hurt, ammo for a gun they hold that is not full. */
+/** The guns `q` holds whose reserve is not full: what a dropped ammo box refills. */
+function hungryGuns(q: Loose): string[] {
+  return [q.primary, 'pistol'].filter((g): g is string => !!g && !!q.ammo[g] && q.ammo[g].res < tune[g + '_reserve']);
+}
+/** True when `q` is close enough to pickup `k` (radius and height) and has room for it: a medkit while carrying fewer than `medkit_max`, ammo while a held gun's reserve is not full. */
 function canTake(q: Loose, k: Pickup): boolean {
   if (Math.hypot(k.x - q.x, k.z - q.z) > tune.pickup_radius || Math.abs(k.y - q.st.y) > tune.pickup_reach_y) return false;
-  const a = q.ammo[k.gun];
-  return k.kind === 'medkit' ? q.hp < tune.max_hp : !!a && a.res < tune[k.gun + '_reserve'];
+  return k.kind === 'medkit' ? q.medkits < tune.medkit_max : hungryGuns(q).length > 0;
 }
 
 /**
@@ -218,19 +221,24 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     p.moving = false; return;
   }
   moveStep(match, p, dt, inp);
-  // Medkits (story 016): a carried one heals tune.medkit_heal when used; a dropped one heals the same on contact, ammo adds to a held gun's reserve. Only a need is met: full health keeps the medkit.
+  // Medkits (story 016): a carried one heals tune.medkit_heal when used. Full health keeps the medkit.
   if (inp.medkit) {
     if (p.hp >= tune.max_hp) { if (match.t - (fullMsgAt.get(p) ?? -99) > tune.medkit_full_msg_s) { fullMsgAt.set(p, match.t); tell(match, p, 'Ya tienes toda la vida'); } }
     else if (p.medkits <= 0) tell(match, p, 'No tienes botiquines: se compran en el menú');
     else { p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
   }
   for (let i = match.pickups.length - 1; i >= 0; i--) {
-    const k = match.pickups[i], a = p.ammo[k.gun], dist = Math.hypot(k.x - p.x, k.z - p.z);
+    const k = match.pickups[i], dist = Math.hypot(k.x - p.x, k.z - p.z);
     if (!canTake(p, k)) continue;
     // Two players over it on the same step: the nearer one takes it, whatever the seat order (each is checked on their own step).
     if (match.players.some(q => q !== p && q.human && q.alive && canTake(q, k) && Math.hypot(k.x - q.x, k.z - q.z) < dist)) continue;
-    if (k.kind === 'medkit') { p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); tell(match, p, `Botiquín: +${tune.medkit_heal} de vida`, 2); }
-    else { a.res = Math.min(tune[k.gun + '_reserve'], a.res + Math.ceil(tune[k.gun + '_mag'] * tune.drop_ammo_mags)); tell(match, p, `Munición: ${WEAPON[k.gun].name}`, 2); }
+    // Taken by walking over it (story 016, changed after the classroom test): a medkit goes into the pack, ammo tops up every held gun that is not full.
+    if (k.kind === 'medkit') { p.medkits++; tell(match, p, `Botiquín recogido (${p.medkits}/${tune.medkit_max})`, 2); }
+    else {
+      const guns = hungryGuns(p);
+      for (const g of guns) p.ammo[g].res = Math.min(tune[g + '_reserve'], p.ammo[g].res + Math.ceil(tune[g + '_mag'] * tune.drop_ammo_mags));
+      tell(match, p, `Munición: ${guns.map(g => WEAPON[g].name).join(' y ')}`, 2);
+    }
     match.pickups.splice(i, 1); personal(match, p, { type: 'pickup', kind: k.kind });
   }
   // Weapons.

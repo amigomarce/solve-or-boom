@@ -197,7 +197,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `first_kill_bonus` $500 (story 016): paid on top of `kill_money` to whoever makes the first kill of each round (a bot too); a person sees "Primera baja: +$500". Not paid for a bomb or self kill.
 - `price_medkit` $400 (story 016): the buy menu's Botiquín; it is carried (at most `medkit_max`, 2) and used with its own key (G) or the touch button; it is lost on death and at half-time.
 - `medkit_heal` 50 hp: what a used medkit gives, and what a medkit picked up from the floor gives (never over `max_hp`).
-- `drop_ammo_mags` 1: a dead player drops this many magazines of the gun they held (the ammo adds to a gun's reserve, up to its `<gun>_reserve`); they also drop one medkit.
+- `drop_ammo_mags` 1: a dead player drops an ammo box and one medkit. Walking over the box adds this many magazines to each gun the taker holds whose reserve is not full (up to its `<gun>_reserve`); walking over the medkit puts it in the pack while they carry fewer than `medkit_max`. A full pack and full reserves leave both on the floor.
 - `pickup_radius` 1 m, `pickup_reach_y` 1.5 m: how close (flat distance, and feet height apart on a map with heights) a living person must be to take a dropped item by walking over it.
 - `pickup_life` 30 s: a dropped item vanishes after this long, and always at the end of the round.
 - `melee_dmg` 35, `melee_range` 1.6 m, `melee_rate` 0.6 s (story 016): with the magazine and reserve both empty, firing is a strike: a short ray like a shot's, no headshot bonus, quiet (bots do not hear it). `melee_time` 0.3 s is how long the swing animation lasts.
@@ -210,3 +210,5 @@ holds no comments. The values themselves are in `data/config.json`.
 - `hit_radius`: a player's body radius for shots, in metres (the human's shot and the bots' friendly-fire line check) (TD-006)
 - `ff_line_min`: with friendly fire, the nearest a teammate can stand in a bot's line and still take its shot, in metres (TD-006)
 - `ff_line_dy`: with friendly fire, the largest height difference for a teammate to be in a bot's line, in metres (TD-006)
+- `fx_vm_converge` 4: the first-person gun held from the hip is turned so its barrel meets the crosshair's line this far ahead (in the gun view's units); aimed, the sights sit on the crosshair whatever this is.
+- `fx_vm_aim_back` 0.35: aimed, the first-person gun sits this much further from the eye than from the hip, so it covers less of the view around the crosshair.

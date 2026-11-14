@@ -285,6 +285,8 @@
   "view_fov": { "value": 72, "min": 50, "max": 100, "step": 1 },
   "pickup_offset": { "value": 0.3, "min": 0, "max": 1, "step": 0.05 },
   "medkit_full_msg_s": { "value": 1.5, "min": 0, "max": 10, "step": 0.5 },
+  "fx_vm_converge": { "value": 4, "min": 1, "max": 20, "step": 0.5 },
+  "fx_vm_aim_back": { "value": 0.35, "min": 0, "max": 1, "step": 0.05 },
   "hit_radius": { "value": 0.42, "min": 0.2, "max": 1, "step": 0.01 },
   "ff_line_min": { "value": 0.5, "min": 0, "max": 3, "step": 0.1 },
   "ff_line_dy": { "value": 1.5, "min": 0.5, "max": 4, "step": 0.1 },

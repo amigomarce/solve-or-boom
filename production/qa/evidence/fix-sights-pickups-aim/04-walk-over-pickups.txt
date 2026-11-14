@@ -1,0 +1,6 @@
+1 full health, 0 carried: medkit taken true | carried 1
+2 second one: taken true | carried 2 (max 2)
+3 pack full: left on the floor true | carried 2
+4 both guns full: ammo left on the floor true
+5 rifle and pistol low, an SMG box: taken true | rifle res 40 (+30) | pistol res 17 (+12)
+messages []

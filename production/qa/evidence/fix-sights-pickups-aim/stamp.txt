@@ -1,0 +1,4 @@
+Reviewed-Content-Hash: src/main.ts 9736edb09db733b21c0107317ada53203a7e6db5
+Reviewed-Content-Hash: src/game/player.ts f9bfc7434eeb95726aa6b568acd79233650babca
+Reviewed-Content-Hash: data/config.json 50ff8e3a28f7fe0c79bd0bcbba881b0f4b9ac17f
+Reviewed-Content-Hash: data/config-notes.md 7f6b0e918131d6ff0b92c198ca30cae97e33f776

@@ -1,0 +1,2 @@
+td20 | right held: aiming true, mag 12 | left pressed while aiming: mag 12 NO SHOT, still aiming true | left let go then 30 steps: mag 12 (no more shots: true) | moving: mag 12 | right up: aiming false | errors 0
+td21 | right held: aiming true, mag 12 | left pressed while aiming: mag 11 FIRED, still aiming true | left let go then 30 steps: mag 11 (no more shots: true) | moving: mag 11 | right up: aiming false | errors 0
