@@ -24,7 +24,7 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
 /** A hit by a teammate (friendly fire, story 017): the same squad, not oneself. */
 const friendly = (from: Loose, t: Loose): boolean => !!from && from !== t && from.squad === t.squad;
 export function kill(match: Match, t: Loose, from: Loose): void {
-  t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false;
+  t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false; t.healT = 0;
   // A teammate's death (friendly fire) counts for nothing: no kill, no money, no first-kill bonus, and no penalty to the shooter.
   const team = friendly(from, t);
   match.count?.kill(from && from !== t && !team ? from : null, t);

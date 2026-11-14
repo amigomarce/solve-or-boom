@@ -1,0 +1,5 @@
+1 medkit pressed at 40 hp: healed after 3.03 s (medkit_time 3) -> hp 90, medkits 1
+2 snapshot at 1 s: healT row value 202, parsed by the student's page: true
+3 fired 1 s into a second use (2.00 s left): stopped true, hp 40, medkits kept 1
+4 walking while healing: still healing true
+messages []

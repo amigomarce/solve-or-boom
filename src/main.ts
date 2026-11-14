@@ -1691,6 +1691,12 @@ function drawHUD(paused?: boolean): void {
     rr(W / 2 - 156, H / 2 + 64, 312 * k, 18, 6, SIDE_CSS.att, null);
     text('Plantando…', W / 2, H / 2 + 104, 18, '#fff');
   }
+  if (p.alive && p.healT > 0) { // a medkit being used: the bar fills over tune.medkit_time
+    const k = 1 - p.healT / tune.medkit_time;
+    rr(W / 2 - 160, H / 2 + 120, 320, 26, 8, 'rgba(15,20,32,0.85)', null);
+    rr(W / 2 - 156, H / 2 + 124, 312 * k, 18, 6, '#5fd36a', null);
+    text('Curando…', W / 2, H / 2 + 164, 18, '#fff');
+  }
   if (state.msgT > 0 && !state.banner) {
     ctx.globalAlpha = Math.min(1, state.msgT);
     ctx.font = `bold 26px ${FONT}`; const w = ctx.measureText(state.msg).width + 48;

@@ -180,6 +180,8 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
   const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
   if (!quiet && stepR > 0 && Math.floor(match.t / tune.bot_step_interval) !== Math.floor((match.t - dt) / tune.bot_step_interval)) makeNoise(match, p.x, p.z, stepR, p.squad, p.st.y);
 }
+/** Stops a medkit being used: nothing is spent and no health is given. */
+function stopHeal(match: Match, p: Loose): void { p.healT = 0; tell(match, p, 'Curación cancelada: el botiquín no se gastó', 2); }
 /** When each player last heard "Ya tienes toda la vida", so pressing the medkit key at full health does not repeat it every press. */
 const fullMsgAt = new WeakMap<Loose, number>();
 /** The guns `q` holds whose reserve is not full: what a dropped ammo box refills. */
@@ -214,6 +216,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     if (match.bomb.state !== 'planted') closeCard(match, p, true);
     else if (inp.usePress) closeCard(match, p);
   }
+  if (p.healT > 0 && (d.card || d.menu)) stopHeal(match, p); // a menu or a card stops a medkit being used
   if (d.card) { updateCard(match, p, dt, inp); p.moving = false; return; }
   if (d.menu) {
     if (!buy) { d.menu = false; tell(match, p, 'Se acabó el tiempo de compra'); }
@@ -221,11 +224,15 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     p.moving = false; return;
   }
   moveStep(match, p, dt, inp);
-  // Medkits (story 016): a carried one heals tune.medkit_heal when used. Full health keeps the medkit.
-  if (inp.medkit) {
+  // Medkits (story 016): using a carried one takes tune.medkit_time seconds, walking allowed; it is spent and heals
+  // tune.medkit_heal when the time is up. Shooting, reloading or changing gun first stops it and keeps the medkit. Full health keeps the medkit.
+  if (p.healT > 0) {
+    if (inp.fire || inp.firePress || inp.reload || inp.swap || inp.primary || inp.pistol) stopHeal(match, p);
+    else if ((p.healT -= dt) <= 0) { p.healT = 0; p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
+  } else if (inp.medkit) {
     if (p.hp >= tune.max_hp) { if (match.t - (fullMsgAt.get(p) ?? -99) > tune.medkit_full_msg_s) { fullMsgAt.set(p, match.t); tell(match, p, 'Ya tienes toda la vida'); } }
     else if (p.medkits <= 0) tell(match, p, 'No tienes botiquines: se compran en el menú');
-    else { p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
+    else p.healT = tune.medkit_time;
   }
   for (let i = match.pickups.length - 1; i >= 0; i--) {
     const k = match.pickups[i], dist = Math.hypot(k.x - p.x, k.z - p.z);

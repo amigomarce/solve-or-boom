@@ -212,3 +212,4 @@ holds no comments. The values themselves are in `data/config.json`.
 - `ff_line_dy`: with friendly fire, the largest height difference for a teammate to be in a bot's line, in metres (TD-006)
 - `fx_vm_converge` 4: the first-person gun held from the hip is turned so its barrel meets the crosshair's line this far ahead (in the gun view's units); aimed, the sights sit on the crosshair whatever this is.
 - `fx_vm_aim_back` 0.35: aimed, the first-person gun sits this much further from the eye than from the hip, so it covers less of the view around the crosshair.
+- `medkit_time` 3 s: using a carried medkit takes this long (walking allowed, a bar shows it); the medkit is spent and the health given when it ends. Shooting, reloading, changing gun, opening the buy menu or a card, or dying stops it and keeps the medkit.

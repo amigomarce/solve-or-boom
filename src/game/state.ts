@@ -158,12 +158,12 @@ function newPlayer(r: Loose, i: number, human: boolean): Loose {
     ...(human ? {} : botFresh()),
   };
   // Not enumerable, like Match.classroom: the same-seed replay compares the serialised state, which must not change.
-  // `medkits` (story 016), the bought medkits carried, is hidden for the same reason.
-  return Object.defineProperties(p, { st: { value: freshStance(), enumerable: false, writable: true }, medkits: { value: 0, enumerable: false, writable: true } });
+  // `medkits` (story 016), the bought medkits carried, and `healT`, the seconds left of a medkit being used, are hidden for the same reason.
+  return Object.defineProperties(p, { st: { value: freshStance(), enumerable: false, writable: true }, medkits: { value: 0, enumerable: false, writable: true }, healT: { value: 0, enumerable: false, writable: true } });
 }
 /** Takes a player's primary gun, armour and medkits away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {
-  p.primary = null; p.medkits = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
+  p.primary = null; p.medkits = 0; p.healT = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
   p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
 }
 

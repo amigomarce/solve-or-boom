@@ -136,7 +136,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   const y = snap.y;
   me.hp = y[0]; me.armor = y[1]; me.money = y[2];
   me.ammo = { [me.cur]: { mag: y[3], res: y[4] } }; me.reloadT = y[5] / T; me.primary = y[6] >= 0 ? WEAPON_IDS[y[6]] : null;
-  me.recoil = y[12] / A; me.cool = y[13] / T; me.medkits = y[15];
+  me.recoil = y[12] / A; me.cool = y[13] / T; me.medkits = y[15]; me.healT = y[16] / T;
   // The pickups as the server has them (story 016): not predicted, so one walked over goes when the server says it was taken.
   match.pickups = snap.d.map(r => ({ id: r[0], kind: PICKUP_KINDS[r[1]], gun: '', x: r[2] / P, z: r[3] / P, y: (r[4] ?? 0) / P, age: 0 }));
   // The own menu and card, as the server has them (the card's question object is kept while it is the same question).
