@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solve or Boom · Pantalla del profesor</title>
+<link rel="icon" href="data:,">
 <style>
   /* The teacher's control table (story 006). No external fonts or files: the classroom has no internet. */
   :root { --bg:#12172a; --panel:#1b2235; --line:#2e3852; --text:#eef2fa; --soft:#aab4c8; --gold:#ffd06a; --ok:#9ff08a; --warn:#ffe28a; --bad:#ff9a8a; --btn:#2c3754; --btn-on:#3a4870; }
@@ -140,7 +141,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 8;
+const V = 9;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };

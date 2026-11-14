@@ -82,7 +82,16 @@ function compact(input: PlayerInput): Partial<PlayerInput> {
   return out as Partial<PlayerInput>;
 }
 
-const NAME_KEY = 'aula.nombre';
+const NAME_KEY = 'aula.nombre', TOKEN_KEY = 'aula.clave';
+/** This browser's random key (16 hex digits), kept so a reload or a dropped connection takes its own seat back; in memory when storage is blocked. */
+const deviceToken: string = (() => {
+  let t = '';
+  try { t = localStorage.getItem(TOKEN_KEY) ?? ''; } catch { /* blocked: a new key each page load */ }
+  if (/^[0-9a-f]{16}$/.test(t)) return t;
+  t = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+  try { localStorage.setItem(TOKEN_KEY, t); } catch { /* blocked: kept for this page only */ }
+  return t;
+})();
 /** Errors after which retrying cannot help. */
 const FATAL: readonly ErrorCode[] = ['name_empty', 'bad_name', 'sin_cupo', 'bad_version', 'server_full'];
 
@@ -119,7 +128,7 @@ export function connect(opts: ConnectOptions): Connection {
     let s: WebSocket;
     try { s = new WebSocket(url); } catch { finish('unreachable'); return; }
     ws = s;
-    s.onopen = () => sendText(s, JSON.stringify(attempt > 0 ? { v: PROTOCOL_VERSION, t: 'hello', name, rejoin: true } : { v: PROTOCOL_VERSION, t: 'hello', name }));
+    s.onopen = () => sendText(s, JSON.stringify(attempt > 0 ? { v: PROTOCOL_VERSION, t: 'hello', name, rejoin: true, token: deviceToken } : { v: PROTOCOL_VERSION, t: 'hello', name, token: deviceToken }));
     const read = (data: unknown): void => {
       const m = typeof data === 'string' ? parseServerMessage(data) : null;
       if (!m || done || ws !== s) return;

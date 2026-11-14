@@ -29,7 +29,7 @@ export interface LobbyDeps {
 /** The lobby. */
 export interface Lobby {
   /** Handles a hello: seats the student (or gives the old seat back) and answers `joined`, or an error (`name_empty`, `sin_cupo`). */
-  hello(connId: number, name: string, rejoin: boolean): void;
+  hello(connId: number, name: string, rejoin: boolean, token?: string): void;
   /** The student says goodbye: the seat is a bot again at once and the name is free. */
   leave(connId: number): void;
   /** The connection closed: the seat is held for rejoin_grace_s. */
@@ -57,7 +57,7 @@ export interface Lobby {
 }
 
 /** A student: the unique name, the seat, and the connection (null while the seat is held). */
-interface Student { id: number; name: string; key: string; room: Room; seat: number; connId: number | null; holdUntilS: number }
+interface Student { id: number; name: string; key: string; token: string; room: Room; seat: number; connId: number | null; holdUntilS: number }
 
 /**
  * The lobby over the given rooms.
@@ -101,13 +101,14 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
   };
 
   return {
-    hello(connId, name, rejoin) {
+    hello(connId, name, rejoin, token = '') {
       const current = byConn.get(connId);
       if (current) { joined(current); return; } // a repeated hello on a seated connection just repeats the answer
       const old = byKey.get(keyOf(name));
       if (old) {
         const live = stateOf(old.room) !== 'ended';
-        const takeable = old.connId === null || (rejoin && !deps.isAlive(old.connId));
+        const same = !old.token || old.token === token; // only the browser that held the seat takes it back (protocol 9)
+        const takeable = same && (old.connId === null || (rejoin && !deps.isAlive(old.connId)));
         if (!live) release(old);
         else if (takeable) {
           if (old.connId !== null) { byConn.delete(old.connId); deps.close(old.connId); }
@@ -124,7 +125,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
         const room = deps.rooms.get(info.id)!;
         const seat = takeSeat(room, connId, uniqueName);
         if (!seat) continue;
-        const st: Student = { id: ++madeIds, name: uniqueName, key: keyOf(uniqueName), room, seat: seat.index, connId, holdUntilS: 0 };
+        const st: Student = { id: ++madeIds, name: uniqueName, key: keyOf(uniqueName), token, room, seat: seat.index, connId, holdUntilS: 0 };
         byKey.set(st.key, st); byConn.set(connId, st);
         joined(st); push(room, connId);
         deps.log(`Conexión ${connId} ocupa el asiento ${seat.index} de ${room.id} (equipo ${seat.team})`);

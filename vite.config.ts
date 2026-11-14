@@ -17,7 +17,11 @@ export default defineConfig(({ mode }) => ({
   // so Vite hashes them and the single file inlines them. A public folder would
   // not be inlined, so there is none.
   publicDir: false,
-  plugins: mode === 'single' || mode === 'class' ? [viteSingleFile()] : [],
+  plugins: mode === 'single' || mode === 'class' ? [viteSingleFile()] : [{
+    // npm run dev is for building the game: say how to play in class, so no one starts a lesson with it
+    name: 'aviso-aula', apply: 'serve',
+    configureServer(server) { server.httpServer?.once('listening', () => console.log('\n  Para jugar en clase usa "npm run aula": "npm run dev" es solo para desarrollar el juego.\n')); },
+  }],
   // The class client swaps the bundled question banks for none: the answers stay on the server.
   resolve: mode === 'class' ? { alias: [{ find: /^\.\/banks$/, replacement: fileURLToPath(new URL('./src/banks-none.ts', import.meta.url)) }] } : {},
   // The game's page only: other pages in the project (one-shots in prototypes/)

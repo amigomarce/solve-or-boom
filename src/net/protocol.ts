@@ -11,7 +11,8 @@ import { LEVELS, type Level } from '../game/types';
 
 /** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). 6: the input's `medkit` (a press) and digits up to 5, the own row ends with the medkits carried, snap carries the dropped pickups `d`, events `melee` and `pickup` (story 016). 7: the match options (story 017): tsession, tstate's session and begin carry `friendlyFire` and `buyTime`, tinfo the buy time's range `buyTime`, and a `kill` event of a teammate carries `ff: true`. */
 // 8: an input carries the student's own aim (aimYaw, aimPitch), taken as is, so a lost input cannot leave the server's aim off the crosshair.
-export const PROTOCOL_VERSION = 8;
+// 9: hello carries a random key per browser (token); a held seat goes back only to the same key.
+export const PROTOCOL_VERSION = 9;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -28,6 +29,11 @@ export interface HelloMessage {
    * is taken over. Typed names never set it.
    */
   rejoin?: boolean;
+  /**
+   * Protocol 9: a random key this browser keeps (client.ts). A seat held for a dropped student goes back only to a hello
+   * with the same key, so someone else typing that name gets "Ana (2)" instead of the seat. Not personal data.
+   */
+  token?: string;
 }
 /** Client to server: the student leaves for good; the seat becomes a bot at once (no grace). */
 export interface LeaveMessage { v: number; t: 'leave' }
@@ -237,7 +243,7 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   closeShop: isBool, closeCard: isBool, spectate: isBool, spectateKey: isBool,
 };
 /** The keys each message type may carry; any other key refuses the message. */
-const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin'], input: ['v', 't', 'seq', 'input'], ping: ['v', 't'], leave: ['v', 't'] };
+const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin', 'token'], input: ['v', 't', 'seq', 'input'], ping: ['v', 't'], leave: ['v', 't'] };
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]*$/u;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -265,7 +271,11 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
     if (!name) return { ok: false, code: 'name_empty' };
     if (name.length > lim.maxName || !NAME.test(name)) return { ok: false, code: 'bad_name' };
     if (raw.rejoin !== undefined && typeof raw.rejoin !== 'boolean') return { ok: false, code: 'bad_field' };
-    return { ok: true, msg: raw.rejoin ? { v: PROTOCOL_VERSION, t, name, rejoin: true } : { v: PROTOCOL_VERSION, t, name } };
+    if (raw.token !== undefined && (typeof raw.token !== 'string' || !/^[0-9a-f]{16,32}$/.test(raw.token))) return { ok: false, code: 'bad_field' };
+    const msg: HelloMessage = { v: PROTOCOL_VERSION, t, name };
+    if (raw.rejoin) msg.rejoin = true;
+    if (raw.token) msg.token = raw.token as string;
+    return { ok: true, msg };
   }
   if (!isObject(raw.input)) return { ok: false, code: 'bad_shape' };
   if (!Number.isInteger(raw.seq) || (raw.seq as number) < 0 || (raw.seq as number) > 0x7fffffff) return { ok: false, code: 'bad_field' };

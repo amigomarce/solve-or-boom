@@ -1017,7 +1017,8 @@ let lookYaw = 0, lookPitch = 0;
 function startMatch(): void {
   useMap(session.map);
   state = createMatch({
-    seed: seedFrom(CONFIG.seed), subject: session.subject, level: session.level, map: session.map,
+    // each match its own seed, so the first question changes; checks (?manual=1 or ?seed=) keep the fixed one
+    seed: manual || params.get('seed') ? seedFrom(CONFIG.seed) : 1 + Math.floor(Math.random() * 2147483646), subject: session.subject, level: session.level, map: session.map,
     topics: session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject], custom: session.custom, customName: session.customName,
     friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel,
   });
@@ -1881,7 +1882,7 @@ function drawJoin() {
   const lx = 380, ly = 552;
   ctx.strokeStyle = '#aab4c8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(lx + 8, ly - 4, 5, Math.PI, 0); ctx.stroke();
   rr(lx + 1, ly - 4, 14, 11, 2, '#aab4c8', null);
-  text('Solo se pide tu nombre: no se guarda ningún dato personal.', lx + 26, ly, 16, '#c8d2e6', 'left', 'normal');
+  text('Solo se pide tu nombre, y este navegador lo recuerda.', lx + 26, ly, 16, '#c8d2e6', 'left', 'normal');
   text(TOUCH ? 'Toca el recuadro, escribe tu nombre y pulsa Entrar para sentarte en una sala.' : 'Escribe tu nombre y pulsa Enter para sentarte en una sala.', W / 2, 650, 18, '#e4e9f4', 'center', 'normal');
 }
 /** The waiting screen: who and where the student is, the room's two teams seat by seat, the room's state, and Salir. */
@@ -2030,7 +2031,7 @@ function drawTitle() {
   button(820, 612, 420, 60, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
   const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
-    : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  Clic disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
+    : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  ${bind.shoot === 'Mouse0' ? 'Clic' : 'Clic o ' + k('shoot')} disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 694, ls, '#e4e9f4', 'center', 'normal');

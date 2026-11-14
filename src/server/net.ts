@@ -76,7 +76,7 @@ export interface Net {
 }
 
 /** One connection's state: no name is kept beyond `named`, and no address at all. */
-interface Conn { id: number; tokens: number; lastT: number; strikes: number; alive: boolean; began: string }
+interface Conn { id: number; tokens: number; lastT: number; strikes: number; alive: boolean; began: string; named: boolean }
 
 /**
  * Listens on `port` on every interface (the next free port when it is busy, up to `tries` ports), serving
@@ -244,7 +244,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   };
   wss.on('error', e => deps.warn('ws', `Error WebSocket: ${e.message}`));
   wss.on('connection', ws => {
-    const c: Conn = { id: ++made, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, alive: true, began: '' };
+    const c: Conn = { id: ++made, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, alive: true, began: '', named: false };
     ws.on('error', e => deps.warn('ws-conn', `Conexión ${c.id}: ${e.message}`)); // a frame over maxPayload lands here, then the socket closes
     if (conns.size >= lim.maxConnections) { send(ws, errorMessage('server_full')); ws.close(1013, 'lleno'); return; }
     conns.set(ws, c); byId.set(c.id, ws);
@@ -261,10 +261,10 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       if (!parsed.ok) { refuse(ws, c, parsed.code); return; }
       const msg = parsed.msg;
       if (msg.t === 'ping') { accepted++; send(ws, { v: PROTOCOL_VERSION, t: 'pong' }); return; }
-      if (msg.t === 'hello') { accepted++; lobby.hello(c.id, msg.name, msg.rejoin === true); freezeFrames(); return; }
+      if (msg.t === 'hello') { accepted++; c.named = true; lobby.hello(c.id, msg.name, msg.rejoin === true, msg.token); freezeFrames(); return; }
       if (msg.t === 'leave') { accepted++; lobby.leave(c.id); return; }
       const at = lobby.where(c.id);
-      if (!at) { refuse(ws, c, 'need_hello'); return; }
+      if (!at) { if (msg.t === 'input' && c.named) return; refuse(ws, c, 'need_hello'); return; } // inputs still on the way when the student's room ended: dropped quietly, no error on the student's page
       accepted++;
       if (at.room.status === 'running') queueInput(at.room, at.seat, msg.seq, msg.input);
     });
