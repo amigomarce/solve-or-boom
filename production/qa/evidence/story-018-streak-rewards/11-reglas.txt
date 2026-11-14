@@ -1,0 +1,30 @@
+PASS option on by default
+PASS streak fields hidden from the serialised state
+PASS 2 right -> streak 2, armour 0
+PASS 3 right -> Escudo: armour 50 (msg "¡Racha de 3! Escudo: +50 de blindaje")
+PASS wrong answer resets -> 0
+PASS Escudo capped at 100 -> 100
+PASS 5 right -> Cazador kept true (msg "¡Racha de 5! Cazador guardado: úsalo cuando quieras")
+PASS dying keeps streak 5 and the kept Cazador
+PASS streak 7 -> no gold yet
+PASS 8 right -> Rifle dorado in hand, streak restarts 0 (msg "¡Racha de 8! Arma secreta: Rifle dorado")
+PASS Rifle dorado not in SHOP
+PASS gold dmg 45 > rifle 34, spread 0.0035 < 0.007
+PASS 5 again with one kept -> one kept (msg "¡Racha de 5! Ya tienes un Cazador guardado")
+PASS dead: still holds the gold until the next round starts
+PASS after death and a new round: gold lost (primary null), streak kept 5
+PASS a bot earns nothing
+PASS no ability kept -> refused (msg "No tienes habilidad: se gana con 5 aciertos seguidos")
+PASS kept -> Cazador 10 s, no longer kept
+PASS pressed again while active -> refused (msg "El Cazador ya está activo")
+PASS speed with Cazador 0.702 m vs 0.540 m = x1.300
+PASS Cazador ran 10.02 s then expired
+PASS option off: 8 right earn nothing
+PASS own row [0,0,4,1,350]
+PASS player row gun code 4 (gold)
+PASS snapshot parses (protocol 11)
+PASS a 17-long own row (protocol 10) is refused
+PASS input with ability parses
+PASS input with ability: 7 refused
+PASS class: activation with nothing kept refused ("undefined")
+ALL PASS

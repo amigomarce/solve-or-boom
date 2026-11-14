@@ -110,6 +110,8 @@
       <div id="buytime" class="stepper"></div>
       <div class="hint" style="margin:8px 0 4px">Fuego amigo (los disparos dañan a los compañeros)</div>
       <div id="ff" class="chips"></div>
+      <div class="hint" style="margin:8px 0 4px">Premios por racha (3 aciertos seguidos: Escudo; 5: Cazador; 8: Rifle dorado)</div>
+      <div id="streak" class="chips"></div>
       <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
     </section>
     <section class="panel" aria-labelledby="h-students">
@@ -141,7 +143,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 10;
+const V = 11;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -171,7 +173,7 @@ function connect() {
     else if (m.t === 'terror') say(m.text);
     else if (m.t === 'texported') download(m);
     // A refused choice leaves the server's session as it was: rebuild the session panel so it shows that again.
-    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps', 'buytime', 'ff']) delete last[k]; if (st && info) render(); }
+    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps', 'buytime', 'ff', 'streak']) delete last[k]; if (st && info) render(); }
   };
   ws.onclose = () => {
     $('conn').textContent = 'Sin conexión · reconectando…'; $('conn').className = 'off';
@@ -190,7 +192,7 @@ function put(id, html) {
 
 function sendSession(over) {
   const ss = st.session;
-  const s = Object.assign({ subject: ss.subject, level: ss.level, topics: ss.topics, map: ss.map, friendlyFire: ss.friendlyFire, buyTime: ss.buyTime }, over);
+  const s = Object.assign({ subject: ss.subject, level: ss.level, topics: ss.topics, map: ss.map, friendlyFire: ss.friendlyFire, buyTime: ss.buyTime, streakRewards: ss.streakRewards }, over);
   if (s.subject === CUSTOM) s.topics = [];
   send('tsession', s);
 }
@@ -213,6 +215,8 @@ function render() {
     + `<span class="chip val" aria-live="polite">${s.buyTime} s</span>`
     + `<button type="button" data-buy="1" aria-label="Más tiempo de compra"${s.buyTime < bt.max ? '' : ' disabled'}>+</button>`);
   put('ff', [[true, 'Sí'], [false, 'No']].map(([on, label]) => `<label class="chip"><input type="radio" name="ff" value="${on ? 1 : 0}"${s.friendlyFire === on ? ' checked' : ''}>${label}</label>`).join(''));
+  // Story 018: streak rewards Sí / No (on by default).
+  put('streak', [[true, 'Sí'], [false, 'No']].map(([on, label]) => `<label class="chip"><input type="radio" name="streak" value="${on ? 1 : 0}"${s.streakRewards === on ? ' checked' : ''}>${label}</label>`).join(''));
 
   put('available', s.available === null ? '<span class="hint">Preguntas: se generan sin límite.</span>'
     : `<span class="${s.available ? 'good' : 'skip'}">${s.available === 1 ? '1 pregunta disponible' : s.available + ' preguntas disponibles'}</span>`);
@@ -292,6 +296,7 @@ $('buytime').addEventListener('click', e => {
   sendSession({ buyTime: Math.min(bt.max, Math.max(bt.min, st.session.buyTime + Number(b.dataset.buy) * bt.step)) });
 });
 $('ff').addEventListener('change', e => sendSession({ friendlyFire: e.target.value === '1' }));
+$('streak').addEventListener('change', e => sendSession({ streakRewards: e.target.value === '1' }));
 $('topics').addEventListener('change', () => sendSession({ topics: [...$('topics').querySelectorAll('input:checked')].map(i => i.value) }));
 $('upload').onclick = () => $('file').click();
 $('file').addEventListener('change', () => {

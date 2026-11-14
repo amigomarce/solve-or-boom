@@ -1,0 +1,17 @@
+Reviewed-Content-Hash: data/keybinds.json b7b809f55da3a4383d981b7bcbe275e734eff325
+Reviewed-Content-Hash: data/config-notes.md f0d3d22701f771a44d6b922ba9fb9e718eae72f8
+Reviewed-Content-Hash: data/config.json 9bf0855aa966faa003869405a9a25b5414daa0ba
+Reviewed-Content-Hash: src/main.ts a3b25607340247ad14b7a13555f97ab2bc5543d8
+Reviewed-Content-Hash: src/audio.ts 3a51ff6d6c4647e85aeb26a9c9bb71b576fe282c
+Reviewed-Content-Hash: src/touch.ts 88e00363a63a82b23336fcb278d1749943f71be4
+Reviewed-Content-Hash: src/net/snapshot.ts f775771b0241ce7ce62f7d0c7b2746a20b7ad27b
+Reviewed-Content-Hash: src/net/protocol.ts f23b1accc8b448c0a574bc41b640438b9a9ca43f
+Reviewed-Content-Hash: src/net/mirror.ts 9100311aea869b2f3aceb820f28856249f913096
+Reviewed-Content-Hash: src/server/profesor.html 772154512775a89a3f54accacf403b867ef3bf04
+Reviewed-Content-Hash: src/server/net.ts 3939bc673739a9d2ba48899a9bbfb3d863020f06
+Reviewed-Content-Hash: src/server/teacher.ts 335b62b76fe291043e571f425048a0743e02506a
+Reviewed-Content-Hash: src/game/match.ts 8a6fad5a7d6d8431d74446de4cbbe3eeccb95ac1
+Reviewed-Content-Hash: src/game/state.ts cc9704e5438c14997a9fbd8a2bf200797d1a222c
+Reviewed-Content-Hash: src/game/streak.ts 901d798a4229ecf676ea73a0ec7d710c998e3e97
+Reviewed-Content-Hash: src/game/player.ts 56e147b40bf98817f890311eee827aad1a8af77f
+Reviewed-Content-Hash: src/game/combat.ts c37fcedbfd222151730afdfbad7ce8ed4e89de31

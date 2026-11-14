@@ -184,7 +184,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   const sendBegin = (ws: WebSocket, c: Conn, room: Room, seat: number): void => {
     c.began = `${room.id}:${room.matchNo}`;
     send(ws, { v: PROTOCOL_VERSION, t: 'begin', map: room.match.opts.map, seat, match: room.matchNo, hz: 1 / STEP / snapEvery, names: room.match.players.map(p => p.name),
-      subject: room.match.opts.subject, level: room.match.opts.level, friendlyFire: room.match.opts.friendlyFire, buyTime: room.match.opts.buyTime });
+      subject: room.match.opts.subject, level: room.match.opts.level, friendlyFire: room.match.opts.friendlyFire, buyTime: room.match.opts.buyTime, streakRewards: room.match.opts.streakRewards });
   };
   /**
    * A paused room is not stepped, so nobody who sat down in it since the pause (a join, a rejoin, a teacher's move) got

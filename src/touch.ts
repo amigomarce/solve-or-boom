@@ -26,7 +26,7 @@ export type TouchMode = 'off' | 'pause' | 'all';
 interface Btn { el: HTMLElement; action: string; toggle: boolean; id: number }
 const btns: Btn[] = [];
 const held = new Set<Btn>();
-let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement, gunBtn: HTMLElement;
+let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement, gunBtn: HTMLElement, abilityBtn: HTMLElement;
 /** The stance buttons (Tumbarse, Agacharse, De pie) and the stance main.ts last reported, which they light and act on. */
 const stanceBtns: Record<string, HTMLElement> = {};
 let stance = 'stand';
@@ -60,6 +60,13 @@ export function setUseLabel(s: string): void {
   if (useBtn.textContent !== s) useBtn.textContent = s;
   const show = mode === 'all' && s !== 'Bomba' ? 'flex' : 'none';
   if (useBtn.style.display !== show) useBtn.style.display = show;
+}
+
+/** Story 018: the Cazador button shows only while one is kept to use (`show`); a tap presses the ability control. */
+export function setAbilityButton(show: boolean): void {
+  if (!TOUCH) return;
+  const d = mode === 'all' && show ? 'flex' : 'none';
+  if (abilityBtn.style.display !== d) abilityBtn.style.display = d;
 }
 
 /** The weapon selector's word: the gun in hand (a tap swaps to the other one). */
@@ -172,6 +179,9 @@ if (TOUCH) {
   // 7 and 8: Comprar and Botiquín, a column at the left edge.
   make('buy', 'Comprar', u, atLeft(5.5, 66.5, u));
   make('medkit', 'Botiquín', u, atLeft(5.5, 85, u)); // story 016: use a carried medkit
+  // Story 018: the kept Cazador, above Comprar in the same column (clear of the kill counter and Tabla under the minimap); only while one is kept.
+  abilityBtn = make('ability', 'Cazador', u, atLeft(5.5, 47.5, u));
+  abilityBtn.style.display = 'none';
   // 2 and 3: Fuego (big) and Apuntar above it.
   const fire = Math.round(u * tune.touch_fire_scale), aim = Math.round(u * tune.touch_aim_scale);
   make('shoot', 'Fuego', fire, at(77, 66, fire)).classList.add('fire');

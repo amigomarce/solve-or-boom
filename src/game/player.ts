@@ -7,6 +7,7 @@ import type { Loose } from './types';
 import { startReload, finishReload, humanShoot, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { routeTo } from './plans';
+import { streakRight, streakWrong, useAbility, hunterTick, hunterSpeed } from './streak';
 import { closeCard, deskOf, feed, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
 
 /**
@@ -39,6 +40,8 @@ export interface PlayerInput {
   prone: boolean; jump: boolean; primary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
   /** Pressed: use a carried medkit (story 016). */
   medkit: boolean;
+  /** Pressed: use the kept ability, the Cazador (story 018). */
+  ability: boolean;
   /** Pressed: the number choices 0..5 (keys 1..6), ascending: a card's answer or a shop item. */
   digits: number[];
   /** Clicked: buy this shop item id ('' for none). */
@@ -55,7 +58,7 @@ export interface PlayerInput {
 export function idleInput(): PlayerInput {
   return {
     moveF: 0, moveS: 0, walk: false, sprint: false, crouch: false, use: false, usePress: false, fire: false, firePress: false,
-    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, medkit: false,
+    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, medkit: false, ability: false,
     prone: false, jump: false, primary: false, pistol: false, swap: false, reload: false, scope: false, digits: [],
     buyItem: '', answer: -1, closeShop: false, closeCard: false, spectate: false, spectateKey: false,
   };
@@ -69,6 +72,7 @@ export function shopBlock(p: Loose, it: typeof SHOP[number]): string {
   if (it.id === 'medkit' && p.medkits >= tune.medkit_max) return 'Lleno';
   if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Lleno';
   if (p.primary === it.id) return 'Comprada';
+  if (p.primary === 'gold' && WEAPON[it.id]) return 'Tienes el Rifle dorado'; // story 018: a bought gun would replace it
   if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
   return '';
 }
@@ -91,9 +95,9 @@ export function answer(match: Match, p: Loose, i: number): void {
   const d = deskOf(match, p), c = d.card;
   if (!c || c.wrongT > 0 || c.okT > 0 || i >= c.q.choices.length) return;
   c.picked = i;
-  if (i === c.q.answer) { p.right++; match.count?.answer(p, true, c.q.topic, c.q.level ?? ''); d.wrongStreak = 0; c.okT = 0.35; personal(match, p, { type: 'answer', right: true }); }
+  if (i === c.q.answer) { p.right++; match.count?.answer(p, true, c.q.topic, c.q.level ?? ''); d.wrongStreak = 0; streakRight(match, p); c.okT = 0.35; personal(match, p, { type: 'answer', right: true }); }
   else {
-    p.wrong++; match.count?.answer(p, false, c.q.topic, c.q.level ?? ''); d.wrongStreak++;
+    p.wrong++; match.count?.answer(p, false, c.q.topic, c.q.level ?? ''); d.wrongStreak++; streakWrong(p);
     // The lockout grows by wrong_delay_growth for each wrong answer in a row, up to wrong_delay_max.
     c.wrongT = c.wrongTotal = Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (d.wrongStreak - 1));
     d.deck.miss(c.q); personal(match, p, { type: 'answer', right: false });
@@ -171,10 +175,11 @@ export function moveStep(match: Match, p: Loose, dt: number, inp: PlayerInput, q
   if (p.cur === 'sniper') sp *= tune.sniper_speed_mult;
   if (p.scoped) sp *= tune[p.cur + '_aim_speed'];
   if (me.stance === 'prone') sp *= tune.prone_speed_mult; else if (me.stance === 'crouch') sp *= tune.crouch_speed_mult;
+  sp *= hunterSpeed(p); // story 018: the Cazador's bonus
   if ((f || s) && !planting && me.proneT === 0) {
     const n = Math.hypot(f, s), fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     const mx = (fx * f + -fz * s) / n, mz = (fz * f + fx * s) / n;
-    moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp > tune.walk_speed + 0.1;
+    moveBody(p, mx * sp * dt, mz * sp * dt); p.moving = sp / hunterSpeed(p) > tune.walk_speed + 0.1;
   } else p.moving = false;
   // Footsteps the enemy bots hear: sprinting carries far, running less; walking, crouched or prone is silent.
   const stepR = !live || !p.moving || me.jumpY > 0 ? 0 : me.sprint ? tune.bot_hear_sprint : me.stance === 'stand' ? tune.bot_hear_run : 0;
@@ -205,6 +210,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   const live = match.phase === 'live', buy = match.phase === 'buy', me = p.st as Stance, d = deskOf(match, p);
   // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
   stanceStep(match, p, dt, inp);
+  hunterTick(p, dt); // story 018: a running Cazador's clock runs with a menu or card open too
   // The person's menu and card first.
   if (inp.shop) {
     if (d.card && d.card.kind === 'buy') closeCard(match, p);
@@ -224,6 +230,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     p.moving = false; return;
   }
   moveStep(match, p, dt, inp);
+  if (inp.ability) useAbility(match, p); // story 018: a kept Cazador starts; anything else is refused
   // Medkits (story 016): using a carried one takes tune.medkit_time seconds, walking allowed; it is spent and heals
   // tune.medkit_heal when the time is up. Shooting, reloading or changing gun first stops it and keeps the medkit. Full health keeps the medkit.
   if (p.healT > 0) {

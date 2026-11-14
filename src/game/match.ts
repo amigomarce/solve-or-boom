@@ -32,6 +32,7 @@ export function createMatch(opts: MatchOptions): Match {
     subject: opts.subject, level: opts.level, map: opts.map, friendlyFire: !!opts.friendlyFire,
     buyTime: Number.isFinite(bt) ? Math.min(lim.max, Math.max(lim.min, bt)) : tune.buy_time,
     botLevel: !opts.classroom && (opts.botLevel === 'facil' || opts.botLevel === 'dificil') ? opts.botLevel : 'normal',
+    streakRewards: opts.streakRewards !== false, // story 018: on unless turned off
   };
   const topics = opts.subject === QUESTIONS.CUSTOM ? [] : opts.topics;
   match.deck = QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, match.rng);

@@ -50,6 +50,7 @@ export function createMirror(begin: BeginMessage): Mirror {
   const match = blankMatch(0, [begin.seat]);
   match.classroom = true; match.opts.map = begin.map; match.opts.subject = begin.subject; match.opts.level = begin.level as Level;
   match.opts.friendlyFire = begin.friendlyFire; match.opts.buyTime = begin.buyTime; // the room's match options (story 017)
+  match.opts.streakRewards = begin.streakRewards; // story 018
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
   return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };
@@ -82,6 +83,7 @@ export function predict(m: Mirror, inp: PlayerInput, dt: number): number {
   m.unacked.push({ seq, input: inp, yaw: p.yaw, pitch: p.pitch });
   walk(m, inp, dt);
   p.recoil *= Math.exp(-dt * 7);
+  if (p.hunterT > 0) p.hunterT = Math.max(0, p.hunterT - dt); // story 018: the Cazador's clock runs on until the next snapshot
   match.t += dt; match.msgT -= dt;
   match.flashT = Math.max(0, match.flashT - dt); match.hitT = Math.max(0, match.hitT - dt);
   match.killT = Math.max(0, match.killT - dt); match.boomT = Math.max(0, match.boomT - dt);
@@ -137,6 +139,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   me.hp = y[0]; me.armor = y[1]; me.money = y[2];
   me.ammo = { [me.cur]: { mag: y[3], res: y[4] } }; me.reloadT = y[5] / T; me.primary = y[6] >= 0 ? WEAPON_IDS[y[6]] : null;
   me.recoil = y[12] / A; me.cool = y[13] / T; me.medkits = y[15]; me.healT = y[16] / T;
+  me.streak = y[17]; me.kept = y[18] === 1; me.hunterT = y[19] / T; // story 018: the streak, the kept Cazador and its time left (the radar and the speed read it)
   // The pickups as the server has them (story 016): not predicted, so one walked over goes when the server says it was taken.
   match.pickups = snap.d.map(r => ({ id: r[0], kind: PICKUP_KINDS[r[1]], gun: '', x: r[2] / P, z: r[3] / P, y: (r[4] ?? 0) / P, age: 0 }));
   // The own menu and card, as the server has them (the card's question object is kept while it is the same question).

@@ -81,6 +81,7 @@ const GUN: Record<string, {
   rifle: { click: [4200, 0.006], body: [1100, 0.7, 0.13], thump: [115, 45, 0.11], tailHz: 900, bodyVol: 0.6 },
   sniper: { click: [3600, 0.009], body: [650, 0.5, 0.3], thump: [72, 32, 0.32], tailHz: 600, bodyVol: 0.75 },
 };
+GUN.gold = GUN.rifle; // story 018: the Rifle dorado sounds like the rifle (its own level and tail: sfx_gold_*)
 
 /** A shot's bus: level, then a low-pass that darkens with distance, then the stereo pan. */
 function shotBus(vol: number, pan: number, dist: number): AudioNode {

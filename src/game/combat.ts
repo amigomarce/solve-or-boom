@@ -24,7 +24,7 @@ export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): v
 /** A hit by a teammate (friendly fire, story 017): the same squad, not oneself. */
 const friendly = (from: Loose, t: Loose): boolean => !!from && from !== t && from.squad === t.squad;
 export function kill(match: Match, t: Loose, from: Loose): void {
-  t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false; t.healT = 0;
+  t.alive = false; t.hp = 0; t.deaths++; t.deadT = 0; t.defusing = false; t.healT = 0; t.hunterT = 0; // story 018: dying ends a running Cazador (a kept one stays)
   // A teammate's death (friendly fire) counts for nothing: no kill, no money, no first-kill bonus, and no penalty to the shooter.
   const team = friendly(from, t);
   match.count?.kill(from && from !== t && !team ? from : null, t);
@@ -71,7 +71,7 @@ export function humanShoot(match: Match, p: Loose): void {
   const spread = melee ? 0 : humanSpread(match, p), eye = p.st.eye + p.st.jumpY;
   // A strike draws no random numbers (no spread), so the match's random sequence goes on as if the trigger had clicked empty.
   const yaw = melee ? p.yaw : p.yaw + (match.rng() - 0.5) * 2 * spread, pitch = p.pitch + p.recoil + (melee ? 0 : (match.rng() - 0.5) * 2 * spread);
-  if (!melee) p.recoil += w === 'sniper' ? 0.06 : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
+  if (!melee) p.recoil += w === 'sniper' ? 0.06 : w === 'gold' ? tune.gold_recoil : w === 'rifle' ? 0.022 : w === 'smg' ? 0.014 : 0.03;
   const hx = -Math.sin(yaw), hz = -Math.cos(yaw), cp = Math.cos(pitch), tp = Math.tan(pitch);
   // Walls, the floor, and on maps with heights floors, ceilings and ramps (story 011); crates as drawn (story 015): not out to
   // their cell's edge, and only up to their drawn height, so a shot over a crate's top flies on. The same ray on every map.

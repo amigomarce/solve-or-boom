@@ -10,6 +10,7 @@
     { "id": "buy", "label": "Comprar", "key": "KeyB" },
     { "id": "use", "label": "Plantar / desactivar", "key": "KeyE" },
     { "id": "medkit", "label": "Usar botiquín", "key": "KeyG" },
+    { "id": "ability", "label": "Usar habilidad", "key": "KeyH" },
     { "id": "scores", "label": "Marcador (mantener)", "key": "Tab" },
     { "id": "swap", "label": "Cambiar arma", "key": "KeyQ" },
     { "id": "primary", "label": "Arma principal", "key": "Digit1" },

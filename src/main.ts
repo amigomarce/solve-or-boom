@@ -24,9 +24,10 @@ import {
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
-import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel, setGunLabel, setStance } from './touch';
+import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel, setGunLabel, setStance, setAbilityButton } from './touch';
+import { nextReward, REWARD_NAME } from './game/streak';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
-import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
+import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
 import { connect, savedName, type Connection } from './net/client';
 import type { ResultsMessage, RoomView, You } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
@@ -668,7 +669,10 @@ function makeFlash(size: number): THREE.Group {
 const GUN_FX: Record<string, { accent: number; tracer: number }> = {
   pistol: { accent: 0x2fb3a8, tracer: 0xffe08a }, smg: { accent: 0xf08a2a, tracer: 0xffb84a },
   rifle: { accent: 0x7bb83a, tracer: 0xfff3c0 }, sniper: { accent: 0xd8483c, tracer: 0xffffff },
+  gold: { accent: Number(tune.gold_color), tracer: Number(tune.gold_tracer_color) }, // story 018: the Rifle dorado (colours in data/config.json)
 };
+/** Story 018: the Rifle dorado's materials, gold all over with darker parts (data/config.json gold_color, gold_dark_color). */
+const GOLD = { body: lam(Number(tune.gold_color)), dark: lam(Number(tune.gold_dark_color)) };
 // ---- The figures (story 009): polished blocks -------------------------------------------
 // Boxes and their outlines are shared between all characters; a character owns only its team material (hit tint) and its pose.
 const boxGeos: Record<string, THREE.BoxGeometry> = {}, edgeGeos: Record<string, THREE.EdgesGeometry> = {};
@@ -683,7 +687,7 @@ function blk(parent: THREE.Object3D, w: number, h: number, d: number, mat: THREE
 const CM = { // shared colours of the figures (the look, not tuning)
   dark: lam(0x2b3038), skin: lam(0xd9a273), pants: lam(0x3b475a), boot: lam(0x2a2420), metal: lam(0x2a2d33), olive: lam(0x66753a),
   vest: lam(0x4a573a), wood: lam(0x7a5233), cloth: lam(0xc23b2b), visor: lam(0x8fe3ff), white: lam(0xf4f4f4),
-  acc: { pistol: lam(GUN_FX.pistol.accent), smg: lam(GUN_FX.smg.accent), rifle: lam(GUN_FX.rifle.accent), sniper: lam(GUN_FX.sniper.accent) } as Record<string, THREE.MeshLambertMaterial>,
+  acc: { pistol: lam(GUN_FX.pistol.accent), smg: lam(GUN_FX.smg.accent), rifle: lam(GUN_FX.rifle.accent), sniper: lam(GUN_FX.sniper.accent), gold: GOLD.body } as Record<string, THREE.MeshLambertMaterial>,
 };
 /** Marks every block (mesh or outline) under `root` as fixed to its parent: its matrix is made once, not every frame. */
 function freeze(root: THREE.Object3D): void {
@@ -712,16 +716,18 @@ function mergeBlocks(root: THREE.Object3D, key: string): void {
 }
 /** Hands-held guns, built once: the four first-person silhouettes of story 008, simplified. Muzzle toward -z; `muzzle` is how far. */
 const holdGuns: Record<string, { tpl: THREE.Group; muzzle: number }> = {};
-for (const kind of ['pistol', 'smg', 'rifle', 'sniper']) {
+for (const kind of ['pistol', 'smg', 'rifle', 'sniper', 'gold']) {
+  // Story 018: the Rifle dorado is the rifle's shape in gold (its metal parts the darker gold).
+  const shape = kind === 'gold' ? 'rifle' : kind, mt = kind === 'gold' ? GOLD.dark : CM.metal, wd = kind === 'gold' ? GOLD.body : CM.wood;
   const g = new THREE.Group(), a = CM.acc[kind], b = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): void => { blk(g, w, h, d, mat, x, y, z).rotation.x = rx; };
   let muzzle: number;
-  if (kind === 'pistol') { b(0.055, 0.06, 0.22, CM.metal, 0, 0.02, -0.08); b(0.058, 0.014, 0.2, a, 0, 0.056, -0.08); b(0.045, 0.13, 0.06, CM.wood, 0, -0.07, 0, 0.25); muzzle = -0.2; }
-  else if (kind === 'smg') { b(0.08, 0.1, 0.34, CM.metal, 0, 0, -0.1); b(0.084, 0.03, 0.3, a, 0, 0.065, -0.1); b(0.045, 0.22, 0.07, a, 0, -0.16, -0.14, 0.08); b(0.03, 0.03, 0.12, CM.metal, 0, 0.01, -0.32); muzzle = -0.38; }
-  else if (kind === 'rifle') { b(0.07, 0.1, 0.4, CM.metal, 0, 0, -0.1); b(0.075, 0.08, 0.24, a, 0, -0.005, -0.4); b(0.022, 0.022, 0.2, CM.metal, 0, 0.02, -0.65); b(0.05, 0.17, 0.06, CM.metal, 0, -0.14, -0.1, -0.35); b(0.06, 0.15, 0.24, CM.wood, 0, -0.03, 0.24, -0.12); muzzle = -0.77; }
+  if (shape === 'pistol') { b(0.055, 0.06, 0.22, mt, 0, 0.02, -0.08); b(0.058, 0.014, 0.2, a, 0, 0.056, -0.08); b(0.045, 0.13, 0.06, wd, 0, -0.07, 0, 0.25); muzzle = -0.2; }
+  else if (shape === 'smg') { b(0.08, 0.1, 0.34, mt, 0, 0, -0.1); b(0.084, 0.03, 0.3, a, 0, 0.065, -0.1); b(0.045, 0.22, 0.07, a, 0, -0.16, -0.14, 0.08); b(0.03, 0.03, 0.12, mt, 0, 0.01, -0.32); muzzle = -0.38; }
+  else if (shape === 'rifle') { b(0.07, 0.1, 0.4, mt, 0, 0, -0.1); b(0.075, 0.08, 0.24, a, 0, -0.005, -0.4); b(0.022, 0.022, 0.2, mt, 0, 0.02, -0.65); b(0.05, 0.17, 0.06, mt, 0, -0.14, -0.1, -0.35); b(0.06, 0.15, 0.24, wd, 0, -0.03, 0.24, -0.12); muzzle = -0.77; }
   else {
-    b(0.06, 0.08, 0.62, CM.metal, 0, 0, -0.1); b(0.03, 0.03, 0.5, CM.metal, 0, 0.015, -0.66); b(0.05, 0.05, 0.08, a, 0, 0.015, -0.93); b(0.065, 0.13, 0.3, CM.wood, 0, -0.03, 0.3, -0.08);
+    b(0.06, 0.08, 0.62, mt, 0, 0, -0.1); b(0.03, 0.03, 0.5, mt, 0, 0.015, -0.66); b(0.05, 0.05, 0.08, a, 0, 0.015, -0.93); b(0.065, 0.13, 0.3, wd, 0, -0.03, 0.3, -0.08);
     blk(g, 0.07, 0.07, 0.34, CM.dark, 0, 0.1, -0.15); blk(g, 0.09, 0.09, 0.05, a, 0, 0.1, -0.33); // a boxy scope with an accent lens ring
-    for (const sx of [-1, 1]) blk(g, 0.014, 0.16, 0.014, CM.metal, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
+    for (const sx of [-1, 1]) blk(g, 0.014, 0.16, 0.014, mt, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
     muzzle = -0.98;
   }
   mergeBlocks(g, kind); freeze(g); holdGuns[kind] = { tpl: g, muzzle };
@@ -873,7 +879,9 @@ const gunSun = new THREE.DirectionalLight(0xffffff, 1.8); gunSun.position.set(1,
  * a darker outline on every block and one accent colour per gun. The muzzle is toward -z; the flash is sized each frame.
  */
 function makeViewGun(kind: string) {
-  const g = new THREE.Group(), metal = lam(0x2a2d33), accent = lam(GUN_FX[kind].accent), wood = lam(0x7a5233), skin = lam(0xd9a273), sleeve = lam(0x555555);
+  // Story 018: 'gold', the Rifle dorado, is the rifle in gold (its metal parts the darker gold).
+  const gold = kind === 'gold'; if (gold) kind = 'rifle';
+  const g = new THREE.Group(), metal = gold ? GOLD.dark : lam(0x2a2d33), accent = gold ? GOLD.body : lam(GUN_FX[kind].accent), wood = gold ? GOLD.body : lam(0x7a5233), skin = lam(0xd9a273), sleeve = lam(0x555555);
   const edge = new THREE.LineBasicMaterial({ color: 0x0b0d10 });
   const gb = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): THREE.Mesh => { // a block with its dark outline
     const m = box(w, h, d, mat, x, y, z, g); m.rotation.x = rx; m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edge)); return m;
@@ -910,7 +918,7 @@ function makeViewGun(kind: string) {
   g.visible = false; gunScene.add(g);
   return { group: g, flash, sight };
 }
-const viewGuns: Record<string, ReturnType<typeof makeViewGun>> = { pistol: makeViewGun('pistol'), smg: makeViewGun('smg'), rifle: makeViewGun('rifle'), sniper: makeViewGun('sniper') };
+const viewGuns: Record<string, ReturnType<typeof makeViewGun>> = { pistol: makeViewGun('pistol'), smg: makeViewGun('smg'), rifle: makeViewGun('rifle'), sniper: makeViewGun('sniper'), gold: makeViewGun('gold') };
 
 // Tracers, impact bursts and the explosion, from pools made once (story 008). Sizes and lifetimes: `fx_*` in data/config.json.
 const tracerGeo = new THREE.BoxGeometry(1, 1, 1); tracerGeo.translate(0, 0, 0.5); // a unit bar from its origin toward +z
@@ -1010,6 +1018,8 @@ const session = {
   custom: [] as ParsedQuestion[], customName: '', status: '',
   /** Match options (story 017), passed to createMatch as friendlyFire, buyTime and botLevel. */
   buyTime: Number(tune.buy_time), friendlyFire: false, botLevel: 'normal' as BotLevel,
+  /** Streak rewards (story 018), on by default; passed to createMatch as streakRewards. */
+  streakRewards: true,
   /** Rows the last CSV upload skipped. */
   skipped: 0,
   /** Questions available for the current subject, topics and level (after the level fallback); null = generated. */
@@ -1032,7 +1042,7 @@ function startMatch(): void {
     // each match its own seed, so the first question changes; checks (?manual=1 or ?seed=) keep the fixed one
     seed: manual || params.get('seed') ? seedFrom(CONFIG.seed) : 1 + Math.floor(Math.random() * 2147483646), subject: session.subject, level: session.level, map: session.map,
     topics: session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject], custom: session.custom, customName: session.customName,
-    friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel,
+    friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel, streakRewards: session.streakRewards,
   });
   playEvents();
 }
@@ -1048,7 +1058,7 @@ function readInput(act: string | undefined): PlayerInput {
     lookYaw -= touch.dx * k; lookPitch -= touch.dy * k; touch.dx = 0; touch.dy = 0;
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
-  inp.shop = press('buy'); inp.medkit = press('medkit'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
+  inp.shop = press('buy'); inp.medkit = press('medkit'); inp.ability = press('ability'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
   inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
   inp.digits = [0, 1, 2, 3, 4, 5].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
   inp.spectateKey = pressed('Space');
@@ -1152,6 +1162,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       // The match options (story 017): the buy time steps by its config step within its range, friendly fire toggles, the bots' level is picked.
       if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
       if (act === 'ff') session.friendlyFire = !session.friendlyFire;
+      if (act === 'streak') session.streakRewards = !session.streakRewards; // story 018
       if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
@@ -1549,10 +1560,12 @@ function drawMinimap(x0: number, y0: number): void {
   for (const p of state.players) {
     if (!p.alive) continue;
     const mine = p.squad === me.squad;
-    if (!mine && state.t - p.spotT > 1.5) continue;
+    // Story 018: while your Cazador runs every living enemy shows (the rows carry every player, at any distance), in hunter_color.
+    const hunted = !mine && me.alive && me.hunterT > 0;
+    if (!mine && !hunted && state.t - p.spotT > 1.5) continue;
     const X = x0 + p.x / CELL * k, Y = y0 + p.z / CELL * k;
     if (p !== view) mark(p.st?.y, X, Y);
-    drawArrow(X, Y, p.yaw, p === me ? 6 : 5, p === me ? '#ffffff' : SIDE_CSS[sideOf(state, p)]);
+    drawArrow(X, Y, p.yaw, p === me ? 6 : 5, p === me ? '#ffffff' : hunted && state.t - p.spotT > 1.5 ? HUNTER_CSS : SIDE_CSS[sideOf(state, p)]);
     ctx.globalAlpha = 1;
   }
   if (hasHeights) text(myLv === 1 ? 'Piso 1' : 'Planta baja', x0 + MW * k / 2, y0 + MH * k + 8, 14, myLv === 1 ? '#ffd06a' : '#e4e9f4');
@@ -1594,6 +1607,7 @@ function drawHUD(paused?: boolean): void {
     rr(16, 176, 112, 44, 10, 'rgba(15,20,32,0.78)', null);
     drawSkull(44, 198, 26); text(String(p.kills), 92, 198, 26, '#fff');
   }
+  drawStreak(p);
   // score and timer, top centre
   const theirSide = mySide === 'att' ? 'def' : 'att';
   rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
@@ -1643,7 +1657,7 @@ function drawHUD(paused?: boolean): void {
     }
     const a = p.ammo[p.cur];
     rr(W - 290, H - 82, 272, 64, 12, 'rgba(15,20,32,0.78)', null);
-    text(WEAPON[p.cur].name, W - 270, H - 50, 20, '#c8d2e6', 'left');
+    text(WEAPON[p.cur].name, W - 270, H - 50, 20, p.cur === 'gold' ? GOLD_CSS : '#c8d2e6', 'left');
     if (a.mag === 0 && a.res === 0) text('Sin balas: golpe', W - 34, H - 50, 22, '#ffb366', 'right'); // story 016: fire strikes
     else text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
     // stance: a drawn figure and its word, above the health box, only when not just standing
@@ -1714,6 +1728,31 @@ function drawHUD(paused?: boolean): void {
   }
   if (!paused) { if (state.menu && !state.card) drawShop(); if (state.card) drawCard(); }
   if (!paused && !uiOpen(state) && down.has(bind.scores)) drawScores();
+}
+/** Story 018 colours as CSS (data/config.json hunter_color, gold_color). */
+const css = (n: number): string => '#' + Math.round(n).toString(16).padStart(6, '0');
+const HUNTER_CSS = css(tune.hunter_color), GOLD_CSS = css(tune.gold_color);
+/**
+ * Story 018: the streak box left of the score (the count, pips up to the next reward, and its name), and under it the kept
+ * Cazador with its key or touch button, or while it runs, its time left and a bar. Nothing when the option is off.
+ */
+function drawStreak(p: Loose): void {
+  if (!state.opts.streakRewards || !p.alive) return;
+  // One box left of the score, at most 80 px tall so it stays above the message line (y 96): the count and pips to the next
+  // reward, the next reward's name, then the Cazador kept (with its key or button) or running (time left and a bar).
+  const x = 220, nx = nextReward(p.streak), hunt = p.hunterT > 0, row3 = hunt || p.kept;
+  rr(x, 12, 184, row3 ? 80 : 62, 12, 'rgba(15,20,32,0.78)', hunt ? HUNTER_CSS : null, 2);
+  text('Racha', x + 14, 28, 15, '#c8d2e6', 'left');
+  text(String(p.streak), x + 76, 29, 22, p.streak > 0 ? '#ffd06a' : '#fff', 'left');
+  if (nx) {
+    const n = Math.min(nx.at, 10); // pips: one per answer up to the next reward (at most 10)
+    for (let i = 0; i < n; i++) rr(x + 106 + i * (66 / n), 24, 66 / n - 2, 8, 2, i < p.streak ? '#ffd06a' : '#3a4458', null);
+    text(`Siguiente: ${REWARD_NAME[nx.id]} (${nx.at})`, x + 92, 51, 14, nx.id === 'gold' ? GOLD_CSS : '#e4e9f4', 'center', 'normal');
+  }
+  if (hunt) {
+    text(`Cazador ${p.hunterT.toFixed(1)} s`, x + 14, 72, 14, HUNTER_CSS, 'left');
+    rr(x + 112, 68, 60 * p.hunterT / tune.hunter_time, 8, 3, HUNTER_CSS, null);
+  } else if (p.kept) text(TOUCH ? 'Cazador: toca su botón' : `Cazador: pulsa ${keyName(bind.ability)}`, x + 92, 72, 14, '#ffd06a', 'center');
 }
 /** The banner over a match the teacher paused: centred, in ROOM_STATE.paused's words and colour. */
 function drawTeacherPause(): void {
@@ -2034,16 +2073,18 @@ function drawTitle() {
   if (session.skipped > 0) text(session.skipped === 1 ? '1 fila omitida' : `${session.skipped} filas omitidas`, 884, 532, 16, '#ffb38a', 'left');
   // 5. the match options (story 017): buy time, friendly fire, the bots' level. Every button is 42 px tall, like the level and topic buttons.
   rr(40, 552, 1200, 50, 12, 'rgba(14,19,30,0.9)', null);
+  // Story 018 added Premios por racha: the row's buttons are narrower so the four options fit the 1200 px panel.
   { const bt = CONFIG.buy_time;
-    text('Tiempo de compra', 60, 577, 18, '#ffd06a', 'left');
-    button(220, 556, 56, 42, '-', session.buyTime > bt.min ? 'buyt:-1' : null, { size: 26, fill: session.buyTime > bt.min ? undefined : '#1b2232', color: session.buyTime > bt.min ? '#fff' : '#8a93a3' });
-    text(`${session.buyTime} s`, 336, 577, 22, '#fff');
-    button(396, 556, 56, 42, '+', session.buyTime < bt.max ? 'buyt:1' : null, { size: 26, fill: session.buyTime < bt.max ? undefined : '#1b2232', color: session.buyTime < bt.max ? '#fff' : '#8a93a3' }); }
-  button(476, 556, 250, 42, `Fuego amigo: ${session.friendlyFire ? 'Sí' : 'No'}`, 'ff', { size: 20, fill: session.friendlyFire ? '#ffd06a' : undefined, color: session.friendlyFire ? '#1b2232' : '#fff', stroke: session.friendlyFire ? '#fff3c4' : undefined });
-  text('Bots', 752, 577, 18, '#ffd06a', 'left');
+    text('Tiempo de compra', 54, 577, 15, '#ffd06a', 'left');
+    button(212, 556, 46, 42, '-', session.buyTime > bt.min ? 'buyt:-1' : null, { size: 26, fill: session.buyTime > bt.min ? undefined : '#1b2232', color: session.buyTime > bt.min ? '#fff' : '#8a93a3' });
+    text(`${session.buyTime} s`, 293, 577, 22, '#fff');
+    button(328, 556, 46, 42, '+', session.buyTime < bt.max ? 'buyt:1' : null, { size: 26, fill: session.buyTime < bt.max ? undefined : '#1b2232', color: session.buyTime < bt.max ? '#fff' : '#8a93a3' }); }
+  const lit = (on: boolean): ButtonOpts => ({ size: 19, fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff', stroke: on ? '#fff3c4' : undefined });
+  button(388, 556, 200, 42, `Fuego amigo: ${session.friendlyFire ? 'Sí' : 'No'}`, 'ff', lit(session.friendlyFire));
+  button(598, 556, 262, 42, `Premios por racha: ${session.streakRewards ? 'Sí' : 'No'}`, 'streak', lit(session.streakRewards));
+  text('Bots', 874, 577, 18, '#ffd06a', 'left');
   ([['facil', 'Fácil'], ['normal', 'Normal'], ['dificil', 'Difícil']] as const).forEach(([id, name], k) => {
-    const on = session.botLevel === id;
-    button(818 + k * 140, 556, 132, 42, name, 'bot:' + id, { size: 20, fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff', stroke: on ? '#fff3c4' : undefined });
+    button(924 + k * 104, 556, 98, 42, name, 'bot:' + id, lit(session.botLevel === id));
   });
   // 4. the map: a button each, with its size; the chosen one lit
   rr(40, 608, 760, 68, 16, 'rgba(14,19,30,0.9)', null);
@@ -2181,6 +2222,7 @@ function drawFrame() {
     const p = state.human, b = state.bomb, live = scene === 'play' && !teacherPaused();
     setTouchMode(!live ? 'off' : p.alive && !uiOpen(state) ? 'all' : 'pause');
     if (live) setUseLabel(b.carrier === p ? 'Plantar' : b.state === 'planted' && sideOf(state, p) === 'def' ? 'Desactivar' : 'Bomba');
+    if (live) setAbilityButton(p.alive && !!p.kept); // story 018: the Cazador button, only while one is kept
     if (live) { setGunLabel(WEAPON[p.cur].name); setStance(p.st.prone ? 'prone' : p.st.stance === 'crouch' ? 'crouch' : 'stand'); }
   }
 }

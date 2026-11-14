@@ -13,7 +13,9 @@ import { LEVELS, type Level } from '../game/types';
 // 8: an input carries the student's own aim (aimYaw, aimPitch), taken as is, so a lost input cannot leave the server's aim off the crosshair.
 // 9: hello carries a random key per browser (token); a held seat goes back only to the same key.
 // 10: the own row ends with healT, the seconds left of a medkit being used (it takes medkit_time).
-export const PROTOCOL_VERSION = 10;
+// 11: streak rewards (story 018): tsession, tstate's session and begin carry `streakRewards`; the input's `ability` (a press, the
+//     kept Cazador); the own row ends with streak, kept (0/1) and hunterT (SCALE.time); gun code 4 is the Rifle dorado ('gold').
+export const PROTOCOL_VERSION = 11;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -103,9 +105,11 @@ export interface BeginMessage {
   subject: string; level: string;
   /** The match options (story 017, protocol 7): shots hurt teammates; the buy phase's length in seconds (the HUD's timer itself comes from each snapshot's `pt`). */
   friendlyFire: boolean; buyTime: number;
+  /** Streak rewards on (story 018, protocol 11): the HUD shows the streak and the next reward only then. */
+  streakRewards: boolean;
 }
 /** The wire codes of the guns (index in this list), as snapshots carry them. */
-export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper'] as const;
+export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'gold'] as const; // 'gold': the Rifle dorado (protocol 11), never sold
 /** The wire codes of the stances. */
 export const STANCES = ['stand', 'crouch', 'prone'] as const;
 /** Snapshot scale: positions in centimetres, angles in milliradians, timers in hundredths of a second (all whole numbers). */
@@ -120,9 +124,10 @@ export const FLAG = { alive: 1, human: 2, moving: 4, defusing: 8, flash: 16, sco
 export type PlayerRow = number[];
 /**
  * The receiving student's own player, private to them: [hp, armor, money, mag, reserve, reloadT, primary (-1 none),
- * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim, medkits, healT] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
+ * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim, medkits, healT, streak, kept, hunterT] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
  * aim (protocol 5) is 0 not aiming, 1 aiming with the current gun, 2 an aim ended that waits for the button to be let go;
- * medkits (protocol 6) is the count of bought medkits carried; healT (protocol 10), the seconds left of a medkit being used (SCALE.time).
+ * medkits (protocol 6) is the count of bought medkits carried; healT (protocol 10), the seconds left of a medkit being used (SCALE.time);
+ * streak (protocol 11) the right answers in a row, kept 1 while a Cazador is kept to use, hunterT the seconds left of a Cazador running (SCALE.time).
  */
 export type OwnRow = number[];
 /** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1), y?]; `y` (SCALE.pos), the bomb's height, only on a map with heights (protocol 4). */
@@ -237,7 +242,7 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   moveF: isAxis, moveS: isAxis, walk: isBool, sprint: isBool, crouch: isBool, use: isBool, usePress: isBool,
   fire: isBool, firePress: isBool, lookLeft: isBool, lookRight: isBool, lookUp: isBool, lookDown: isBool,
   lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, pistol: isBool,
-  swap: isBool, reload: isBool, scope: isBool, medkit: isBool,
+  swap: isBool, reload: isBool, scope: isBool, medkit: isBool, ability: isBool,
   digits: v => Array.isArray(v) && v.length <= 6 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 5),
   buyItem: v => typeof v === 'string' && v.length <= 16 && /^[a-z]*$/.test(v),
   answer: v => Number.isInteger(v) && (v as number) >= -1 && (v as number) <= 3,
@@ -339,11 +344,12 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
         && Array.isArray(raw.names) && raw.names.length === SEATS && raw.names.every(isStr) && isStr(raw.subject) && isStr(raw.level) && (LEVELS as readonly string[]).includes(raw.level)
         && typeof raw.friendlyFire === 'boolean' && typeof raw.buyTime === 'number' && Number.isFinite(raw.buyTime) && raw.buyTime >= 1 && raw.buyTime <= 600
+        && typeof raw.streakRewards === 'boolean'
         ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level,
-          friendlyFire: raw.friendlyFire, buyTime: raw.buyTime } : null;
+          friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
-        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 17)
+        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 20)
         && Array.isArray(raw.d) && raw.d.length <= PICKUPS_MAX && raw.d.every(r => (isNums(r, 4) || isNums(r, 5)) && isInt(r[0]) && (r[1] === 0 || r[1] === 1))
         && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => (isNums(r, 12) || isNums(r, 13)) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
         && Array.isArray(raw.e) && raw.e.every(e => isObject(e) && isStr(e.type)) && (raw.m === 0 || raw.m === 1) && (raw.c === null || isCard(raw.c));
@@ -382,9 +388,9 @@ export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove',
 
 /**
  * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
- * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7).
+ * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7); `streakRewards` (story 018, protocol 11).
  */
-export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number }
+export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number; streakRewards: boolean }
 /** Teacher to server: a CSV of questions. `data` is the file's bytes in base64 (the server decodes UTF-8, else Windows-1252, like single player). */
 export interface TCsvMessage { v: number; t: 'tcsv'; name: string; data: string }
 /** Teacher to server: "Repartir automáticamente": replace the waiting rooms by rooms of up to 4 v 4 holding the connected students. */
@@ -431,8 +437,8 @@ export interface TeacherStudent { id: number; name: string; connected: boolean; 
 /** The session as set (applied to every room's next match). */
 export interface TeacherSession {
   subject: string; level: Level; topics: string[]; map: string;
-  /** The match options (story 017): shots hurt teammates; the buy phase's length in seconds. */
-  friendlyFire: boolean; buyTime: number;
+  /** The match options (story 017): shots hurt teammates; the buy phase's length in seconds. Story 018: streak rewards on. */
+  friendlyFire: boolean; buyTime: number; streakRewards: boolean;
   /** The CSV loaded (null for none): kept when another subject is chosen. */
   csv: { name: string; count: number; skipped: number } | null;
   /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
@@ -462,7 +468,7 @@ export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsv
 export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
-  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
+  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
   tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], ping: ['v', 't'],
 };
 /**
@@ -489,8 +495,8 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'tsession':
       if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
       if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;
-      if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime)) return bad; // the range is the server's check (teacher.ts)
-      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime } };
+      if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime) || typeof raw.streakRewards !== 'boolean') return bad; // the range is the server's check (teacher.ts)
+      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards } };
     case 'tcsv':
       if (!isStr(raw.name) || raw.name.length < 1 || raw.name.length > 80 || !isStr(raw.data) || !B64.test(raw.data)) return bad;
       return { ok: true, msg: { v, t: 'tcsv', name: raw.name.replace(/[\u0000-\u001f<>]/g, '').trim() || 'preguntas.csv', data: raw.data } };

@@ -212,3 +212,16 @@ holds no comments. The values themselves are in `data/config.json`.
 - `fx_vm_converge` 4: the first-person gun held from the hip is turned so its barrel meets the crosshair's line this far ahead (in the gun view's units); aimed, the sights sit on the crosshair whatever this is.
 - `fx_vm_aim_back` 0.35: aimed, the first-person gun sits this much further from the eye than from the hip, so it covers less of the view around the crosshair.
 - `medkit_time` 3 s: using a carried medkit takes this long (walking allowed, a bar shows it); the medkit is spent and the health given when it ends. Shooting, reloading, changing gun, opening the buy menu or a card, or dying stops it and keeps the medkit.
+
+## Story 018: streak rewards (option "Premios por racha", on by default)
+- `streak_shield_at` 3: right answers in a row (buy and defuse cards) that give the Escudo; a wrong answer sets the streak to 0, dying does not; bots never earn
+- `streak_hunter_at` 5: the streak that gives the ability Cazador, kept (one at most: reaching it again with one kept keeps one) until used with its key (H) or touch button
+- `streak_gold_at` 8: the streak that gives the Rifle dorado (replaces the primary, kept until death or the half-time swap); the streak then starts again at 0. Reaching it while holding one refills its ammo
+- `streak_shield` 50: armour given at once by the Escudo, capped at 100 like bought armour
+- `hunter_time` 10 s: how long the Cazador shows the enemies on the minimap and speeds you up; dying ends it
+- `hunter_speed` 0.3: the Cazador's speed bonus (+30 %), on top of walk, run, sprint and stance speeds
+- `gold_dmg` 45 (rifle 34), `gold_rate` 0.1 (rifle 0.11), `gold_mag` 30, `gold_reserve` 90: the Rifle dorado, based on the rifle's keys; it is never in the shop (bought ammo refills it like any held gun)
+- `gold_spread` 0.0035 (rifle 0.007), `gold_aim_spread` 0.001 (rifle 0.002), `gold_aim_fov` 45, `gold_aim_speed` 0.6, `gold_recoil` 0.016 (rifle 0.022, fixed in code): the Rifle dorado's accuracy. Its reach is the same hitscan ray as every human gun (no range key: a bot's `range` never applies, bots never get it)
+- `sfx_gold_level`, `sfx_gold_tail`, `fx_gold_flash`, `fx_gold_tracer_w`, `fx_gold_tracer_life`: the Rifle dorado's shot sound (the rifle's sound design) and flash and tracer sizes
+- `gold_color` 0xffc400, `gold_dark_color` 0xb27e00, `gold_tracer_color` 0xffe280 (as decimal numbers): the Rifle dorado's body, its darker parts and its tracer, in the hand and on the model
+- `hunter_color` 0xff6666 (decimal): the enemy marks on the minimap and the bar while the Cazador runs

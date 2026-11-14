@@ -44,13 +44,14 @@ export interface Teacher {
  */
 export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   const session = { subject: 'matematicas', level: 'medio' as Level, topics: ['arith', 'mult'], map: MAP_IDS[0], custom: [] as ParsedQuestion[], customName: '', skipped: 0,
-    friendlyFire: false, buyTime: Number(tune.buy_time) };
+    friendlyFire: false, buyTime: Number(tune.buy_time), streakRewards: true };
   const buyRange = CONFIG.buy_time as { min: number; max: number; step: number };
   const v = PROTOCOL_VERSION;
   const err = (code: string, text: string): TeacherReply => ({ v, t: 'terror', code, text });
   const matchChoices = () => ({
     subject: session.subject, level: session.level, topics: session.subject === QUESTIONS.CUSTOM ? [] : [...session.topics],
     custom: session.custom, customName: session.customName, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
+    streakRewards: session.streakRewards,
   });
   const seed = (): number => (Math.random() * 2 ** 31) >>> 0;
   const make = (): Room | null => (deps.rooms.all().length >= lim.maxRooms ? null
@@ -99,7 +100,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       });
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
-        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
+        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards,
           csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
           available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
         results: deps.results.view(),
@@ -114,7 +115,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const topics = [...new Set(msg.topics)];
           if (!MAP_IDS.includes(msg.map)) return err('mapa', 'Ese mapa no existe.');
           if (msg.buyTime < buyRange.min || msg.buyTime > buyRange.max) return err('compra', `El tiempo de compra va de ${buyRange.min} a ${buyRange.max} segundos.`);
-          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime };
+          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards };
           if (msg.subject === QUESTIONS.CUSTOM) {
             if (!session.custom.length) return err('sin_csv', 'Primero sube un archivo CSV de preguntas.');
             Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map, ...options });
