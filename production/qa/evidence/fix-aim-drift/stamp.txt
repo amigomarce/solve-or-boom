@@ -1,0 +1,5 @@
+Reviewed-Content-Hash: src/main.ts d9f88e9a9bbd2c020bdb6e082bd02338bc721cad
+Reviewed-Content-Hash: src/game/player.ts c0e1cf98ae48271ab8632f53283b2525b517b8fe
+Reviewed-Content-Hash: src/game/match.ts 088e72cbd7495e07830310138de0d95125156fe2
+Reviewed-Content-Hash: src/net/protocol.ts 3d59059111aff78cdbe52823feb866cf693ffe1e
+Reviewed-Content-Hash: src/server/profesor.html b030ef03ebc203f1c0c005efba52f83b0f02db78

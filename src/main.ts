@@ -116,7 +116,9 @@ function netStep(inp: PlayerInput): void {
   const match = m.match, me = match.human, lim = AULA.max_look_per_message.value;
   // A long frame can gather more mouse turn than the server takes in one input: clamp it here, before the prediction, so both agree.
   inp.lookYaw = Math.max(-lim, Math.min(lim, inp.lookYaw)); inp.lookPitch = Math.max(-lim, Math.min(lim, inp.lookPitch));
-  conn.sendInput(predict(m, inp, STEP), inp);
+  const seq = predict(m, inp, STEP);
+  inp.aimYaw = me.yaw; inp.aimPitch = me.pitch; // the aim the student sees: the server takes it as is, so a lost input cannot turn the shots away from the crosshair
+  conn.sendInput(seq, inp);
   net.cool = Math.max(0, net.cool - STEP); me.flashT = Math.max(0, me.flashT - STEP);
   const a = me.ammo[me.cur];
   if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0

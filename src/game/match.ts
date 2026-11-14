@@ -59,7 +59,10 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
   for (const p of match.players) {
     if (!p.human) continue;
     const inp = inputs[p.id] ?? idleInput();
-    if (inp.lookYaw || inp.lookPitch) { // the aim answers the hand at once: no smoothing
+    if (inp.aimYaw !== undefined && inp.aimPitch !== undefined) { // a student's own aim, as their screen shows it (class mode)
+      p.yaw = inp.aimYaw;
+      p.pitch = Math.max(-1.4, Math.min(1.4, inp.aimPitch));
+    } else if (inp.lookYaw || inp.lookPitch) { // the aim answers the hand at once: no smoothing
       p.yaw += inp.lookYaw;
       p.pitch = Math.max(-1.4, Math.min(1.4, p.pitch + inp.lookPitch));
     }

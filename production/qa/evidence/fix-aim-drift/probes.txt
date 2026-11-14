@@ -1,0 +1,15 @@
+# Over the real network (rooms + net + client + mirror), one student turning 0.05 rad a step, a 0.3 s wifi hiccup then a burst
+## before (no aim sent, the code until this fix)
+aim sent: no (today); steps 260; inputs dropped on the server 11
+student yaw 11.429, server yaw 10.879, gap 31.5 degrees; errors []
+## after (the fix: each input carries the student's own aim)
+aim sent: yes (the fix); steps 260; inputs dropped on the server 12
+student yaw 11.429, server yaw 11.429, gap 0.0 degrees; errors []
+
+# The server's input queue alone (room API, 18 inputs arriving at once after a hiccup)
+## before
+queueMax 8 inputs sent 138 dropped on the server 11
+student turned 6.90 rad; server turned 6.35 rad; gap 31.5 degrees
+## after
+queueMax 8 inputs sent 138 dropped on the server 11
+student turned 6.90 rad; server turned 6.90 rad; gap 0.0 degrees

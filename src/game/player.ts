@@ -29,6 +29,10 @@ export interface PlayerInput {
   lookLeft: boolean; lookRight: boolean; lookUp: boolean; lookDown: boolean;
   /** Radians the aim turned since the last step (the mouse): added to yaw and pitch, pitch kept within ±1.4. */
   lookYaw: number; lookPitch: number;
+  /** Class mode only: the student's own aim after this input's turn, in radians. When present the server takes it as the aim
+   *  instead of adding lookYaw / lookPitch, so an input lost on the way (a wifi hiccup, a full queue) cannot leave the
+   *  server's aim off from the crosshair the student sees. Absent in single player. */
+  aimYaw?: number; aimPitch?: number;
   /** Pressed: open or close the buy menu (and a buy card). */
   shop: boolean;
   /** Pressed: prone toggle, jump, primary gun, pistol, swap guns, reload. Held: scope, aiming down the sights. */

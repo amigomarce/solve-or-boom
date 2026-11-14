@@ -10,7 +10,8 @@ import type { PlayerInput } from '../game/player';
 import { LEVELS, type Level } from '../game/types';
 
 /** The format's version. A message with another `v` is refused, so an old page gets a clear error. 2: begin carries subject and level, snap carries the menu and the card (story 005 Part B). 3: `results` (a student's own end-of-match counts), tinfo maps are {id, name}, tstate carries the results, texport/tclear (story 007). 4: on a map with heights a player row ends with the feet height and the bomb row with the bomb's height (story 011). 5: the input's `scope` is a held state (aiming) sent on every step, no longer a one-step press (story 013). 6: the input's `medkit` (a press) and digits up to 5, the own row ends with the medkits carried, snap carries the dropped pickups `d`, events `melee` and `pickup` (story 016). 7: the match options (story 017): tsession, tstate's session and begin carry `friendlyFire` and `buyTime`, tinfo the buy time's range `buyTime`, and a `kill` event of a teammate carries `ff: true`. */
-export const PROTOCOL_VERSION = 7;
+// 8: an input carries the student's own aim (aimYaw, aimPitch), taken as is, so a lost input cannot leave the server's aim off the crosshair.
+export const PROTOCOL_VERSION = 8;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -228,7 +229,7 @@ const isLook: Check = v => typeof v === 'number' && Number.isFinite(v);
 const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   moveF: isAxis, moveS: isAxis, walk: isBool, sprint: isBool, crouch: isBool, use: isBool, usePress: isBool,
   fire: isBool, firePress: isBool, lookLeft: isBool, lookRight: isBool, lookUp: isBool, lookDown: isBool,
-  lookYaw: isLook, lookPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, pistol: isBool,
+  lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, pistol: isBool,
   swap: isBool, reload: isBool, scope: isBool, medkit: isBool,
   digits: v => Array.isArray(v) && v.length <= 6 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 5),
   buyItem: v => typeof v === 'string' && v.length <= 16 && /^[a-z]*$/.test(v),
