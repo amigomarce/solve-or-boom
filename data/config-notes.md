@@ -202,3 +202,5 @@ holds no comments. The values themselves are in `data/config.json`.
 - `pickup_life` 30 s: a dropped item vanishes after this long, and always at the end of the round.
 - `melee_dmg` 35, `melee_range` 1.6 m, `melee_rate` 0.6 s (story 016): with the magazine and reserve both empty, firing is a strike: a short ray like a shot's, no headshot bonus, quiet (bots do not hear it). `melee_time` 0.3 s is how long the swing animation lasts.
 - `question_step_medkit` 0: the medkit's question is the match level.
+- `touch_fire_scale`: the touch Fuego button's size as a multiple of touch_button_size (the big button 2 of the HUD layout)
+- `touch_aim_scale`: the touch Apuntar button's size as a multiple of touch_button_size (button 3 of the HUD layout)

@@ -1,0 +1,10 @@
+visible controls: stick 116,185 130x130 | Comprar 18,231 56x56 | Botiquín 18,304 56x56 | Fuego 597,204 106x106 | Apuntar 620,120 73x73 | Tumbarse 768,188 56x56 | Agacharse 768,251 56x56 | De pie 768,313 56x56 | Pistola ⇄ 658,65 118x42 | Recargar 768,58 56x56 | Saltar 516,229 56x56 | Plantar 497,149 95x45 | Tabla 152,95 45x45 | Pausa 558,8 45x45
+start {"stance":"stand","cur":"pistol","primary":null,"mag":12,"on":["De pie"]}
+after Tumbarse {"stance":"prone","cur":"pistol","primary":null,"mag":12,"on":["Tumbarse"]}
+after Agacharse {"stance":"crouch","cur":"pistol","primary":null,"mag":12,"on":["Agacharse"]}
+after De pie {"stance":"stand","cur":"pistol","primary":null,"mag":12,"on":["De pie"]}
+crouch then De pie {"stance":"stand","cur":"pistol","primary":null,"mag":12,"on":["De pie"]}
+weapon selector "Pistola ⇄" -> "Rifle ⇄" {"stance":"stand","cur":"rifle","primary":"rifle","mag":30,"on":["De pie"]}
+bomb button while carrying ["Plantar:flex"]
+bomb button without the bomb ["Bomba:none"]
+errors []

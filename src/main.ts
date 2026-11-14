@@ -24,7 +24,7 @@ import {
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
-import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel } from './touch';
+import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel, setGunLabel, setStance } from './touch';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button } from './screen';
 import { connect, savedName, type Connection } from './net/client';
@@ -1227,13 +1227,13 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       text('Controles', W / 2, 50, 40, '#ffd06a');
       if (TOUCH) { // no keys to bind: what each finger does
         const rows: [string, string][] = [['Palanca de la izquierda', 'moverte'], ['Arrastrar por la derecha', 'mirar a tu alrededor'], ['Fuego (mantener)', 'disparar; también gira si arrastras desde él'],
-          ['Apuntar (mantener)', 'mirar por el arma'], ['Saltar', 'saltar'], ['Agachar', 'agacharte; pulsa otra vez para levantarte'], ['Recargar', 'recargar el arma'],
-          ['Arma', 'cambiar de arma'], ['Comprar', 'abrir o cerrar el menú de compra'], ['Botiquín', 'curarte con un botiquín comprado'], ['Plantar / Desactivar (mantener)', 'la bomba, junto a ella'],
+          ['Apuntar (mantener)', 'mirar por el arma'], ['Saltar', 'saltar'], ['Tumbarse', 'tumbarte; pulsa otra vez para levantarte'], ['Agacharse', 'agacharte; pulsa otra vez para levantarte'],
+          ['De pie', 'ponerte de pie'], ['Recargar', 'recargar el arma'], ['El arma de arriba a la derecha', 'cambiar de arma'], ['Comprar', 'abrir o cerrar el menú de compra'], ['Botiquín', 'curarte con un botiquín comprado'], ['Plantar / Desactivar (mantener)', 'la bomba; aparece solo cuando puedes usarlo'],
           ['Tabla', 'ver las bajas y muertes de todos; toca otra vez para cerrarla'], ['Pausa', 'detener la partida']];
         rows.forEach(([a, d], i) => {
-          const y = 104 + i * 42;
-          rr(120, y - 19, 1040, 40, 8, 'rgba(255,255,255,0.06)', null);
-          text(a, 144, y, 21, '#ffe7a8', 'left'); text(d, 560, y, 20, '#fff', 'left', 'normal');
+          const y = 100 + i * 36; // 15 rows end at 604, above Volver (644)
+          rr(120, y - 17, 1040, 34, 8, 'rgba(255,255,255,0.06)', null);
+          text(a, 144, y, 19, '#ffe7a8', 'left'); text(d, 560, y, 18, '#fff', 'left', 'normal');
         });
         button(W / 2 - 160, 644, 320, 52, 'Volver', 'back', { size: 22 });
         return;
@@ -2030,7 +2030,7 @@ function drawTitle() {
   // start
   button(820, 612, 420, 60, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
-  const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Agachar, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
+  const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Tumbarse, Agacharse, De pie, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
     : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  ${bind.shoot === 'Mouse0' ? 'Clic' : 'Clic o ' + k('shoot')} disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
@@ -2152,6 +2152,7 @@ function drawFrame() {
     const p = state.human, b = state.bomb, live = scene === 'play' && !teacherPaused();
     setTouchMode(!live ? 'off' : p.alive && !uiOpen(state) ? 'all' : 'pause');
     if (live) setUseLabel(b.carrier === p ? 'Plantar' : b.state === 'planted' && sideOf(state, p) === 'def' ? 'Desactivar' : 'Bomba');
+    if (live) { setGunLabel(WEAPON[p.cur].name); setStance(p.st.prone ? 'prone' : p.st.stance === 'crouch' ? 'crouch' : 'stand'); }
   }
 }
 // Turned upright mid-play on a phone: the game pauses, as it does when the mouse leaves on a computer. Like the pause

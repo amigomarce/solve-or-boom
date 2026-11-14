@@ -26,7 +26,10 @@ export type TouchMode = 'off' | 'pause' | 'all';
 interface Btn { el: HTMLElement; action: string; toggle: boolean; id: number }
 const btns: Btn[] = [];
 const held = new Set<Btn>();
-let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement;
+let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement, gunBtn: HTMLElement;
+/** The stance buttons (Tumbarse, Agacharse, De pie) and the stance main.ts last reported, which they light and act on. */
+const stanceBtns: Record<string, HTMLElement> = {};
+let stance = 'stand';
 let mode: TouchMode = 'off';
 let stickId = -1, aimId = -1, lastX = 0, lastY = 0;
 
@@ -36,6 +39,7 @@ function releaseAll(): void {
   setAxes(0, 0); stickId = -1; aimId = -1; touch.dx = 0; touch.dy = 0; knob.style.transform = '';
   for (const b of btns) { down.delete(bind[b.action]); b.el.classList.remove('on'); b.id = -1; }
   held.clear();
+  stanceBtns[stance]?.classList.add('on'); // the stance stays lit: it is the player's, not a held key
 }
 
 /** Shows the controls for `mode`; a change lets go of everything held, so no key stays down when the controls vanish. */
@@ -49,8 +53,24 @@ export function setTouchMode(m: TouchMode): void {
   for (const b of btns) if (b.action !== 'pause') b.el.style.display = all ? 'flex' : 'none';
 }
 
-/** The plant / defuse button's word: 'Plantar' with the bomb in a site, 'Desactivar' by a planted bomb, else 'Bomba'. */
-export function setUseLabel(s: string): void { if (TOUCH && useBtn.textContent !== s) useBtn.textContent = s; }
+/** The plant / defuse button's word: 'Plantar' carrying the bomb, 'Desactivar' by a planted bomb; with 'Bomba' (nothing to do
+ *  with the bomb) the button hides, so it only shows when it can be used. */
+export function setUseLabel(s: string): void {
+  if (!TOUCH) return;
+  if (useBtn.textContent !== s) useBtn.textContent = s;
+  const show = mode === 'all' && s !== 'Bomba' ? 'flex' : 'none';
+  if (useBtn.style.display !== show) useBtn.style.display = show;
+}
+
+/** The weapon selector's word: the gun in hand (a tap swaps to the other one). */
+export function setGunLabel(name: string): void { const s = name + ' ⇄'; if (TOUCH && gunBtn.textContent !== s) gunBtn.textContent = s; }
+
+/** The player's stance now ('stand', 'crouch' or 'prone'): lights its button and is what the stance buttons act from. */
+export function setStance(st: string): void {
+  if (!TOUCH || st === stance) return;
+  stance = st;
+  for (const [k, el] of Object.entries(stanceBtns)) el.classList.toggle('on', k === st);
+}
 
 function setAxes(f: number, s: number): void {
   for (const [code, on] of [[bind.forward, f > 0], [bind.back, f < 0], [bind.left, s < 0], [bind.right, s > 0]] as const) {
@@ -61,18 +81,13 @@ function setAxes(f: number, s: number): void {
 if (TOUCH) {
   document.documentElement.classList.add('touch');
   root = document.getElementById('touch') as HTMLElement;
-  const u = tune.touch_button_size, big = Math.round(u * 1.4), g = 10, stick = tune.touch_stick_size;
-  const colB = 14 + big + g, colC = colB + u + g;
-  const inset = (side: 'left' | 'right', px: number): string => `calc(env(safe-area-inset-${side}, 0px) + ${px}px)`;
-  // Over the canvas's bottom-right corner sit the ammo box and, above it, the bomb carrier's box (up to 142 logical px):
-  // the inner columns start over them.
-  const above = (px: number): string => `calc(var(--bar) + var(--k) * 148px + ${px}px)`;
+  const u = tune.touch_button_size, stick = tune.touch_stick_size;
 
   /** One round button that holds `action`'s bound key while it is pressed (or flips it on each tap when `toggle`). */
-  const make = (action: string, label: string, size: number, css: string, toggle = false): HTMLElement => {
+  const make = (action: string, label: string, size: number, css: string, toggle = false, onTap?: () => void): HTMLElement => {
     const el = document.createElement('div');
     el.className = 'tb'; el.textContent = label;
-    el.style.cssText = `width:${size}px;height:${size}px;font-size:${Math.max(10, Math.round(u * 0.2))}px;${css}`;
+    el.style.cssText = `width:${size}px;height:${size}px;font-size:${Math.max(label.length > 7 ? 9 : 10, Math.round(u * (label.length > 7 ? 0.17 : 0.2)))}px;${css}`; // long words a little smaller, so they fit the circle
     const b: Btn = { el, action, toggle, id: -1 };
     let fx = 0, fy = 0; // where the finger holding this button was last
     const release = (e: PointerEvent): void => {
@@ -81,6 +96,7 @@ if (TOUCH) {
     };
     el.addEventListener('pointerdown', e => {
       e.preventDefault();
+      if (onTap) { onTap(); return; }
       const code = bind[action];
       if (b.toggle) { if (down.has(code)) { down.delete(code); el.classList.remove('on'); } else { down.add(code); hit.add(code); el.classList.add('on'); } return; }
       if (held.has(b)) return; // a second finger on a held button changes nothing
@@ -113,16 +129,27 @@ if (TOUCH) {
   aimZone.addEventListener('pointerup', endAim); aimZone.addEventListener('pointercancel', endAim); aimZone.addEventListener('lostpointercapture', endAim);
   root.append(aimZone);
 
-  // The stick: a ring and a knob; the zone around it is a little bigger than the ring, so a thumb need not be exact.
+  // The layout (a Free Fire-like HUD the person drew, HUD.tiff): left thumb, the stick (1) low on the left with Comprar (7) and
+  // Botiquín (8) in a column at the edge; right thumb, Fuego (2) big low on the right with Apuntar (3) above it, and the
+  // stances Tumbarse (4), Agacharse (5) and De pie (6) in a column at the edge; the weapon selector (9) above Apuntar with
+  // Recargar beside it, Saltar left of Fuego, and Plantar / Desactivar left of Apuntar, shown only when it can be used.
+  // Positions are fractions of the screen (centre x %, centre y %), the edge columns kept clear of the notch; the right
+  // thumb's buttons sit a little above the drawing's spots so Fuego clears the canvas's bomb and ammo boxes, and the stick
+  // clears the stance box.
+  const at = (x: number, y: number, w: number, h = w): string => `left:calc(${x}% - ${w / 2}px);top:calc(${y}% - ${h / 2}px)`;
+  const atLeft = (x: number, y: number, w: number): string => `left:max(calc(${x}% - ${w / 2}px), env(safe-area-inset-left, 0px));top:calc(${y}% - ${w / 2}px)`;
+  const atRight = (x: number, y: number, w: number): string => `right:max(calc(${100 - x}% - ${w / 2}px), env(safe-area-inset-right, 0px));top:calc(${y}% - ${w / 2}px)`;
+  const pill = (w: number, h: number): string => `width:${w}px;height:${h}px;border-radius:${h / 2}px;padding:0 10px`;
+
+  // 1: the stick. A ring and a knob; the zone around it is a little bigger than the ring, so a thumb need not be exact.
   const pad = Math.round(stick * 0.25);
-  const sx = inset('left', 28), sy = `calc(var(--bar) + var(--k) * 90px + 6px)`;
   base = document.createElement('div');
-  base.className = 'ring'; base.style.cssText = `width:${stick}px;height:${stick}px;left:${sx};bottom:${sy}`;
+  base.className = 'ring'; base.style.cssText = `width:${stick}px;height:${stick}px;${at(21.5, 64, stick)}`;
   knob = document.createElement('div');
   knob.className = 'knob'; knob.style.cssText = `width:${Math.round(stick * 0.42)}px;height:${Math.round(stick * 0.42)}px`;
   base.append(knob);
   stickZone = document.createElement('div');
-  stickZone.className = 'tz'; stickZone.style.cssText = `left:calc(${sx} - ${pad}px);bottom:calc(${sy} - ${pad}px);width:${stick + 2 * pad}px;height:${stick + 2 * pad}px`;
+  stickZone.className = 'tz'; stickZone.style.cssText = `width:${stick + 2 * pad}px;height:${stick + 2 * pad}px;${at(21.5, 64, stick + 2 * pad)}`;
   const steer = (e: PointerEvent): void => {
     const r = base.getBoundingClientRect(), R = stick / 2;
     const vx = e.clientX - (r.left + R), vy = e.clientY - (r.top + R), len = Math.hypot(vx, vy), cap = Math.min(len, R) / (len || 1);
@@ -142,19 +169,30 @@ if (TOUCH) {
   addEventListener('blur', releaseAll);
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
-  // Right thumb, bottom corner outwards: fire (big) with jump and plant / defuse above it; aim and crouch in the next
-  // column, reload, swap gun and buy in the third. Pause sits at the top, just right of the score box.
-  const right = (px: number): string => `right:${inset('right', px)}`;
-  const offset = Math.round((big - u) / 2);
-  make('shoot', 'Fuego', big, `${right(14)};bottom:calc(var(--bar) + 14px)`).classList.add('fire');
-  make('jump', 'Saltar', u, `${right(14 + offset)};bottom:calc(var(--bar) + ${14 + big + g}px)`);
-  useBtn = make('use', 'Bomba', u, `${right(14 + offset)};bottom:calc(var(--bar) + ${14 + big + g + u + g}px);width:auto;min-width:${u}px;padding:0 10px;border-radius:${u / 2}px`);
-  make('aim', 'Apuntar', u, `${right(colB)};bottom:${above(0)}`);
-  make('crouch', 'Agachar', u, `${right(colB)};bottom:${above(u + g)}`, true);
-  make('reload', 'Recargar', u, `${right(colC)};bottom:${above(0)}`);
-  make('swap', 'Arma', u, `${right(colC)};bottom:${above(u + g)}`);
-  make('buy', 'Comprar', u, `${right(colC)};bottom:${above(2 * (u + g))}`);
-  make('medkit', 'Botiquín', u, `${right(colB)};bottom:${above(2 * (u + g))}`); // story 016: use a carried medkit
+  // 7 and 8: Comprar and Botiquín, a column at the left edge.
+  make('buy', 'Comprar', u, atLeft(5.5, 66.5, u));
+  make('medkit', 'Botiquín', u, atLeft(5.5, 85, u)); // story 016: use a carried medkit
+  // 2 and 3: Fuego (big) and Apuntar above it.
+  const fire = Math.round(u * tune.touch_fire_scale), aim = Math.round(u * tune.touch_aim_scale);
+  make('shoot', 'Fuego', fire, at(77, 66, fire)).classList.add('fire');
+  make('aim', 'Apuntar', aim, at(77.8, 40, aim));
+  // 4, 5 and 6: the stances, a column at the right edge. Tumbarse flips prone; Agacharse flips crouch (standing up first
+  // from prone); De pie stands up from either.
+  const crouchOff = (): void => { down.delete(bind.crouch); };
+  stanceBtns.prone = make('prone', 'Tumbarse', u, atRight(94.3, 55.5, u), false, () => { crouchOff(); hit.add(bind.prone); });
+  stanceBtns.crouch = make('crouch', 'Agacharse', u, atRight(94.3, 71.5, u), false, () => {
+    if (stance === 'prone') { hit.add(bind.prone); down.add(bind.crouch); } else if (down.has(bind.crouch)) crouchOff(); else down.add(bind.crouch);
+  });
+  stanceBtns.stand = make('stand', 'De pie', u, atRight(94.3, 87.5, u), false, () => { crouchOff(); if (stance === 'prone') hit.add(bind.prone); });
+  stanceBtns.stand.classList.add('on');
+  // 9: the weapon selector, the gun in hand (a tap swaps guns), with Recargar beside it at the edge.
+  const gw = Math.round(u * 2.1), gh = Math.round(u * 0.75);
+  gunBtn = make('swap', 'Pistola ⇄', gw, `${pill(gw, gh)};${at(85, 22, gw, gh)}`);
+  make('reload', 'Recargar', u, atRight(94.3, 22, u));
+  // Saltar left of Fuego; Plantar / Desactivar left of Apuntar, only while it can be used (setUseLabel).
+  make('jump', 'Saltar', u, at(64.5, 66, u));
+  const uw = Math.round(u * 1.7), uh = Math.round(u * 0.8);
+  useBtn = make('use', 'Plantar', uw, `${pill(uw, uh)};${at(64.5, 44, uw, uh)}`);
   // Story 016: the score table, opened and closed by a tap, beside the kill counter under the minimap (drawn by main.ts at logical y 176..220).
   make('scores', 'Tabla', Math.round(u * 0.8), `left:calc(50% - var(--k) * 640px + var(--k) * 142px);top:calc(var(--bar) + var(--k) * 176px)`, true);
   make('pause', 'Pausa', Math.round(u * 0.8), `left:calc(50% + var(--k) * 240px + 6px);top:calc(var(--bar) + 8px)`);
