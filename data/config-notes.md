@@ -152,7 +152,6 @@ holds no comments. The values themselves are in `data/config.json`.
 - `event_range_m` (aula.json): metres within which a student gets another player's shot (sound and tracer)
 - `input_queue_max` (aula.json): a student's inputs waiting to be played, at most (8 = 133 ms); older ones are dropped
 - `input_hold_steps` (aula.json): steps a student's held controls are repeated when no input arrived in time, before idling
-- `takeover_s` (aula.json): seconds with no input from a connected student before a bot plays their seat (a hidden tab); their next input takes it back
 
 ## Teacher screen (story 006), data/aula.json
 - `demo_rooms` 0: the server no longer starts running rooms of bots (they would take students before the teacher sets up). `--salas N` still makes N.

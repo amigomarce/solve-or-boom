@@ -1,9 +1,10 @@
 // A room: 8 seats (4 v 4) and one match the server runs and owns. The teacher's screen (story 006) creates
 // and ends rooms through src/server/rooms.ts; this module is the room itself.
 //
-// Seat i is player i of the match. A seated student whose connection is open and who keeps sending inputs plays
-// their player; otherwise (no student, a dropped connection held for rejoin, or no input for takeover_s) a bot
-// plays it with the single-player AI. Each student's inputs are queued and played one per step, in seq order.
+// Seat i is player i of the match. A seated student whose connection is open plays their player: when their inputs
+// stop (the pause screen, a hidden or minimised window) the player stands still where it is and can be shot, never
+// played by a bot, so stepping away is no shelter. Otherwise (no student, or a dropped connection held for rejoin) a
+// bot plays it with the single-player AI. Each student's inputs are queued and played one per step, in seq order.
 import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, type MatchOptions, type PlayerInput } from '../game/match';
 import type { Loose } from '../game/types';
 import { MAP_ID, loadMap } from '../game/map';
@@ -23,8 +24,6 @@ export interface PlayLimits {
   queueMax: number;
   /** Steps a seat's last held controls are repeated when no input arrived, before going idle. */
   holdSteps: number;
-  /** Steps with no input before a bot stands in for a connected student. */
-  takeoverSteps: number;
 }
 /** One seat's inputs: the queue not yet played, the last played (its held controls), its seq, and steps since one arrived. */
 interface SeatInputs { queue: { seq: number; input: PlayerInput }[]; held: PlayerInput; ack: number; lastSeq: number; starved: number; dropped: number }
@@ -122,8 +121,8 @@ function roomMatch(spec: RoomSpec, seed: number, seats: Seat[]): Match {
 }
 
 /**
- * A student starts or stops playing their seat's player: a bot stands in while they are away (a dropped
- * connection, no inputs for takeover_s) and hands the player back when they return. Their queued inputs are dropped.
+ * A student starts or stops playing their seat's player: a bot stands in while their connection is dropped
+ * and held for rejoin, and hands the player back when they return. Their queued inputs are dropped.
  */
 export function setPresent(room: Room, index: number, on: boolean): void {
   const seat = room.seats[index];
@@ -132,7 +131,7 @@ export function setPresent(room: Room, index: number, on: boolean): void {
   const inp = room.inputs[index];
   inp.queue.length = 0; inp.held = idleInput(); inp.starved = 0;
   if (on) { inp.lastSeq = -1; inp.ack = -1; } // a rejoined page counts its seq from 0 again: the old count would drop all its inputs as repeats
-  // seatBot plans the bot's route on the loaded map, and this runs outside step() (a drop, a takeover): another room's map may be up.
+  // seatBot plans the bot's route on the loaded map, and this runs outside step() (a drop): another room's map may be up.
   if (!on && MAP_ID !== room.match.opts.map) loadMap(room.match.opts.map);
   if (on) seatHuman(room.match, index, seat.name ?? ''); else seatBot(room.match, index);
 }
@@ -152,15 +151,14 @@ export function queueInput(room: Room, index: number, seq: number, input: Partia
   return true;
 }
 
-/** Each present student's input for this step: the next queued one, or their held controls repeated for holdSteps, then idle. */
+/** Each present student's input for this step: the next queued one, or their held controls repeated for holdSteps, then idle for as long as none comes (standing still, open to shots). */
 function takeInputs(room: Room): Record<number, PlayerInput> {
   const out: Record<number, PlayerInput> = {};
   for (const seat of room.seats) {
     if (seat.kind !== 'human' || !seat.present) continue;
     const inp = room.inputs[seat.index], next = inp.queue.shift();
     if (next) { inp.ack = next.seq; inp.held = next.input; inp.starved = 0; out[seat.index] = next.input; continue; }
-    if (++inp.starved > room.play.takeoverSteps) { setPresent(room, seat.index, false); continue; }
-    if (inp.starved > room.play.holdSteps) { out[seat.index] = idleInput(); continue; }
+    if (++inp.starved > room.play.holdSteps) { out[seat.index] = idleInput(); continue; }
     const held: PlayerInput = { ...inp.held, lookYaw: 0, lookPitch: 0, digits: [], buyItem: '', answer: -1 };
     for (const k of PRESSED) (held as unknown as Record<string, unknown>)[k] = false;
     out[seat.index] = held;

@@ -40,7 +40,7 @@ const warn = rateLimitedLog(aula.log_repeat_s * 1000, clockMs);
 const results = createResults(aula.results_max_students);
 const rooms: Rooms = createRooms(
   { tickBudgetMs: aula.tick_budget_ms, maxCatchupSteps: aula.max_catchup_steps, maxBacklogSteps: aula.max_backlog_steps, emptyGraceS: aula.empty_grace_s,
-    play: { queueMax: aula.input_queue_max, holdSteps: aula.input_hold_steps, takeoverSteps: Math.round(aula.takeover_s / STEP) } },
+    play: { queueMax: aula.input_queue_max, holdSteps: aula.input_hold_steps } },
   { clockMs, log, warn, results },
 );
 const ticker = setInterval(rooms.tick, aula.tick_ms);

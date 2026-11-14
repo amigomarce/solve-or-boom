@@ -1,0 +1,4 @@
+Reviewed-Content-Hash: src/server/room.ts f67f9287cbc3066640deb39284698d7f634117db
+Reviewed-Content-Hash: src/server/aula.ts fb48d93e13b55d0c224e5fc323c0776e5906d723
+Reviewed-Content-Hash: data/aula.json 8e43263c0e41febc3b0cf46b1b690a11d05230ed
+Reviewed-Content-Hash: data/config-notes.md d322c6b4322b6daa429fa5f76b287b6c6d8fa317

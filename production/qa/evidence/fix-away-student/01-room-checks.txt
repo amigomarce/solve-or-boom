@@ -1,0 +1,2 @@
+hidden student (no inputs at all), enemy Bot Rex 8 m in front: first hit at 3.13 s, dead at -1.00 s, hp 74, alive true, seat still the student's: true, name Ana
+Beto (pistol) fired 2 shots at paused Ana 8 m away: Ana hp 0, alive false, dead at 0.35 s
