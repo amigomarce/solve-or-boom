@@ -35,3 +35,4 @@ Build order from the brief:
 | 017 | Match options | Integration | Complete | N/A |
 | 018 | Streak rewards | Integration | Complete | N/A |
 | 019 | Free for All mode | Integration | Complete | N/A |
+| 020 | Smooth weapon models | Visual/Feel | Complete | N/A |

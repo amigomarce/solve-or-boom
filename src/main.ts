@@ -3,7 +3,7 @@
 // The scenes, the 3D world, the bots and the loop live here; the pure rules, the map, sound,
 // input, drawing and the questions are modules beside it.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG, tune } from './config';
 import AULA from '../data/aula.json';
 import * as QUESTIONS from './questions';
@@ -715,24 +715,113 @@ function mergeBlocks(root: THREE.Object3D, key: string): void {
     }
   });
 }
-/** Hands-held guns, built once: the four first-person silhouettes of story 008, simplified. Muzzle toward -z; `muzzle` is how far. */
-const holdGuns: Record<string, { tpl: THREE.Group; muzzle: number }> = {};
-for (const kind of ['pistol', 'smg', 'rifle', 'sniper', 'gold']) {
-  // Story 018: the Rifle dorado is the rifle's shape in gold (its metal parts the darker gold).
-  const shape = kind === 'gold' ? 'rifle' : kind, mt = kind === 'gold' ? GOLD.dark : CM.metal, wd = kind === 'gold' ? GOLD.body : CM.wood;
-  const g = new THREE.Group(), a = CM.acc[kind], b = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): void => { blk(g, w, h, d, mat, x, y, z).rotation.x = rx; };
-  let muzzle: number;
-  if (shape === 'pistol') { b(0.055, 0.06, 0.22, mt, 0, 0.02, -0.08); b(0.058, 0.014, 0.2, a, 0, 0.056, -0.08); b(0.045, 0.13, 0.06, wd, 0, -0.07, 0, 0.25); muzzle = -0.2; }
-  else if (shape === 'smg') { b(0.08, 0.1, 0.34, mt, 0, 0, -0.1); b(0.084, 0.03, 0.3, a, 0, 0.065, -0.1); b(0.045, 0.22, 0.07, a, 0, -0.16, -0.14, 0.08); b(0.03, 0.03, 0.12, mt, 0, 0.01, -0.32); muzzle = -0.38; }
-  else if (shape === 'rifle') { b(0.07, 0.1, 0.4, mt, 0, 0, -0.1); b(0.075, 0.08, 0.24, a, 0, -0.005, -0.4); b(0.022, 0.022, 0.2, mt, 0, 0.02, -0.65); b(0.05, 0.17, 0.06, mt, 0, -0.14, -0.1, -0.35); b(0.06, 0.15, 0.24, wd, 0, -0.03, 0.24, -0.12); muzzle = -0.77; }
-  else {
-    b(0.06, 0.08, 0.62, mt, 0, 0, -0.1); b(0.03, 0.03, 0.5, mt, 0, 0.015, -0.66); b(0.05, 0.05, 0.08, a, 0, 0.015, -0.93); b(0.065, 0.13, 0.3, wd, 0, -0.03, 0.3, -0.08);
-    blk(g, 0.07, 0.07, 0.34, CM.dark, 0, 0.1, -0.15); blk(g, 0.09, 0.09, 0.05, a, 0, 0.1, -0.33); // a boxy scope with an accent lens ring
-    for (const sx of [-1, 1]) blk(g, 0.014, 0.16, 0.014, mt, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
-    muzzle = -0.98;
-  }
-  mergeBlocks(g, kind); freeze(g); holdGuns[kind] = { tpl: g, muzzle };
+// ---- Smooth guns (story 020) --------------------------------------------------------------
+// One model per gun, built in code from rounded parts (barrels and scopes from cylinders and a lathe, receivers and grips from
+// bevelled extrusions) and shared by the first-person view and the hands of every character. Metal and gold shine through Phong
+// specular (the scenes' sun gives the highlight, no environment map is needed); wood is a dull Phong. Look only, no tuning.
+const GM = {
+  steel: new THREE.MeshPhongMaterial({ color: 0x4a515c, specular: 0xc4ccda, shininess: 55 }),
+  wood: new THREE.MeshPhongMaterial({ color: 0x7a5233, specular: 0x3a2818, shininess: 28 }),
+  glass: new THREE.MeshPhongMaterial({ color: 0x0e1a24, specular: 0xbcd8ff, shininess: 120 }),
+  skin: new THREE.MeshPhongMaterial({ color: 0xd9a273, specular: 0x221a14, shininess: 8 }),
+  sleeve: new THREE.MeshPhongMaterial({ color: 0x555555, specular: 0x181818, shininess: 8 }),
+  gold: new THREE.MeshPhongMaterial({ color: Number(tune.gold_color), specular: 0xfff1b8, shininess: 120 }), // the Rifle dorado: polished gold
+  goldDark: new THREE.MeshPhongMaterial({ color: Number(tune.gold_dark_color), specular: 0xffe9a0, shininess: 100 }),
+  acc: {} as Record<string, THREE.MeshPhongMaterial>,
+};
+for (const k of ['pistol', 'smg', 'rifle', 'sniper']) GM.acc[k] = new THREE.MeshPhongMaterial({ color: GUN_FX[k].accent, specular: 0x777777, shininess: 55 });
+/** A box with rounded, bevelled edges: w x h x d, edge radius b. */
+function rbox(w: number, h: number, d: number, b: number): THREE.BufferGeometry {
+  b = Math.min(b, Math.min(w, h) * 0.4, d * 0.4);
+  const x = (w - 2 * b) / 2, y = (h - 2 * b) / 2, c = Math.min(x, y) * 0.8, s = new THREE.Shape();
+  s.moveTo(-x + c, -y); s.lineTo(x - c, -y); s.quadraticCurveTo(x, -y, x, -y + c); s.lineTo(x, y - c); s.quadraticCurveTo(x, y, x - c, y);
+  s.lineTo(-x + c, y); s.quadraticCurveTo(-x, y, -x, y - c); s.lineTo(-x, -y + c); s.quadraticCurveTo(-x, -y, -x + c, -y);
+  const g = new THREE.ExtrudeGeometry(s, { depth: d - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 3 });
+  return g.translate(0, 0, -(d - 2 * b) / 2);
 }
+/** A side silhouette, points [z, y] in the gun's space, thickened along x with bevelled edges (grips, stocks, magazines). */
+function prof(pts: [number, number][], thick: number, b: number): THREE.BufferGeometry {
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(-z, y))), { depth: thick - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 4 });
+  return g.translate(0, 0, -(thick - 2 * b) / 2).rotateY(Math.PI / 2);
+}
+/** The side silhouette of a curved magazine: from (zTop, yTop) down `len`, bending `bend` in z, `w` deep. */
+function banana(zTop: number, yTop: number, len: number, bend: number, w: number): [number, number][] {
+  const f: [number, number][] = [], r: [number, number][] = [];
+  for (let i = 0; i <= 6; i++) { const t = i / 6, z = zTop + bend * t * t, y = yTop - len * t; f.push([z - w / 2, y]); r.push([z + w / 2, y]); }
+  return f.concat(r.reverse());
+}
+/**
+ * One gun built from smooth parts, muzzle toward -z. Parts of one material are joined into one mesh, so a gun is a handful
+ * of draw calls; the caller builds each gun once and clones the group (geometry and materials are shared). `seg` is the radial
+ * segment count of the round parts; `hand` adds the first-person hand and sleeve. `sight` is the height of the front sight's top
+ * (the line the aimed view puts on the crosshair), `muzzle` the z of the barrel's end (flash and tracer).
+ */
+function buildGun(kind: string, seg: number, hand: boolean): { group: THREE.Group; muzzle: number; sight: number } {
+  const gold = kind === 'gold', shape = gold ? 'rifle' : kind; // story 018: the Rifle dorado is the rifle's shape in gold, its metal parts the darker gold
+  const mt = gold ? GM.goldDark : GM.steel, wd = gold ? GM.gold : GM.wood, ac = gold ? GM.gold : GM.acc[kind];
+  const parts: { mat: THREE.Material; geo: THREE.BufferGeometry }[] = [];
+  const P = (mat: THREE.Material, geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, rz = 0): void => {
+    if (rx) geo.rotateX(rx); if (rz) geo.rotateZ(rz);
+    parts.push({ mat, geo: toCreasedNormals(geo.translate(x, y, z), 0.9) });
+  };
+  const cz = (rf: number, rb: number, len: number, s = seg) => new THREE.CylinderGeometry(rf, rb, len, s).rotateX(-Math.PI / 2); // round bar along z, radius rf at the front (-z)
+  const ring = (r: number, tube: number, ry = true) => { const g = new THREE.TorusGeometry(r, tube, 6, Math.max(8, seg), Math.PI).rotateZ(Math.PI); return ry ? g.rotateY(Math.PI / 2) : g; }; // a half ring hanging below (trigger guard)
+  let muzzle: number, sight: number;
+  if (shape === 'pistol') {
+    P(mt, rbox(0.055, 0.06, 0.22, 0.012), 0, 0.02, -0.08); // slide
+    P(ac, rbox(0.032, 0.014, 0.17, 0.006), 0, 0.05, -0.08); // accent rib along the slide
+    P(mt, rbox(0.012, 0.016, 0.014, 0.003), 0, 0.055, -0.175); P(mt, rbox(0.03, 0.012, 0.014, 0.003), 0, 0.056, 0.02); // front and rear sight
+    P(mt, cz(0.014, 0.014, 0.03), 0, 0.02, -0.185); // barrel tip
+    P(mt, rbox(0.048, 0.03, 0.17, 0.008), 0, -0.025, -0.045); // frame
+    P(mt, ring(0.022, 0.004), 0, -0.04, -0.045); // trigger guard
+    P(wd, prof([[0.034, -0.02], [-0.024, -0.02], [-0.02, -0.06], [-0.014, -0.1], [-0.01, -0.132], [0.048, -0.132], [0.047, -0.1], [0.043, -0.06]], 0.044, 0.007), 0, 0, 0); // grip, leaning back
+    muzzle = -0.2; sight = 0.063;
+  } else if (shape === 'smg') {
+    P(mt, rbox(0.08, 0.1, 0.34, 0.018), 0, 0, -0.1); // receiver
+    P(ac, rbox(0.084, 0.03, 0.3, 0.012), 0, 0.058, -0.1); // accent top cover, sunk into the receiver
+    P(mt, cz(0.024, 0.024, 0.07), 0, 0.01, -0.305); P(mt, cz(0.015, 0.015, 0.12), 0, 0.01, -0.32); // shroud and barrel
+    P(mt, cz(0.02, 0.02, 0.016), 0, 0.01, -0.372); // muzzle ring
+    P(ac, prof(banana(-0.12, -0.04, 0.21, -0.03, 0.06), 0.04, 0.008), 0, 0, 0); // long curved magazine
+    P(mt, prof([[0.01, -0.045], [0.07, -0.045], [0.078, -0.09], [0.088, -0.14], [0.04, -0.14], [0.03, -0.09]], 0.036, 0.007), 0, 0, 0); // grip
+    P(mt, ring(0.02, 0.004), 0, -0.05, -0.012); // trigger guard
+    P(mt, cz(0.009, 0.009, 0.22), 0, 0.015, 0.165); P(mt, rbox(0.03, 0.075, 0.016, 0.006), 0, 0, 0.275); // wire stock and butt plate
+    P(mt, rbox(0.014, 0.034, 0.014, 0.004), 0, 0.098, -0.2); // front sight
+    muzzle = -0.38; sight = 0.115;
+  } else if (shape === 'rifle') {
+    P(mt, rbox(0.07, 0.1, 0.4, 0.016), 0, 0, -0.1); // receiver
+    P(ac, cz(0.04, 0.042, 0.24), 0, -0.005, -0.4); // round handguard
+    P(mt, cz(0.011, 0.011, 0.27), 0, 0.02, -0.635); P(mt, cz(0.017, 0.015, 0.05), 0, 0.02, -0.745); // barrel and muzzle brake
+    P(mt, prof(banana(-0.1, -0.04, 0.17, -0.05, 0.062), 0.042, 0.008), 0, 0, 0); // curved magazine
+    P(wd, prof([[0.035, -0.045], [0.09, -0.045], [0.1, -0.1], [0.105, -0.15], [0.065, -0.15], [0.05, -0.1]], 0.04, 0.007), 0, 0, 0); // pistol grip
+    P(wd, prof([[0.09, 0.04], [0.22, 0.03], [0.36, 0.035], [0.375, 0], [0.368, -0.1], [0.35, -0.115], [0.3, -0.1], [0.2, -0.06], [0.09, -0.045]], 0.05, 0.01), 0, 0, 0); // stock
+    P(mt, rbox(0.012, 0.07, 0.016, 0.003), 0, 0.065, -0.6); P(mt, cz(0.02, 0.02, 0.03), 0, 0.02, -0.6); // front sight post on its base
+    P(mt, rbox(0.03, 0.04, 0.04, 0.008), 0, 0.07, 0); // rear sight
+    muzzle = -0.77; sight = 0.1;
+  } else {
+    P(mt, rbox(0.06, 0.08, 0.62, 0.014), 0, 0, -0.1); // receiver
+    P(mt, cz(0.015, 0.017, 0.5), 0, 0.015, -0.66); // long barrel
+    P(ac, cz(0.026, 0.026, 0.08), 0, 0.015, -0.94); P(mt, cz(0.03, 0.03, 0.012), 0, 0.015, -0.9); // muzzle brake and its collar
+    P(wd, prof([[0.18, 0.04], [0.3, 0.045], [0.44, 0.04], [0.455, 0], [0.45, -0.1], [0.42, -0.105], [0.3, -0.06], [0.18, -0.04]], 0.055, 0.01), 0, 0, 0); // stock
+    P(wd, prof([[0.01, -0.04], [0.07, -0.04], [0.082, -0.1], [0.088, -0.15], [0.048, -0.15], [0.032, -0.1]], 0.04, 0.007), 0, 0, 0); // grip
+    // the scope: a lathe tube with bell ends, accent lens rings and dark glass; the tube's axis is the sight line (y 0.1)
+    const tube = new THREE.LatheGeometry([[0.04, -0.17], [0.036, -0.15], [0.029, -0.12], [0.029, -0.02], [0.034, 0], [0.034, 0.02], [0.029, 0.04], [0.029, 0.11], [0.036, 0.15], [0.044, 0.17]].map(([r, y]) => new THREE.Vector2(r, y)), seg).rotateX(-Math.PI / 2);
+    P(GM.steel, tube, 0, 0.1, -0.15);
+    for (const [z, r] of [[-0.31, 0.046], [0.01, 0.042]]) { P(ac, cz(r, r, 0.024), 0, 0.1, z); P(GM.glass, cz(r - 0.008, r - 0.008, 0.004), 0, 0.1, z + (z < 0 ? -0.0125 : 0.0125)); }
+    for (const z of [-0.23, -0.07]) P(mt, rbox(0.022, 0.04, 0.03, 0.006), 0, 0.058, z); // scope mounts
+    P(mt, new THREE.CylinderGeometry(0.006, 0.006, 0.06, 8).rotateZ(Math.PI / 2), 0.06, 0.015, 0.1); P(mt, new THREE.SphereGeometry(0.013, 8, 6), 0.092, 0.012, 0.1); // bolt handle
+    P(mt, new THREE.CylinderGeometry(0.008, 0.008, 0.09, 8).rotateZ(Math.PI / 2), 0, 0, -0.7); // bipod yoke
+    for (const sx of [-1, 1]) P(mt, new THREE.CylinderGeometry(0.006, 0.005, 0.16, 8), sx * 0.04, -0.07, -0.7, 0, sx * 0.45); // bipod legs
+    muzzle = -0.98; sight = 0.1;
+  }
+  if (hand) { P(GM.skin, rbox(0.07, 0.07, 0.11, 0.02), 0, -0.07, 0.04); P(GM.sleeve, rbox(0.08, 0.08, 0.16, 0.02), 0.02, -0.1, 0.16); }
+  const group = new THREE.Group(), byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  for (const p of parts) { const l = byMat.get(p.mat); if (l) l.push(p.geo); else byMat.set(p.mat, [p.geo]); }
+  for (const [mat, list] of byMat) group.add(new THREE.Mesh(mergeGeometries(list), mat));
+  return { group, muzzle, sight };
+}
+/** Hands-held guns, built once (story 020: the same smooth model as the first-person gun, with fewer radial segments). Muzzle toward -z; `muzzle` is how far. */
+const holdGuns: Record<string, { tpl: THREE.Group; muzzle: number }> = {};
+for (const kind of ['pistol', 'smg', 'rifle', 'sniper', 'gold']) { const m = buildGun(kind, 10, false); freeze(m.group); holdGuns[kind] = { tpl: m.group, muzzle: m.muzzle }; }
 const LEG = { thigh: 0.4, shin: 0.46 }; // leg segment lengths of the figure (the hip height follows the bend)
 /**
  * One character built from blocks (Brief MVP feature 22, story 009): a cap and bare brow for attackers or a visored helmet for
@@ -875,46 +964,11 @@ const gunCam = new THREE.PerspectiveCamera(60, W / H, 0.01, 10);
 gunScene.add(new THREE.HemisphereLight(0xfff4e0, 0x6d5c40, 2.3));
 const gunSun = new THREE.DirectionalLight(0xffffff, 1.8); gunSun.position.set(1, 2, 1); gunScene.add(gunSun);
 /**
- * One first-person gun with its own silhouette (story 008): a short slim pistol, a boxy SMG with a long magazine, a rifle
- * with a stock, curved magazine and handguard, a long sniper with a big scope, bipod and muzzle brake. Flat colours with
- * a darker outline on every block and one accent colour per gun. The muzzle is toward -z; the flash is sized each frame.
+ * One first-person gun (stories 008 and 020): the smooth model of `buildGun` with its hand and sleeve, no outlines. The muzzle
+ * is toward -z; `sight` is the height of the front sight's top and the flash sits at the muzzle (sized each frame).
  */
 function makeViewGun(kind: string) {
-  // Story 018: 'gold', the Rifle dorado, is the rifle in gold (its metal parts the darker gold).
-  const gold = kind === 'gold'; if (gold) kind = 'rifle';
-  const g = new THREE.Group(), metal = gold ? GOLD.dark : lam(0x2a2d33), accent = gold ? GOLD.body : lam(GUN_FX[kind].accent), wood = gold ? GOLD.body : lam(0x7a5233), skin = lam(0xd9a273), sleeve = lam(0x555555);
-  const edge = new THREE.LineBasicMaterial({ color: 0x0b0d10 });
-  const gb = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): THREE.Mesh => { // a block with its dark outline
-    const m = box(w, h, d, mat, x, y, z, g); m.rotation.x = rx; m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edge)); return m;
-  };
-  let muzzle = 0, sight = 0; // sight: the height of the line through the gun's sights, in the gun's own units
-  if (kind === 'pistol') {
-    gb(0.055, 0.06, 0.22, metal, 0, 0.02, -0.08); gb(0.058, 0.014, 0.2, accent, 0, 0.056, -0.08);
-    gb(0.045, 0.13, 0.06, wood, 0, -0.07, 0.0, 0.25); gb(0.04, 0.012, 0.07, metal, 0, -0.02, -0.06);
-    muzzle = -0.2; sight = 0.063;
-  } else if (kind === 'smg') {
-    gb(0.08, 0.1, 0.34, metal, 0, 0, -0.1); gb(0.084, 0.03, 0.3, accent, 0, 0.065, -0.1);
-    gb(0.045, 0.22, 0.07, accent, 0, -0.16, -0.14, 0.08); gb(0.03, 0.03, 0.12, metal, 0, 0.01, -0.32);
-    gb(0.04, 0.08, 0.05, metal, 0, -0.08, 0.04, 0.2); gb(0.02, 0.03, 0.14, metal, 0, 0.0, 0.2);
-    gb(0.02, 0.03, 0.03, metal, 0, 0.1, -0.2);
-    muzzle = -0.38; sight = 0.115;
-  } else if (kind === 'rifle') {
-    gb(0.07, 0.1, 0.4, metal, 0, 0, -0.1); gb(0.075, 0.08, 0.24, accent, 0, -0.005, -0.4);
-    gb(0.022, 0.022, 0.2, metal, 0, 0.02, -0.65); gb(0.05, 0.17, 0.06, metal, 0, -0.14, -0.1, -0.35);
-    gb(0.06, 0.15, 0.24, wood, 0, -0.03, 0.24, -0.12); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.06, 0.25);
-    gb(0.02, 0.05, 0.03, metal, 0, 0.075, -0.6); gb(0.03, 0.04, 0.04, metal, 0, 0.075, 0.0);
-    muzzle = -0.77; sight = 0.1;
-  } else {
-    gb(0.06, 0.08, 0.62, metal, 0, 0, -0.1); gb(0.03, 0.03, 0.5, metal, 0, 0.015, -0.66); gb(0.05, 0.05, 0.08, accent, 0, 0.015, -0.93);
-    gb(0.065, 0.13, 0.3, wood, 0, -0.03, 0.3, -0.08); gb(0.045, 0.11, 0.055, wood, 0, -0.1, 0.04, 0.25);
-    const sc = cyl(0.035, 0.035, 0.34, 10, metal, 0, 0.1, -0.15, g); sc.rotation.x = Math.PI / 2;
-    for (const z of [-0.31, 0.01]) { const lens = cyl(0.048, 0.048, 0.07, 10, accent, 0, 0.1, z, g); lens.rotation.x = Math.PI / 2; }
-    gb(0.02, 0.04, 0.03, metal, 0, 0.06, -0.15); gb(0.07, 0.02, 0.05, metal, 0.05, 0.015, 0.1);
-    for (const sx of [-1, 1]) gb(0.014, 0.16, 0.014, metal, sx * 0.04, -0.07, -0.7).rotation.z = sx * 0.45;
-    muzzle = -0.98; sight = 0.1;
-  }
-  box(0.07, 0.07, 0.11, skin, 0, -0.07, 0.04, g);
-  box(0.08, 0.08, 0.16, sleeve, 0.02, -0.1, 0.16, g);
+  const { group: g, muzzle, sight } = buildGun(kind, 16, true);
   const flash = makeFlash(1); flash.position.set(0, 0.02, muzzle); g.add(flash);
   g.visible = false; gunScene.add(g);
   return { group: g, flash, sight };
