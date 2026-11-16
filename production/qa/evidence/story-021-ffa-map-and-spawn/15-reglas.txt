@@ -1,0 +1,55 @@
+PASS pequeno: 377 distinct spawn cells (floor cells on ground 377), first floor 0
+PASS pequeno: every ground spawn cell walkable
+PASS pequeno: all 8 start cells are pool cells
+PASS pequeno: 40 draws, 26 different cells, 37 at >= 30 m, 3 fell back to the farthest, 0 broke the rule
+PASS grande: 947 distinct spawn cells (floor cells on ground 947), first floor 0
+PASS grande: every ground spawn cell walkable
+PASS grande: all 8 start cells are pool cells
+PASS grande: 40 draws, 39 different cells, 40 at >= 30 m, 0 fell back to the farthest, 0 broke the rule
+PASS patio: 1025 distinct spawn cells (floor cells on ground 1025), first floor 0
+PASS patio: every ground spawn cell walkable
+PASS patio: all 8 start cells are pool cells
+PASS patio: 40 draws, 38 different cells, 40 at >= 30 m, 0 fell back to the farthest, 0 broke the rule
+PASS pasillos: 683 distinct spawn cells (floor cells on ground 683), first floor 0
+PASS pasillos: every ground spawn cell walkable
+PASS pasillos: all 8 start cells are pool cells
+PASS pasillos: 40 draws, 38 different cells, 40 at >= 30 m, 0 fell back to the farthest, 0 broke the rule
+PASS dospisos: 1244 distinct spawn cells (floor cells on ground 1074), first floor 182
+PASS dospisos: every ground spawn cell walkable
+PASS dospisos: 182 first-floor cells in the pool
+PASS dospisos: all 8 start cells are pool cells
+PASS dospisos: 40 draws, 40 different cells, 40 at >= 30 m, 0 fell back to the farthest, 0 broke the rule
+  pequeno: 38 of 60 draws >= 30 m, 22 fell back to the farthest cell
+PASS start: person buying is hidden, menu open
+PASS bots never hidden
+PASS hidden/hideT not enumerable
+PASS applyDamage does nothing to a hidden person
+PASS bot canSee(hidden person) false
+PASS botShoot at a hidden person fires nothing
+PASS a bot with the hidden person as target drops it and never hurts them over 2 s
+PASS hidden person cannot move or shoot
+PASS class start: both students hidden
+PASS a shot at a hidden student does nothing (hp 100)
+PASS beto's snapshot: Ana's row blank [1,0,0,0,0,0,0,0,0,0,0,0]
+PASS Ana's own snapshot has her position and y[20]=1
+PASS Beto (visible) y[20]=0
+PASS snapshots v13 parse
+PASS old-length own row (20) refused
+PASS own row of 22 refused
+PASS protocol 12 snapshot refused
+PASS closing the shop ends hiding
+PASS after closing, Beto sees Ana
+PASS and she can be hurt
+PASS buy card open (money 1250)
+PASS still hidden just before the time
+PASS time ran out: visible even with a question card open
+PASS timeout: menu closed and visible
+PASS shop key mid-match opens the menu and does not hide
+PASS the open menu keeps the person still (as the menu always did)
+PASS mid-match shop: vulnerable
+PASS shop key closes it again
+PASS dead: respawn card
+PASS respawn right answer: alive, hidden, menu open
+PASS student leaves: seat bot is not hidden
+PASS bomba: nobody hidden
+ALL PASS

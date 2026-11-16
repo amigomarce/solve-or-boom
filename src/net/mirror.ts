@@ -17,7 +17,7 @@ import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
 import type { Level } from '../game/types';
 import { tune } from '../game/tune';
-import { FLAG, PICKUP_KINDS, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type BeginMessage, type SnapMessage, type SeatView } from './protocol';
+import { FLAG, isBlankRow, PICKUP_KINDS, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type BeginMessage, type SnapMessage, type SeatView } from './protocol';
 
 /** The client's copy of the match. */
 export interface Mirror {
@@ -130,6 +130,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   for (const r of snap.p) {
     const p = match.players[r[0]];
     const wasAlive = p.alive;
+    if (p !== me) p.hidden = isBlankRow(r); // story 021: hidden from this student (the server sent no position): not drawn, no name, no dot
     p.alive = !!(r[5] & FLAG.alive); p.human = !!(r[5] & FLAG.human); p.defusing = !!(r[5] & FLAG.defusing);
     p.flashT = r[5] & FLAG.flash ? 0.05 : 0; p.scoped = !!(r[5] & FLAG.scoped); p.spotT = r[5] & FLAG.spotted ? match.t : -99;
     p.cur = WEAPON_IDS[r[6]] ?? 'pistol'; p.kills = r[9]; p.deaths = r[10];
@@ -144,7 +145,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   me.hp = y[0]; me.armor = y[1]; me.money = y[2];
   me.ammo = { [me.cur]: { mag: y[3], res: y[4] } }; me.reloadT = y[5] / T; me.primary = y[6] >= 0 ? WEAPON_IDS[y[6]] : null;
   me.recoil = y[12] / A; me.cool = y[13] / T; me.medkits = y[15]; me.healT = y[16] / T;
-  me.streak = y[17]; me.kept = y[18] === 1; me.hunterT = y[19] / T; // story 018: the streak, the kept Cazador and its time left (the radar and the speed read it)
+  me.streak = y[17]; me.kept = y[18] === 1; me.hunterT = y[19] / T; me.hidden = y[20] === 1; // story 018: the streak, the kept Cazador and its time left (the radar and the speed read it)
   // The pickups as the server has them (story 016): not predicted, so one walked over goes when the server says it was taken.
   match.pickups = snap.d.map(r => ({ id: r[0], kind: PICKUP_KINDS[r[1]], gun: '', x: r[2] / P, z: r[3] / P, y: (r[4] ?? 0) / P, age: 0 }));
   // The own menu and card, as the server has them (the card's question object is kept while it is the same question).
@@ -245,8 +246,9 @@ export function interpolate(m: Mirror, nowMs: number): void {
   const b = m.snaps[i], a = i > 0 ? m.snaps[i - 1] : b;
   const f = b.k === a.k ? 1 : Math.max(0, Math.min(1, (k - a.k) / (b.k - a.k)));
   for (let j = 0; j < b.p.length; j++) {
-    const rb = b.p[j], ra = a.p.find(r => r[0] === rb[0]) ?? rb, p = m.match.players[rb[0]];
+    const rb = b.p[j], p = m.match.players[rb[0]], ra0 = a.p.find(r => r[0] === rb[0]) ?? rb;
     if (rb[0] === m.seat) continue;
+    const ra = isBlankRow(ra0) ? rb : ra0; // story 021: one who appears is drawn where they are, not slid in from the blank row's 0, 0
     p.x = p.px = lerp(ra[1], rb[1], f) / P; p.z = p.pz = lerp(ra[2], rb[2], f) / P;
     p.yaw = ra[3] / A + angDiff(rb[3] / A, ra[3] / A) * f; p.pitch = lerp(ra[4], rb[4], f) / A;
     p.st.y = lerp(ra[12] ?? 0, rb[12] ?? 0, f) / P; // the feet height (protocol 4; 0 on a flat map)

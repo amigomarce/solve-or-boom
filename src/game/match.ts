@@ -11,7 +11,7 @@ import { updateBomb } from './bomb';
 import { botUpdate } from './bots';
 import { humanUpdate, updateCard, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
 import { afterRound, checkRound, startRound } from './rounds';
-import { startFfa, ffaTick } from './ffa';
+import { startFfa, ffaTick, syncHidden } from './ffa';
 import { blankMatch, closeCard, deskOf, isFfa, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
 import * as QUESTIONS from '../questions';
 
@@ -75,6 +75,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
     if (inp.buyItem && (!match.classroom || (d.menu && !d.card))) tryBuy(match, p, inp.buyItem);
     if (inp.answer >= 0) answer(match, p, inp.answer);
     if (inp.closeShop) d.menu = false;
+    if (isFfa(match)) syncHidden(match, p); // story 021: closing the shop ends the hiding
     if (inp.closeCard) closeCard(match, p);
     if (p === human && (inp.spectate || (!p.alive && inp.spectateKey))) nextSpec(match);
   }

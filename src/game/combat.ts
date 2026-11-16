@@ -7,7 +7,7 @@ import type { Loose } from './types';
 import { closeDesk, feed, isFfa, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
-  if (!t.alive) return;
+  if (!t.alive || t.hidden) return; // story 021: a Free for All player buying at the start or a respawn cannot be hurt
   { const r = armourHit(dmg, t.armor, tune.armor_absorb); t.armor = r.armor; dmg = r.dmg; }
   t.hp -= dmg;
   if (t.human) {
@@ -79,7 +79,7 @@ export function humanShoot(match: Match, p: Loose): void {
   const wallT = rayStop(p.x, p.z, p.st.y + eye, hx, hz, tp, melee ? tune.melee_range : 200, true);
   let best = null, bestT = wallT, head = false;
   for (const e of match.players) {
-    if (!e.alive || e === p || (e.squad === p.squad && !match.opts.friendlyFire)) continue;
+    if (!e.alive || e.hidden || e === p || (e.squad === p.squad && !match.opts.friendlyFire)) continue; // story 021: nobody shoots a hidden player
     const ox = e.x - p.x, oz = e.z - p.z, along = ox * hx + oz * hz;
     if (along <= 0) continue;
     const perp2 = ox * ox + oz * oz - along * along, r = tune.hit_radius;
@@ -151,6 +151,7 @@ export function siteAlert(match: Match, b: Loose, x: number, z: number): void {
   if (Math.min(toA, toB) < tune.bot_site_alert) match.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: match.t };
 }
 export function botShoot(match: Match, b: Loose, t: Loose): void {
+  if (t.hidden) return; // story 021: nobody shoots a hidden player
   const w = b.cur;
   if (!b.ammo[w]) b.ammo[w] = { mag: tune[w + '_mag'], res: 999 };
   const a = b.ammo[w];
@@ -176,7 +177,7 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
       const dx = (t.x - b.x) / (d || 1), dz = (t.z - b.z) / (d || 1);
       let near = d;
       for (const q of match.players) {
-        if (q === b || q === t || !q.alive || q.squad !== b.squad || Math.abs(q.st.y - b.st.y) > tune.ff_line_dy) continue;
+        if (q === b || q === t || !q.alive || q.hidden || q.squad !== b.squad || Math.abs(q.st.y - b.st.y) > tune.ff_line_dy) continue;
         const ox = q.x - b.x, oz = q.z - b.z, along = ox * dx + oz * dz, perp = Math.abs(ox * dz - oz * dx);
         if (along > tune.ff_line_min && along < near && perp < tune.hit_radius) { victim = q; near = along; }
       }

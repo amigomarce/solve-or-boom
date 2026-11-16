@@ -134,6 +134,7 @@ function snapToCell(b: Loose): void {
 }
 /** True when bot b can see enemy e: in range, in its field of view, and a clear line between their heads (heights count). */
 export function canSee(b: Loose, e: Loose): boolean {
+  if (e.hidden) return false; // story 021: a Free for All player buying at the start or a respawn cannot be seen
   const dx = e.x - b.x, dz = e.z - b.z, d = Math.hypot(dx, dz);
   if (d > tune.bot_view_range) return false;
   const fov = (b.alertT > 0 || b.target === e) ? Math.PI * 2 : tune.bot_fov_deg * Math.PI / 180;
@@ -197,7 +198,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       }
     }
   }
-  const t = b.target && b.target.alive ? b.target : null;
+  const t = b.target && b.target.alive && !b.target.hidden ? b.target : null;
   if (!t) b.target = null;
   const speed = botSpeed(b);
   // Cover: when hit, reloading with an enemy about, or low on health facing one, find the nearest cell (within
@@ -234,7 +235,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
   if (live && !b.defusing && !b.plantT) {
     let px = 0, pz = 0;
     for (const o of match.players) {
-      if (o === b || !o.alive || (hasHeights && Math.abs(o.st.y - b.st.y) > levelHeight() / 2)) continue; // one floor apart: no push
+      if (o === b || !o.alive || o.hidden || (hasHeights && Math.abs(o.st.y - b.st.y) > levelHeight() / 2)) continue; // one floor apart: no push
       const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
       if (d >= tune.bot_sep_dist) continue;
       const k = (tune.bot_sep_dist - d) / tune.bot_sep_dist;

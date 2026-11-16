@@ -8,7 +8,7 @@ import { startReload, finishReload, humanShoot, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { routeTo } from './plans';
 import { streakRight, streakWrong, useAbility, hunterTick, hunterSpeed } from './streak';
-import { respawn } from './ffa';
+import { respawn, openShop, syncHidden } from './ffa';
 import { closeCard, deskOf, feed, isFfa, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
 
 /**
@@ -218,10 +218,11 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   if (inp.shop) {
     if (d.card && d.card.kind === 'buy') closeCard(match, p);
     else if (d.menu) d.menu = false;
-    else if (isFfa(match)) tell(match, p, 'La tienda se abre cuando reapareces');
+    else if (isFfa(match)) openShop(match, p); // story 021: the shop opens at any time in Free for All, with no base to stand in
     else if (buy && inOwnBase(match, p)) { d.menu = true; personal(match, p, { type: 'unlock' }); }
     else tell(match, p, buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
   }
+  if (isFfa(match)) syncHidden(match, p); // the shop key may just have closed a hiding person's menu
   if (d.card && d.card.kind === 'defuse') {
     if (match.bomb.state !== 'planted') closeCard(match, p, true);
     else if (inp.usePress) closeCard(match, p);

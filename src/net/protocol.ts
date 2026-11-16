@@ -18,7 +18,10 @@ import { LEVELS, type Level } from '../game/types';
 // 12: the game mode (story 019): tsession, tstate's session and begin carry `mode` ('bomb' | 'ffa'), tinfo the `modes` list; a card's
 //     kind may be 'respawn' (Free for All: a dead student's question, judged by the server); bomb state code 5 is 'none' (no bomb);
 //     a Free for All `matchEnd` event carries `podium`, every player best first: { id, kills, deaths, right, wrong } (right and wrong -1 for a bot).
-export const PROTOCOL_VERSION = 12;
+// 13: Free for All hiding (story 021): the own row ends with `hidden` (1 while this student buys at the start or a respawn, invisible
+//     and untouchable; 0 otherwise); a player hidden from the receiver comes as a blank row: [id, 0, 0, 0, 0, 0, 0, 0, 0, kills, deaths, 0, 0?]
+//     (no position, aim, flags, gun or stance; x = z = 0 is inside the map's outer wall, so it is never a real position).
+export const PROTOCOL_VERSION = 13;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -123,6 +126,8 @@ export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'gold'] as const;
 export const STANCES = ['stand', 'crouch', 'prone'] as const;
 /** Snapshot scale: positions in centimetres, angles in milliradians, timers in hundredths of a second (all whole numbers). */
 export const SCALE = { pos: 100, ang: 1000, time: 100 } as const;
+/** True for a row the server blanked because that player is hidden from the receiver (protocol 13): no position and no flags. */
+export const isBlankRow = (r: PlayerRow): boolean => r[1] === 0 && r[2] === 0 && r[5] === 0;
 /** Player row flag bits: alive, a person plays it, moving, defusing, muzzle flash on, scoped, seen by an enemy in the last 1.5 s. */
 export const FLAG = { alive: 1, human: 2, moving: 4, defusing: 8, flash: 16, scoped: 32, spotted: 64 } as const;
 /**
@@ -133,10 +138,11 @@ export const FLAG = { alive: 1, human: 2, moving: 4, defusing: 8, flash: 16, sco
 export type PlayerRow = number[];
 /**
  * The receiving student's own player, private to them: [hp, armor, money, mag, reserve, reloadT, primary (-1 none),
- * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim, medkits, healT, streak, kept, hunterT] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
+ * prone (0/1), proneT, jumpY, vy, eye, recoil, cool, aim, medkits, healT, streak, kept, hunterT, hidden] (timers, heights and speeds scaled by SCALE.time / SCALE.pos);
  * aim (protocol 5) is 0 not aiming, 1 aiming with the current gun, 2 an aim ended that waits for the button to be let go;
  * medkits (protocol 6) is the count of bought medkits carried; healT (protocol 10), the seconds left of a medkit being used (SCALE.time);
- * streak (protocol 11) the right answers in a row, kept 1 while a Cazador is kept to use, hunterT the seconds left of a Cazador running (SCALE.time).
+ * streak (protocol 11) the right answers in a row, kept 1 while a Cazador is kept to use, hunterT the seconds left of a Cazador running (SCALE.time);
+ * hidden (protocol 13) 1 while the student is invisible and untouchable, buying at a Free for All start or respawn.
  */
 export type OwnRow = number[];
 /** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1), y?]; `y` (SCALE.pos), the bomb's height, only on a map with heights (protocol 4). */
@@ -358,7 +364,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
           friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
-        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 20)
+        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 21) && (raw.y[20] === 0 || raw.y[20] === 1)
         && Array.isArray(raw.d) && raw.d.length <= PICKUPS_MAX && raw.d.every(r => (isNums(r, 4) || isNums(r, 5)) && isInt(r[0]) && (r[1] === 0 || r[1] === 1))
         && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => (isNums(r, 12) || isNums(r, 13)) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
         && Array.isArray(raw.e) && raw.e.every(e => isObject(e) && isStr(e.type)) && (raw.m === 0 || raw.m === 1) && (raw.c === null || isCard(raw.c));

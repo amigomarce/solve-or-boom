@@ -1,0 +1,14 @@
+Reviewed-Content-Hash: data/config-notes.md d031fb5df7a41684fa0fec178458613147fa0418
+Reviewed-Content-Hash: src/main.ts 81b6cf11c3d6ac884b069463883066514fe12530
+Reviewed-Content-Hash: src/net/snapshot.ts ba3e8aca8a8d4cd9cf4ff902a47ed7213e4459fb
+Reviewed-Content-Hash: src/net/protocol.ts c737dac39627725cba225aa484c16e4862edd51a
+Reviewed-Content-Hash: src/net/mirror.ts fb512d9501dd82511cb76d7628f9af1f6594ee1d
+Reviewed-Content-Hash: src/server/room.ts 7d70dadef1e07d1aec87b355d545366d481f3158
+Reviewed-Content-Hash: src/server/profesor.html d8931636201a5726656ef4a5d51c2fd8bc0977f0
+Reviewed-Content-Hash: src/game/match.ts b49e1dccfff2471c1397702f58aaa0b97a7271e9
+Reviewed-Content-Hash: src/game/state.ts 782dc251b1e76248511523b145a0450bbe86d8b4
+Reviewed-Content-Hash: src/game/player.ts 0dccc0a81a96c478ab1dee937d888b3d1999a80a
+Reviewed-Content-Hash: src/game/ffa.ts 480b46b83c839db9a030fd22cef49a85b175cb72
+Reviewed-Content-Hash: src/game/seats.ts bf88fa6db0249ef7f8bded5bfdb81abd345076c3
+Reviewed-Content-Hash: src/game/combat.ts adb339c87dea0b2a843ed106c29125785d6ac184
+Reviewed-Content-Hash: src/game/bots.ts 86b7b7c6026d28a6103698bb3abb29b7263af70e

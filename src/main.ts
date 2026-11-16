@@ -123,10 +123,10 @@ function netStep(inp: PlayerInput): void {
   conn.sendInput(seq, inp);
   net.cool = Math.max(0, net.cool - STEP); me.flashT = Math.max(0, me.flashT - STEP);
   const a = me.ammo[me.cur];
-  if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
+  if (me.alive && !me.hidden && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
     && me.reloadT <= 0 && net.cool <= 0 && a && a.mag > 0) {
     a.mag--; net.cool = tune[me.cur + '_rate']; me.flashT = 0.05; SFX.shot(me.cur); // the snapshot puts the server's magazine back
-  } else if (me.alive && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
+  } else if (me.alive && !me.hidden && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
     && me.reloadT <= 0 && net.cool <= 0 && a && a.mag === 0 && a.res === 0) {
     net.cool = tune.melee_rate; swing[me.id] = tune.melee_time; SFX.swing(); // story 016: the strike's look only; the server judges the hit
   }
@@ -161,7 +161,7 @@ function joinClass(): void {
       if (gen !== aula.gen) return;
       // After a rematch the old match's last snapshot (its matchEnd) came first: the old copy, over, stays on the end screen.
       const old = net.mirror, ended = !!old && b.match !== net.matchNo && old.match.over;
-      useMap(b.map);
+      useMap(b.map, b.mode === 'ffa');
       net.mirror = createMirror(b); Object.assign(net, { matchNo: b.match, dressed: false, cool: 0 });
       models.forEach((m, i) => { m.group.visible = i !== b.seat; });
       if (!ended) {
@@ -398,6 +398,11 @@ const sky = ((): THREE.Mesh => {
 const BARREL_COL = [0xc2432f, 0x2f6fb3, 0xd9a82e, 0x4f8a45], BAG_COL = [0xc9b27a, 0xbfa76d, 0xd2bd88, 0xb59f66];
 // The map's meshes: built for the loaded map (src/game/map.ts, from data/maps/), thrown away for the next.
 let mapGroup: THREE.Group | null = null, floorTex: THREE.CanvasTexture | null = null, slabTex: THREE.CanvasTexture | null = null, builtFor = '';
+/** Story 021: true while the world is built for Free for All, with no bases, sites or gates (the map data keeps them; only the drawing leaves them out). */
+let worldFfa = false;
+/** The zone of cell i as the world is drawn: 0 everywhere in Free for All (no base or site paint, posts, flags or tinted walls). */
+const zoneOn = (i: number): number => (worldFfa ? 0 : zone[i]);
+const zone1On = (i: number): number => (worldFfa ? 0 : zone1[i]);
 const gates: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>[] = [];
 /**
  * Builds the 3D world of the loaded map (floor, walls, crates and props, site and base marks, gates), disposing the previous map's.
@@ -425,7 +430,7 @@ function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: num
         g.fillStyle = rgbCss(196 + v, 190 + v, 176 + v); g.fillRect(x * P, y * P + k * P / 2, P, P / 2);
         g.fillStyle = 'rgba(60,55,45,0.3)'; g.fillRect(x * P, y * P + k * P / 2, P, 2); g.fillRect(x * P + ((y * 2 + k) & 1) * P / 2, y * P + k * P / 2, 2, P / 2);
       }
-      if (zone1[i] >= 3) for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // a dashed red and white border where the site ends
+      if (zone1On(i) >= 3) for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // a dashed red and white border where the site ends
         const nx = x + dx, ny = y + dy;
         if (up(nx, ny) === 1 && zone1[idx(nx, ny)] === zone1[i]) continue;
         const ex = dx > 0 ? (x + 1) * P - 8 : x * P, ey = dy > 0 ? (y + 1) * P - 8 : y * P;
@@ -434,7 +439,7 @@ function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: num
       }
     }
     for (const [k, st] of Object.entries(SITE)) {
-      if (st.lv !== 1) continue;
+      if (st.lv !== 1 || worldFfa) continue;
       g.save(); g.translate((st.cx + 0.5) * P, (st.cy + 0.5) * P);
       g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineJoin = 'round'; g.strokeText(k, 0, 6);
@@ -501,11 +506,11 @@ function buildWorld(): void {
   floorTex = canvasTex(MW * 40, MH * 40, (g) => {
     const P = 40, tints: Record<number, number[]> = { 1: [240, 176, 122], 2: [150, 214, 204], 3: [212, 192, 150], 4: [212, 192, 150] };
     g.fillStyle = '#6f6350'; g.fillRect(0, 0, MW * P, MH * P);
-    const edge = (x: number, y: number, dx: number, dy: number): boolean => { const nx = x + dx, ny = y + dy; return isWall(nx, ny) || zone[idx(nx, ny)] !== zone[idx(x, y)]; };
+    const edge = (x: number, y: number, dx: number, dy: number): boolean => { const nx = x + dx, ny = y + dy; return isWall(nx, ny) || zoneOn(idx(nx, ny)) !== zoneOn(idx(x, y)); };
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       const i = idx(x, y);
       if (!grid[i]) continue;
-      const base = tints[zone[i]] ?? [222, 208, 172];
+      const base = tints[zoneOn(i)] ?? [222, 208, 172];
       for (let k = 0; k < 2; k++) { // two rows of slabs per cell, every other row shifted half a slab
         const row = y * 2 + k, sh = (row & 1) * P / 2, y0 = y * P + k * P / 2;
         for (const [a, b, sx] of sh ? [[0, sh, x - 1], [sh, P, x]] : [[0, P, x]]) {
@@ -517,15 +522,15 @@ function buildWorld(): void {
       }
       for (let s = 0; s < 14; s++) { g.fillStyle = hash3(x, y, 20 + s) > 0.5 ? 'rgba(70,55,35,0.22)' : 'rgba(255,250,235,0.3)'; g.fillRect(x * P + hash3(x, y, 40 + s) * P, y * P + hash3(x, y, 60 + s) * P, 2, 2); }
       if (hash3(x, y, 7) > 0.93) { g.strokeStyle = 'rgba(70,55,35,0.4)'; g.lineWidth = 1.5; g.beginPath(); const cx = x * P + hash3(x, y, 8) * P, cy = y * P + hash3(x, y, 9) * P; g.moveTo(cx, cy); g.lineTo(cx + 9, cy + 7); g.lineTo(cx + 6, cy + 17); g.stroke(); } // a hairline crack
-      const side = zone[i] === 1 ? SIDE_CSS.att : zone[i] === 2 ? SIDE_CSS.def : zone[i] >= 3 ? '#d2452f' : '';
+      const zi = zoneOn(i), side = zi === 1 ? SIDE_CSS.att : zi === 2 ? SIDE_CSS.def : zi >= 3 ? '#d2452f' : '';
       if (side) { // a painted border where the base or site ends: solid for a base, dashed red and white for a site
         for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) if (edge(x, y, dx, dy)) {
           const ex = dx === 0 ? x * P : (dx < 0 ? x * P : (x + 1) * P - 8), ey = dy === 0 ? y * P : (dy < 0 ? y * P : (y + 1) * P - 8);
           g.fillStyle = side; g.fillRect(ex, ey, dx === 0 ? P : 8, dy === 0 ? P : 8);
-          if (zone[i] >= 3) { g.fillStyle = '#ffffff'; for (let t = 0; t < P; t += 16) g.fillRect(dx === 0 ? x * P + t + 8 : ex, dy === 0 ? y * P : ey + t + 8, dx === 0 ? 8 : 8, dy === 0 ? 8 : 8); }
+          if (zi >= 3) { g.fillStyle = '#ffffff'; for (let t = 0; t < P; t += 16) g.fillRect(dx === 0 ? x * P + t + 8 : ex, dy === 0 ? y * P : ey + t + 8, dx === 0 ? 8 : 8, dy === 0 ? 8 : 8); }
         }
       }
-      if (isGate[i]) { // the doorway of a base: stripes in the side's colour
+      if (isGate[i] && !worldFfa) { // the doorway of a base: stripes in the side's colour
         g.fillStyle = isGate[i] === 1 ? SIDE_CSS.att : SIDE_CSS.def; for (let k = 0; k < 5; k++) { g.globalAlpha = 0.75; g.fillRect(x * P + k * 8, y * P, 4, P); g.globalAlpha = 1; }
       }
     }
@@ -537,7 +542,7 @@ function buildWorld(): void {
     }
     if (hasHeights) for (let i = 0; i < MW * MH; i++) if (grid1[i]) { g.fillStyle = 'rgba(30,22,14,0.3)'; g.fillRect((i % MW) * P, ((i / MW) | 0) * P, P, P); } // the ground under the first floor, shaded
     for (const [k, s] of Object.entries(SITE)) {
-      if (s.lv === 1) continue; // a first-floor site is painted on the slab (story 012)
+      if (s.lv === 1 || worldFfa) continue; // a first-floor site is painted on the slab (story 012); no letters in Free for All (story 021)
       g.save(); g.translate((s.cx + 0.5) * P, (s.cy + 0.5) * P);
       g.font = `bold ${P * 4.6}px Verdana, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineJoin = 'round'; g.strokeText(k, 0, 6);
@@ -596,8 +601,10 @@ function buildWorld(): void {
       }
     });
   };
-  mark('A', corners((x, y) => zone[idx(x, y)] === 3), 0xd2452f); mark('B', corners((x, y) => zone[idx(x, y)] === 4), 0xd2452f);
-  mark('att', corners((x, y) => zone[idx(x, y)] === 1), SIDE_HEX.att); mark('def', corners((x, y) => zone[idx(x, y)] === 2), SIDE_HEX.def);
+  if (!worldFfa) { // story 021: no site or base posts and flags in Free for All
+    mark('A', corners((x, y) => zone[idx(x, y)] === 3), 0xd2452f); mark('B', corners((x, y) => zone[idx(x, y)] === 4), 0xd2452f);
+    mark('att', corners((x, y) => zone[idx(x, y)] === 1), SIDE_HEX.att); mark('def', corners((x, y) => zone[idx(x, y)] === 2), SIDE_HEX.def);
+  }
   if (hasHeights) drawFirstFloor(put, bx); // story 012: the slab, its trim, rails, crates and the stairs
   for (const b of buckets.values()) { const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat); m.matrixAutoUpdate = false; group.add(m); b.geos.forEach(g => g.dispose()); }
   { // walls touching the floor, and the wooden crates (the rest of the crate cells are props), as instanced boxes
@@ -607,7 +614,7 @@ function buildWorld(): void {
       let near = false, side = 0;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const nx = x + dx, ny = y + dy;
-        if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) { near = true; const z = zone[idx(nx, ny)]; if (z === 1 || z === 2) side = z; }
+        if (nx >= 0 && ny >= 0 && nx < MW && ny < MH && grid[idx(nx, ny)]) { near = true; const z = zoneOn(idx(nx, ny)); if (z === 1 || z === 2) side = z; }
       }
       if (near) { wallCells.push([x, y]); sideNear.push(side); }
     }
@@ -630,19 +637,19 @@ function buildWorld(): void {
     crates.matrixAutoUpdate = false; group.add(crates);
   }
   gates.length = 0;
-  for (let i = 0; i < MW * MH; i++) if (isGate[i]) {
+  if (!worldFfa) for (let i = 0; i < MW * MH; i++) if (isGate[i]) { // story 021: no gates in Free for All
     const side = isGate[i] === 1 ? 'att' : 'def';
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(CELL, 3, CELL),
       new THREE.MeshBasicMaterial({ color: SIDE_HEX[side], transparent: true, opacity: 0.33, depthWrite: false }));
     mesh.position.set(center(i % MW), 1.5, center((i / MW) | 0)); group.add(mesh); gates.push(mesh);
   }
   const fog = world.fog as THREE.Fog; fog.near = MAP.view.fog[0]; fog.far = MAP.view.fog[1];
-  world.add(group); mapGroup = group; builtFor = MAP_ID;
+  world.add(group); mapGroup = group; builtFor = MAP_ID + (worldFfa ? ':ffa' : '');
 }
-/** Loads the map with this id (data/maps/) and builds its world, unless it is already up. */
-function useMap(id: string): void {
-  if (id === builtFor) return;
-  loadMap(id); buildWorld();
+/** Loads the map with this id (data/maps/) and builds its world, unless it is already up; `ffa` (story 021) builds it without bases, sites and gates. */
+function useMap(id: string, ffa = false): void {
+  if (id + (ffa ? ':ffa' : '') === builtFor) return;
+  loadMap(id); worldFfa = ffa; buildWorld();
 }
 
 // ---- Figures: three bot roles, each with its own outline, coloured by side ---------------
@@ -1094,7 +1101,7 @@ const LOG = new Set(['match', 'round', 'kill', 'plant', 'roundEnd', 'answer', 'b
 /** Mouse turning since the last step, in radians: the next step adds it to the aim. */
 let lookYaw = 0, lookPitch = 0;
 function startMatch(): void {
-  useMap(session.map);
+  useMap(session.map, session.mode === 'ffa');
   state = createMatch({
     // each match its own seed, so the first question changes; checks (?manual=1 or ?seed=) keep the fixed one
     seed: manual || params.get('seed') ? seedFrom(CONFIG.seed) : 1 + Math.floor(Math.random() * 2147483646), subject: session.subject, level: session.level, map: session.map,
@@ -1220,7 +1227,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
       if (act === 'ff') session.friendlyFire = !session.friendlyFire;
       if (act === 'streak') session.streakRewards = !session.streakRewards; // story 018
-      if (act === 'mode') session.mode = session.mode === 'bomb' ? 'ffa' : 'bomb'; // story 019
+      if (act === 'mode') { session.mode = session.mode === 'bomb' ? 'ffa' : 'bomb'; useMap(session.map, session.mode === 'ffa'); } // story 019; 021: the map behind shows the mode
       if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
@@ -1395,7 +1402,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
 const ctl = { sel: 0, capture: false, note: '', from: 'title' };
 /** Picks the session's map and shows it behind the session screen. */
 function pickMap(id: string): void {
-  session.map = id; useMap(id);
+  session.map = id; useMap(id, session.mode === 'ffa');
 }
 function toggleTopic(t: string): void {
   const list = session.topics[session.subject];
@@ -1422,6 +1429,8 @@ function placeModels() {
     const m = models[p.id];
     if (hitTint[p.id] > 0) { const on = state.t < hitTint[p.id] && state.t > hitTint[p.id] - 1; m.team.color.setHex(on ? 0xff2a1a : SIDE_HEX[sideOf(state, p)]); if (!on) hitTint[p.id] = 0; } // a hit flashes the model red for fx_hit_tint of match time (a new match's clock restarting ends it too)
     if (p === state.human) continue; // other students are drawn like bots
+    m.group.visible = !p.hidden; // story 021: a hidden player is not drawn (class mode: the server sent no position)
+    if (p.hidden) continue;
     const x = lerp(p.px, p.x, ALPHA), z = lerp(p.pz, p.z, ALPHA);
     const dist = m.ready ? Math.hypot(x - m.lx, z - m.lz) : 0; m.lx = x; m.lz = z; m.ready = true; // how far it moved since the last frame drives the walk
     m.group.position.set(x, p.st?.y ?? 0, z); m.group.rotation.set(0, p.yaw, 0); // at the feet height (story 011; 0 on a flat map)
@@ -1589,7 +1598,8 @@ function drawMinimap(x0: number, y0: number): void {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = idx(x, y);
     if (!grid[i]) continue;
-    ctx.fillStyle = grid[i] === 2 ? '#8a6a44' : zone[i] === 1 ? '#c98a50' : zone[i] === 2 ? '#5ea79e' : zone[i] >= 3 ? '#b49a6c' : '#cbbd9c';
+    const zi = isFfa(state) ? 0 : zone[i]; // story 021: no bases or sites on the Free for All minimap
+    ctx.fillStyle = grid[i] === 2 ? '#8a6a44' : zi === 1 ? '#c98a50' : zi === 2 ? '#5ea79e' : zi >= 3 ? '#b49a6c' : '#cbbd9c';
     if (hasHeights && rampAt(x, y)) ctx.fillStyle = '#e0b030'; // a stair, either level
     ctx.fillRect(x0 + px(x), y0 + px(y), px(x + 1) - px(x), px(y + 1) - px(y));
   }
@@ -1598,10 +1608,10 @@ function drawMinimap(x0: number, y0: number): void {
     const g1 = grid1[idx(x, y)];
     if (!g1) continue;
     const X = x0 + px(x), Y = y0 + px(y), w = px(x + 1) - px(x), h = px(y + 1) - px(y);
-    if (myLv === 1) { ctx.fillStyle = g1 === 2 ? '#8a6a44' : zone1[idx(x, y)] >= 3 ? '#b49a6c' : '#e8e2d2'; ctx.fillRect(X, Y, w, h); }
+    if (myLv === 1) { ctx.fillStyle = g1 === 2 ? '#8a6a44' : !isFfa(state) && zone1[idx(x, y)] >= 3 ? '#b49a6c' : '#e8e2d2'; ctx.fillRect(X, Y, w, h); }
     else { ctx.fillStyle = 'rgba(40,50,80,0.35)'; ctx.fillRect(X, Y, w, h); } // on the ground: the first floor overhead as a shade
   }
-  for (const S of ['A', 'B'] as const) {
+  if (!isFfa(state)) for (const S of ['A', 'B'] as const) { // story 021: no A and B in Free for All
     const st = SITE[S], other = hasHeights && st.lv !== myLv;
     if (other) ctx.globalAlpha = 0.5;
     text(other ? (st.lv > myLv ? S + '↑' : S + '↓') : S, x0 + (st.cx + 0.5) * k, y0 + (st.cy + 0.5) * k, 16, '#a3241a');
@@ -1616,7 +1626,7 @@ function drawMinimap(x0: number, y0: number): void {
     if (b.state !== 'carried' || sideOf(state, me) === 'att') { const X = x0 + b.x / CELL * k, Y = y0 + b.z / CELL * k; mark(b.state === 'carried' ? b.carrier?.st?.y : b.y, X, Y); drawBombIcon(X, Y, 12); ctx.globalAlpha = 1; }
   }
   for (const p of state.players) {
-    if (!p.alive) continue;
+    if (!p.alive || p.hidden) continue; // story 021: a hidden player has no dot
     const mine = p.squad === me.squad;
     // Story 018: while your Cazador runs every living enemy shows (the rows carry every player, at any distance), in hunter_color.
     const hunted = !mine && me.alive && me.hunterT > 0;
@@ -1641,7 +1651,7 @@ function drawHUD(paused?: boolean): void {
   if (state.boomT > 0 && 1.2 - state.boomT < tune.fx_boom_screen_time) { ctx.fillStyle = `rgba(255,220,160,${tune.fx_boom_screen_alpha * (1 - (1.2 - state.boomT) / tune.fx_boom_screen_time)})`; ctx.fillRect(0, 0, W, H); } // a short full-screen flash, so the fireball shows after it
   // teammates' names over their heads
   for (const q of state.players) {
-    if (q === p || !q.alive || q.squad !== p.squad || q === state.specP && !p.alive) continue;
+    if (q === p || !q.alive || q.hidden || q.squad !== p.squad || q === state.specP && !p.alive) continue;
     if (!losClear(camera.position.x, camera.position.z, q.x, q.z)) continue;
     const s = project(q.x, 2.25, q.z);
     if (!s || s.x < 0 || s.x > W || s.y < 0 || s.y > H) continue;
@@ -1875,6 +1885,11 @@ function drawShop() {
   });
   if (TOUCH) { text('Toca un objeto para elegirlo', x + 28, y + h - 22, 16, '#c8d2e6', 'left', 'normal'); button(x + w - 184, y + h - 42, 160, 38, 'Cerrar', 'closebuy', { size: 18 }); }
   else text(`1-${SHOP.length} o clic para elegir  |  ${keyName(bind.buy)} para cerrar`, x + w / 2, y + h - 22, 16, '#c8d2e6', 'center', 'normal');
+  if (isFfa(state)) { // story 021: whether the others can see and hurt you while you buy
+    const msg = p.hidden ? 'Eres invisible y nadie te puede dañar mientras compras' : 'Te pueden ver y dañar mientras compras';
+    rr(x + w / 2 - 260, y + h + 10, 520, 36, 10, 'rgba(14,19,30,0.85)', null);
+    text(msg, x + w / 2, y + h + 28, 17, p.hidden ? '#9ff08a' : '#ff9a8a', 'center');
+  }
 }
 /** Draws a right/wrong mark with canvas paths (never a font symbol): a check when ok, else a cross, centred on (x, y), s wide. */
 function drawVerdict(ok: boolean, x: number, y: number, s: number, c: string): void {

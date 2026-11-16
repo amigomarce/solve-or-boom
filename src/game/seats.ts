@@ -29,7 +29,7 @@ export function seatBot(match: Match, id: number): void {
   if (!p.human) return;
   closeDesk(match, p); // the student's open card closes: its question is their next draw if they come back
   if (match.bomb.defuser === p) match.bomb.defuser = null;
-  p.human = false; p.scoped = false;
+  p.human = false; p.scoped = false; p.hidden = false; p.hideT = 0; // story 021: a bot is never invisible
   if (!p.cur) p.cur = 'pistol';
   Object.assign(p, botFresh());
   Object.assign(p.st, freshStance());

@@ -169,7 +169,8 @@ function newPlayer(r: Loose, i: number, human: boolean): Loose {
   // `medkits` (story 016), the bought medkits carried, and `healT`, the seconds left of a medkit being used, are hidden for the same reason.
   // Story 018, hidden too: `streak`, right answers in a row; `kept`, a Cazador kept to use; `hunterT`, the seconds left of a Cazador running.
   const hid = (value: unknown): PropertyDescriptor => ({ value, enumerable: false, writable: true });
-  return Object.defineProperties(p, { st: hid(freshStance()), medkits: hid(0), healT: hid(0), streak: hid(0), kept: hid(false), hunterT: hid(0) });
+  // Story 021, hidden too: `hidden`, true while a Free for All player buys at the match's start or a respawn (invisible and untouchable), and `hideT`, the seconds it may last.
+  return Object.defineProperties(p, { st: hid(freshStance()), medkits: hid(0), healT: hid(0), streak: hid(0), kept: hid(false), hunterT: hid(0), hidden: hid(false), hideT: hid(0) });
 }
 /** Takes a player's primary gun, armour and medkits away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {

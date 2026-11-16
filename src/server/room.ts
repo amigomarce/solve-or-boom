@@ -5,6 +5,7 @@
 // stop (the pause screen, a hidden or minimised window) the player stands still where it is and can be shot, never
 // played by a bot, so stepping away is no shelter. Otherwise (no student, or a dropped connection held for rejoin) a
 // bot plays it with the single-player AI. Each student's inputs are queued and played one per step, in seq order.
+import { startShop } from '../game/ffa';
 import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, type MatchOptions, type PlayerInput } from '../game/match';
 import type { Loose } from '../game/types';
 import { MAP_ID, loadMap } from '../game/map';
@@ -116,7 +117,7 @@ function bindCounting(room: Room): void {
 /** A classroom match for this room's spec and seed, with the present students in their seats. */
 function roomMatch(spec: RoomSpec, seed: number, seats: Seat[]): Match {
   const match = createMatch({ ...spec.match, seed, humans: [], classroom: true });
-  for (const s of seats) if (s.kind === 'human' && s.present) seatHuman(match, s.index, s.name ?? '');
+  for (const s of seats) if (s.kind === 'human' && s.present) { seatHuman(match, s.index, s.name ?? ''); startShop(match, match.players[s.index]); } // story 021: Free for All starts each student in the shop, hidden
   return match;
 }
 

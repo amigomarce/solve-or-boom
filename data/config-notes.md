@@ -231,6 +231,6 @@ holds no comments. The values themselves are in `data/config.json`.
 - `ffa_wrong_wait` 4: seconds a wrong answer to the respawn question waits before another question (fixed, it does not grow like wrong_delay)
 - `ffa_bot_respawn` 6: seconds a dead bot waits before it comes back (no question)
 - `ffa_kill_money` 300 (kill_money in Bomba is 300): money per kill in Free for All; there is no round pay and no first-kill bonus
-- `ffa_spawn_dist` 30: metres a respawn point should be from every living enemy (one is drawn at random among those that far; when none is, the farthest); the points are the two bases and the bots' route, anchor and hold cells of the map
-- `ffa_buy_menu_time` 10: seconds the buy menu stays open after a respawn and at the start (a buy question open holds it; the player can close it before)
+- `ffa_spawn_dist` 30: metres a respawn point should be from every living enemy (one is drawn at random among those that far; when none is, the farthest); story 021: the points are every walkable cell of the whole map (the first floor too, ramps left out), at the start of the match and at each respawn
+- `ffa_buy_menu_time` 10: seconds the buy menu stays open after a respawn and at the start (a buy question open holds it; the player can close it before). Story 021: the same seconds are how long that person stays invisible and untouchable (a hard clock: an open question does not stretch it); a shop opened later with the buy key (B) or the touch button uses the same time to close by itself but hides nobody
 - `ffa_bot_skill` 0.5: the bots' skill ramp (0 = bot_acc_start/bot_react_start, 1 = the _end values) in Free for All, where there are no rounds to ramp over; the bot level's multipliers apply on top

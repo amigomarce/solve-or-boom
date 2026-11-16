@@ -42,8 +42,13 @@ export function eventsFor(match: Match, seat: number, events: Loose[], rangeM: n
   return out;
 }
 
-/** One player as everybody sees it (protocol PlayerRow; with the feet height last on a map with heights). */
-function playerRow(match: Match, p: Loose): number[] {
+/**
+ * One player as seat `viewer` sees it (protocol PlayerRow; with the feet height last on a map with heights). A player hidden
+ * from the viewer (story 021: buying at a Free for All start or respawn, and not the viewer) is a blank row with only the
+ * id and the kill table's counts, so a modified browser has nothing to show.
+ */
+function playerRow(match: Match, p: Loose, viewer: number): number[] {
+  if (p.hidden && p.id !== viewer) return [p.id, 0, 0, 0, 0, 0, 0, 0, 0, p.kills, p.deaths, 0, ...(hasHeights ? [0] : [])];
   const flags = (p.alive ? FLAG.alive : 0) | (p.human ? FLAG.human : 0) | (p.moving ? FLAG.moving : 0) | (p.defusing || match.bomb.defuser === p ? FLAG.defusing : 0)
     | (p.flashT > 0 ? FLAG.flash : 0) | (p.scoped ? FLAG.scoped : 0) | (match.t - p.spotT < 1.5 ? FLAG.spotted : 0);
   const row = [p.id, q(p.x, SCALE.pos), q(p.z, SCALE.pos), q(p.yaw, SCALE.ang), q(p.pitch, SCALE.ang), flags, Math.max(0, WEAPON_IDS.indexOf(p.cur)),
@@ -64,10 +69,10 @@ export function buildSnapshot(match: Match, seat: number, ack: number, tick: num
     v: PROTOCOL_VERSION, t: 'snap', k: tick, a: ack, ph: match.phase, pt: q(match.phaseT, T), rt: q(match.roundT, T),
     r: match.round, s: [...match.score], as: match.attSquad, g: match.gatesClosed ? 1 : 0, pl: q(match.plantT, T),
     b: [BOMB_STATES.indexOf(b.state), q(b.x, P), q(b.z, P), q(b.timer, T), b.carrier ? b.carrier.id : -1, b.site === 'A' ? 1 : b.site === 'B' ? 2 : 0, b.defuser ? b.defuser.id : -1, ...(hasHeights ? [q(b.y ?? 0, P)] : [])],
-    p: match.players.map(p => playerRow(match, p)),
+    p: match.players.map(p => playerRow(match, p, seat)),
     y: [Math.ceil(me.hp), Math.ceil(me.armor), me.money, a.mag, a.res, q(me.reloadT, T), WEAPON_IDS.indexOf(me.primary),
       st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T),
-      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1, me.medkits, q(me.healT, T), me.streak, me.kept ? 1 : 0, q(me.hunterT, T)], // protocol 11: the streak rewards
+      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1, me.medkits, q(me.healT, T), me.streak, me.kept ? 1 : 0, q(me.hunterT, T), me.hidden ? 1 : 0], // protocol 11: the streak rewards; 13: hidden
     // The dropped medkits and ammo (story 016): the same list for everybody, the height only where there are heights.
     d: match.pickups.map(k => [k.id, PICKUP_KINDS.indexOf(k.kind), q(k.x, P), q(k.z, P), ...(hasHeights ? [q(k.y, P)] : [])]),
     e: eventsFor(match, seat, events, rangeM),

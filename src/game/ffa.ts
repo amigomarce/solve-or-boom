@@ -6,20 +6,42 @@
 // spawn point far from the enemies, with the pistol and full health, and opens their buy menu; a wrong one gives
 // another question after tune.ffa_wrong_wait seconds. A bot respawns after tune.ffa_bot_respawn seconds, with no
 // question. Money comes from kills (tune.ffa_kill_money). No browser in here.
-import { MAP, MW, MH, center, levelY, mapState, hasHeights } from './map';
+import { MAP, MAP_ID, MW, MH, center, levelY, mapState, hasHeights, grid, grid1, rampDir, idx, canStepXY } from './map';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { botBuy } from './plans';
-import { botFresh, deskOf, freshStance, openCard, personal, resetGuns, say, tell, type Match } from './state';
+import { botFresh, deskOf, freshStance, isFfa, openCard, personal, resetGuns, say, tell, type Match } from './state';
 import { yawTo } from './rules';
 
-/** Cells a person or bot may come back at: the two bases and the walkable cells of every bot route, anchor and hold (map data). */
+/** Every cell a person or bot may start or come back on (story 021): each walkable floor cell of the whole map, the first floor too (as [cx, cy, level]), ramps left out; only cells a body can walk to from the bases (no closed-off pockets). Built once per map. */
+const pools = new Map<string, number[][]>();
 function spawnPool(): number[][] {
-  const out: number[][] = [...MAP.spawns.att, ...MAP.spawns.def];
-  for (const S of ['A', 'B'] as const) { const r = MAP.routes[S]; out.push(...r.lane, ...r.mid); }
-  out.push(...MAP.anchors.conn, MAP.anchors.mid, MAP.attack_hold);
+  const kept = pools.get(MAP_ID);
+  if (kept) return kept;
+  const start = MAP.spawns.att[0], seen = new Uint8Array(MW * MH * 2), q: number[] = [(start[1] * MW + start[0]) * 2 + (start[2] ?? 0)];
+  seen[q[0]] = 1;
+  const gates = mapState.gatesClosed; mapState.gatesClosed = false; // the walking graph with the gates open, as the match is played
+  for (let h = 0; h < q.length; h++) {
+    const k = q[h], l = k & 1, c = k >> 1, cx = c % MW, cy = (c - cx) / MW;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (let nl = 0; nl < 2; nl++) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!canStepXY(cx, cy, l, nx, ny, nl)) continue;
+      const nk = (ny * MW + nx) * 2 + nl;
+      if (!seen[nk]) { seen[nk] = 1; q.push(nk); }
+    }
+  }
+  mapState.gatesClosed = gates;
+  const out: number[][] = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const i = idx(x, y);
+    if (grid[i] === 1 && !rampDir[i] && seen[i * 2]) out.push([x, y, 0]);
+    if (hasHeights && grid1[i] === 1 && seen[i * 2 + 1]) out.push([x, y, 1]);
+  }
+  pools.set(MAP_ID, out);
   return out;
 }
+/** The cells a person or bot may start or come back on, for the checks (story 021). */
+export const spawnCells = (): number[][] => spawnPool();
 /** The spawn cell for `p`: a random one at least tune.ffa_spawn_dist metres from every living enemy; when none is that far, the farthest one. */
 export function pickSpawn(match: Match, p: Loose): number[] {
   const pool = spawnPool(), foes = match.players.filter(q => q !== p && q.alive);
@@ -34,39 +56,52 @@ function place(p: Loose, spot: number[]): void {
   p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]); p.st.y = levelY(spot[2] ?? 0);
   p.yaw = yawTo(center(MW / 2) - p.x, center(MH / 2) - p.z); p.pitch = 0; p.recoil = 0; p.scoped = false; p.st.aimGun = '';
   p.target = null; p.path = []; p.wps = []; p.arrived = false; p.defusing = false; p.plantT = 0; p.deadT = 0; p.alertT = 0;
-  p.reloadT = 0; p.cool = 0; p.lastSeenT = -99; p.healT = 0; p.moving = false;
+  p.reloadT = 0; p.cool = 0; p.lastSeenT = -99; p.healT = 0; p.moving = false; p.hidden = false; p.hideT = 0;
 }
 /**
  * The match's start: round 1 live at once (gates open, no buy phase), the clock set, no bomb, everybody their own
- * squad on a base spawn, and each person's buy menu open for tune.ffa_buy_menu_time seconds.
+ * squad on a spawn cell of the whole map (story 021: no bases), and each person's buy menu open for tune.ffa_buy_menu_time
+ * seconds, the person invisible and untouchable meanwhile.
  */
 export function startFfa(match: Match): void {
   match.round = 1; match.phase = 'live'; match.phaseT = 0; match.roundT = tune.ffa_duration;
   mapState.gatesClosed = match.gatesClosed = false; match.gateT = 0; match.banner = null; match.alert = null;
   Object.assign(match.bomb, { state: 'none', carrier: null, timer: 0, defuser: null, panicT: 0, beepT: 0 });
-  const bases = [...MAP.spawns.att, ...MAP.spawns.def];
-  match.players.forEach((p, i) => {
+  for (const p of match.players) p.alive = false; // not placed yet: pickSpawn counts only the living, so each one keeps its distance from those already placed
+  for (const p of match.players) {
     p.squad = p.id; Object.assign(p.st, freshStance());
-    place(p, bases[i % bases.length]);
-    if (p.human) openMenu(match, p);
-  });
+    place(p, pickSpawn(match, p));
+    if (p.human) openMenu(match, p, true);
+  }
   match.events.push({ type: 'round', round: 1, side: 'ffa' }); // the screen dresses the figures (one colour for all) and hides the gates
   say(match, `Free for All: gana quien tenga más bajas en ${Math.round(tune.ffa_duration / 60 * 10) / 10} min. Si caes, responde para volver`, 5);
 }
-/** Opens `p`'s buy menu for tune.ffa_buy_menu_time seconds (a respawn, or the start). */
-function openMenu(match: Match, p: Loose): void {
+/**
+ * Opens `p`'s buy menu for tune.ffa_buy_menu_time seconds. `hide` (the start, a respawn): the person is invisible and untouchable
+ * (p.hidden) until the menu is closed or that time runs out; a menu opened by the buy key during the match hides nobody.
+ */
+function openMenu(match: Match, p: Loose, hide: boolean): void {
   const d = deskOf(match, p);
   d.menu = true; d.menuT = tune.ffa_buy_menu_time; personal(match, p, { type: 'unlock' });
+  p.hidden = hide; p.hideT = hide ? tune.ffa_buy_menu_time : 0;
+}
+/** A classroom student seated as the match is made (src/server/room.ts) gets the start's buy menu, hidden, like the start gives a single player (story 021). */
+export function startShop(match: Match, p: Loose): void { if (isFfa(match) && p.human && p.alive) openMenu(match, p, true); }
+/** The shop opened with the buy key or the touch button while the match is live (story 021): visible and vulnerable, the same menu and timer. */
+export function openShop(match: Match, p: Loose): void { openMenu(match, p, false); }
+/** Ends `p`'s hiding when its menu is shut, its time is up, or it is no longer a living person: it appears, visible and vulnerable. */
+export function syncHidden(match: Match, p: Loose): void {
+  if (p.hidden && (!p.alive || !p.human || p.hideT <= 0 || !deskOf(match, p).menu)) { p.hidden = false; p.hideT = 0; }
 }
 /** Brings `p` back (a right respawn answer, or a bot's wait over): far from the enemies, full health, the pistol (taken at death); a person's buy menu opens, a bot buys with its money. */
 export function respawn(match: Match, p: Loose): void {
   Object.assign(p.st, freshStance());
   place(p, pickSpawn(match, p));
-  if (p.human) openMenu(match, p);
+  if (p.human) openMenu(match, p, true);
   else { Object.assign(p, botFresh()); botBuy(match, p); p.wps = [randomSpot(match)]; }
   match.events.push({ type: 'respawn', p: p.id });
 }
-/** A random cell of the spawn pool as a waypoint (with the level on a map with heights). */
+/** A random cell of the whole map as a waypoint (with the level on a map with heights). */
 export function randomSpot(match: Match): number[] {
   const c = spawnPool(), k = c[Math.floor(match.rng() * c.length)];
   return hasHeights ? [k[0], k[1], k[2] ?? 0] : [k[0], k[1]];
@@ -82,7 +117,10 @@ export function ffaTick(match: Match, dt: number): void {
     if (!p.alive) {
       if (!p.human) { if (p.deadT >= tune.ffa_bot_respawn) respawn(match, p); }
       else if (!d!.card) openCard(match, p, 'respawn');
-    } else if (d && d.menu && !d.card && (d.menuT -= dt) <= 0) { d.menu = false; tell(match, p, 'Se acabó el tiempo de compra', 2); }
+    } else if (d) {
+      if (p.hidden) { p.hideT -= dt; syncHidden(match, p); } // the hiding has its own clock: an open question cannot keep a person invisible
+      if (d.menu && !d.card && (d.menuT -= dt) <= 0) { d.menu = false; tell(match, p, 'Se acabó el tiempo de compra', 2); syncHidden(match, p); }
+    }
   }
   if (match.roundT <= 0) endFfa(match);
 }
@@ -95,6 +133,6 @@ export function endFfa(match: Match): void {
   match.gained = `${won ? '¡Ganaste!' : win.name + ' gana'} con ${win.kills} ${win.kills === 1 ? 'baja' : 'bajas'}`;
   if (p) { const total = p.right + p.wrong; match.answered = total ? `Respondiste bien ${p.right} de ${total} preguntas (${Math.round(100 * p.right / total)} %)` : 'No respondiste ninguna pregunta en esta partida'; }
   match.phase = 'post'; match.over = true;
-  for (const q of match.players) if (q.human) { const d = deskOf(match, q); d.menu = false; d.card = null; }
+  for (const q of match.players) if (q.human) { const d = deskOf(match, q); d.menu = false; d.card = null; q.hidden = false; q.hideT = 0; }
   match.events.push({ type: 'matchEnd', won, podium: match.podium });
 }
