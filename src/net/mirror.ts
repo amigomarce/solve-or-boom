@@ -11,7 +11,7 @@
 // player.ts); every snapshot says which input the server played last (`a`), and the client restarts from the
 // server's position and replays the inputs it sent after that. A small difference is blended out
 // (net_correct_blend per snapshot); one over net_snap_m metres is taken at once.
-import { blankMatch, feed, say, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
+import { blankMatch, feed, isFfa, say, setMode, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
 import { hasHeights, loadMap, MAP_ID, mapState, moveBody } from '../game/map';
 import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
@@ -51,6 +51,8 @@ export function createMirror(begin: BeginMessage): Mirror {
   match.classroom = true; match.opts.map = begin.map; match.opts.subject = begin.subject; match.opts.level = begin.level as Level;
   match.opts.friendlyFire = begin.friendlyFire; match.opts.buyTime = begin.buyTime; // the room's match options (story 017)
   match.opts.streakRewards = begin.streakRewards; // story 018
+  setMode(match, begin.mode); // story 019
+  if (begin.mode === 'ffa') { for (const p of match.players) p.squad = p.id; match.bomb.state = 'none'; } // everybody their own side, as the server has it
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
   return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };
@@ -116,7 +118,8 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   m.snaps.push(snap);
   while (m.snaps.length > 2 && m.snaps[1].k * STEP * 1000 < nowMs - m.base - tune.net_interp_ms - 1000) m.snaps.shift();
   if (m.snaps.length > 30) m.snaps.shift();
-  const newRound = snap.r !== match.round;
+  const wasDead = !me.alive;
+  const newRound0 = snap.r !== match.round;
   match.phase = snap.ph; match.phaseT = snap.pt / T; match.roundT = snap.rt / T; match.round = snap.r;
   match.score = snap.s; match.attSquad = snap.as; match.gatesClosed = snap.g === 1; match.plantT = snap.pl / T;
   match.t = Math.max(match.t, snap.k * STEP);
@@ -134,6 +137,8 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
     if (p === me) continue;
     p.moving = !!(r[5] & FLAG.moving); p.st.stance = STANCES[r[7]] ?? 'stand'; p.st.jumpY = r[8] / P; p.st.y = (r[12] ?? 0) / P;
   }
+  // Story 019: a Free for All respawn moves and turns the own player at once, like a new round.
+  const newRound = newRound0 || (wasDead && me.alive);
   // The own player's private values.
   const y = snap.y;
   me.hp = y[0]; me.armor = y[1]; me.money = y[2];
@@ -202,6 +207,7 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
     case 'defused': feed(match, 'La bomba fue desactivada', false); break;
     case 'round':
       match.banner = null; match.gateT = 0;
+      if (e.side === 'ffa') { say(match, 'Free for All: gana quien tenga más bajas. Si caes, responde para volver', 5); break; }
       say(match, e.side === 'att' ? `Ronda ${match.round}: ATAQUE. Planta la bomba en A o B` : `Ronda ${match.round}: DEFENSA. Evita que planten`, 5);
       break;
     case 'roundEnd': {
@@ -210,6 +216,13 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
       break;
     }
     case 'matchEnd': {
+      if (isFfa(match) && Array.isArray(e.podium)) { // story 019: the ranking, best first
+        match.podium = e.podium;
+        const w = (e.podium as { id: number; kills: number }[])[0], won = w.id === m.seat;
+        match.gained = `${won ? '¡Ganaste!' : match.players[w.id].name + ' gana'} con ${w.kills} ${w.kills === 1 ? 'baja' : 'bajas'}`;
+        match.answered = ''; match.over = true;
+        break;
+      }
       const s = match.score, mineWon = s[me.squad] > s[1 - me.squad];
       match.gained = `${mineWon ? 'Tu equipo gana' : 'Los rivales ganan'} ${s[me.squad]} - ${s[1 - me.squad]}`;
       match.answered = ''; // the answers per student are story 007

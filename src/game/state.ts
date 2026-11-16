@@ -47,7 +47,11 @@ export interface MatchOptions {
   botLevel?: BotLevel;
   /** Streak rewards (story 018): right answers in a row earn the Escudo, the Cazador and the Rifle dorado. Default true (absent = on). Read in src/game/streak.ts. */
   streakRewards?: boolean;
+  /** The game mode (story 019): 'bomb' (default, absent = bomb) or 'ffa', Free for All: everybody against everybody, no bomb, teams or rounds, one timed match. Read in src/game/ffa.ts and wherever a team or the bomb matters. */
+  mode?: GameMode;
 }
+/** The game modes of a match (story 019). */
+export type GameMode = 'bomb' | 'ffa';
 /** A bot level: multipliers on the bots' reaction and accuracy ramps, in data/config.json (bot_<level>_react_mult, bot_<level>_acc_mult). */
 export type BotLevel = 'facil' | 'normal' | 'dificil';
 
@@ -80,7 +84,7 @@ export interface Match {
   /** The match's seeded random numbers: every rules module draws from this, never from Math.random. */
   rng: () => number;
   /** The subject, level and map the match was built with. */
-  opts: { subject: string; level: Level; map: string; friendlyFire: boolean; buyTime: number; botLevel: BotLevel; streakRewards: boolean };
+  opts: { subject: string; level: Level; map: string; friendlyFire: boolean; buyTime: number; botLevel: BotLevel; streakRewards: boolean; mode: GameMode };
   /** True once the match is won: step() does nothing more. */
   over: boolean;
   /** What the dead dropped this round (story 016): taken by walking over, gone after pickup_life and at the round's start. */
@@ -187,9 +191,10 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
     bomb: { state: 'carried', carrier: null, x: 0, z: 0, timer: 0, defuser: null, panicT: 0, beepT: 0 },
     attackSite: 'A', alert: null, menu: false, card: null, deck: null, feed: [], msg: '', msgT: 0, banner: null,
     wrongStreak: 0, hurt: [], flashT: 0, hitT: 0, killT: 0, spec: 0, plantT: 0, boomT: 0, gateT: 0, gatesClosed: true, rtrT: 0, bombSeen: false,
-    events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '', friendlyFire: false, buyTime: tune.buy_time, botLevel: 'normal', streakRewards: true }, over: false,
+    events: [], me: null as unknown as Stance, rng: mulberry32(seed), opts: { subject: '', level: 'medio', map: '', friendlyFire: false, buyTime: tune.buy_time, botLevel: 'normal', streakRewards: true } as Match['opts'], over: false, // opts.mode is set hidden by setMode
     pickups: [], // made non-enumerable below
   };
+  setMode(match, 'bomb');
   Object.defineProperty(match, 'classroom', { value: false, enumerable: false, writable: true });
   Object.defineProperty(match, 'count', { value: null, enumerable: false, writable: true });
   match.human = humans.length ? match.players[humans[0]] : null;
@@ -200,19 +205,24 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
   Object.defineProperties(match, {
     pickups: { value: [], enumerable: false, writable: true }, nextPickupId: { value: 1, enumerable: false, writable: true },
     firstKill: { value: false, enumerable: false, writable: true },
+    menuT: { value: 0, enumerable: false, writable: true }, // story 019: the seconds the viewer's buy menu stays open after a respawn
   });
   match.players.forEach(resetGuns);
   return match;
 }
 
-/** 'att' or 'def': the side a player is on this half. */
-export const sideOf = (match: Match, p: Loose): string => (p.squad === match.attSquad ? 'att' : 'def');
+/** 'att' or 'def': the side a player is on this half ('ffa' for everybody in Free for All, which is neither). */
+export const sideOf = (match: Match, p: Loose): string => (isFfa(match) ? 'ffa' : p.squad === match.attSquad ? 'att' : 'def');
+/** Sets the game mode on a match's opts, hidden (not enumerable) so a Bomba match's serialised state, and its same-seed replay, is as before. */
+export function setMode(match: Match, mode: GameMode): void { Object.defineProperty(match.opts, 'mode', { value: mode, enumerable: false, writable: true }); }
+/** True in Free for All (story 019): every player is their own side (`p.squad` is the player's id), so everybody else is an enemy. */
+export const isFfa = (match: Match): boolean => match.opts.mode === 'ffa';
 /** A squad as the screens name it. */
 export const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
 /** True while `d` has the buy menu or a question card open: a match (its viewer's) or a deskOf(). */
 export const uiOpen = (d: Loose): boolean => !!(d.menu || d.card);
 /** How far the bots' skill has ramped, 0 to 1. */
-export const level = (match: Match): number => levelFor(match.round, tune.ramp_rounds);
+export const level = (match: Match): number => (isFfa(match) ? tune.ffa_bot_skill : levelFor(match.round, tune.ramp_rounds));
 /** Shows a HUD message for t seconds (match.msg, match.msgT). */
 export function say(match: Match, m: string, t = 3.5): void { match.msg = m; match.msgT = t; }
 /** Adds a line to the kill feed (the newest first, at most 5). */
@@ -248,7 +258,7 @@ export function questionLevel(match: Match, item?: string): Level | undefined {
  */
 export function deskOf(match: Match, p: Loose): Loose {
   if (p === match.human || !match.classroom) return match;
-  if (!p.desk) Object.defineProperty(p, 'desk', { value: { menu: false, card: null, wrongStreak: 0, deck: match.newDeck ? match.newDeck(p.id) : match.deck }, enumerable: false, writable: true });
+  if (!p.desk) Object.defineProperty(p, 'desk', { value: { menu: false, menuT: 0, card: null, wrongStreak: 0, deck: match.newDeck ? match.newDeck(p.id) : match.deck }, enumerable: false, writable: true });
   return p.desk;
 }
 /** Pushes an event for person `p`: in a classroom it carries `p` (the player id), so only that student's snapshot gets it. */
@@ -258,7 +268,7 @@ export function tell(match: Match, p: Loose, m: string, t = 3.5): void {
   if (p === match.human) say(match, m, t);
   else if (match.classroom) match.events.push({ type: 'say', p: p.id, text: m, t });
 }
-/** Opens a question card for `p` (kind 'buy' for an item, or 'defuse'), drawn from their deck; the screen frees the mouse for it. */
+/** Opens a question card for `p` (kind 'buy' for an item, 'defuse', or 'respawn' in Free for All), drawn from their deck; the screen frees the mouse for it. */
 export function openCard(match: Match, p: Loose, kind: string, item?: string): void {
   const level = questionLevel(match, item), d = deskOf(match, p);
   d.card = { kind, item, level, q: d.deck.next(level), picked: -1, wrongT: 0, wrongTotal: 0, okT: 0, anim: 0, got: 0 };
@@ -271,7 +281,7 @@ export function openCard(match: Match, p: Loose, kind: string, item?: string): v
  */
 export function closeCard(match: Match, p: Loose, force = false): void {
   const d = deskOf(match, p), c = d.card;
-  if (!c || (c.okT > 0 && !force)) return;
+  if (!c || (c.okT > 0 && !force) || (c.kind === 'respawn' && !force)) return; // a dead person's respawn question cannot be dismissed (story 019)
   if (c.okT <= 0 && c.wrongT <= 0) d.deck.putBack(c.q);
   d.card = null;
 }

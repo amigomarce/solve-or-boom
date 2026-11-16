@@ -16,7 +16,7 @@ import { LEVELS, type Level } from '../game/types';
 import { parseCSV, decodeCSV, type ParsedQuestion } from '../game/csv';
 import * as QUESTIONS from '../questions';
 import { CONFIG, tune } from '../game/tune';
-import { PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
+import { PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type GameModeId, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
 import { rebuildMatch, type Room } from './room';
 import type { Rooms } from './rooms';
 import type { Lobby } from './lobby';
@@ -44,14 +44,14 @@ export interface Teacher {
  */
 export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   const session = { subject: 'matematicas', level: 'medio' as Level, topics: ['arith', 'mult'], map: MAP_IDS[0], custom: [] as ParsedQuestion[], customName: '', skipped: 0,
-    friendlyFire: false, buyTime: Number(tune.buy_time), streakRewards: true };
+    friendlyFire: false, buyTime: Number(tune.buy_time), streakRewards: true, mode: 'bomb' as GameModeId };
   const buyRange = CONFIG.buy_time as { min: number; max: number; step: number };
   const v = PROTOCOL_VERSION;
   const err = (code: string, text: string): TeacherReply => ({ v, t: 'terror', code, text });
   const matchChoices = () => ({
     subject: session.subject, level: session.level, topics: session.subject === QUESTIONS.CUSTOM ? [] : [...session.topics],
     custom: session.custom, customName: session.customName, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
-    streakRewards: session.streakRewards,
+    streakRewards: session.streakRewards, mode: session.mode,
   });
   const seed = (): number => (Math.random() * 2 ** 31) >>> 0;
   const make = (): Room | null => (deps.rooms.all().length >= lim.maxRooms ? null
@@ -86,6 +86,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
+      modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }],
     }),
     state() {
       const students = deps.lobby.list();
@@ -100,7 +101,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       });
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
-        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards,
+        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards, mode: session.mode,
           csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
           available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
         results: deps.results.view(),
@@ -115,7 +116,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const topics = [...new Set(msg.topics)];
           if (!MAP_IDS.includes(msg.map)) return err('mapa', 'Ese mapa no existe.');
           if (msg.buyTime < buyRange.min || msg.buyTime > buyRange.max) return err('compra', `El tiempo de compra va de ${buyRange.min} a ${buyRange.max} segundos.`);
-          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards };
+          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards, mode: msg.mode };
           if (msg.subject === QUESTIONS.CUSTOM) {
             if (!session.custom.length) return err('sin_csv', 'Primero sube un archivo CSV de preguntas.');
             Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map, ...options });

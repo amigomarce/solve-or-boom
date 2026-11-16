@@ -19,7 +19,7 @@ import {
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
-  createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say,
+  createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say, isFfa, type GameMode,
   ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
@@ -90,7 +90,8 @@ function showClassResults(): void {
   const m = net.mirror?.match;
   if (m) {
     state = m;
-    if (!m.over) {
+    if (!m.over && isFfa(m)) Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Terminaste con ${m.human.kills} bajas y ${m.human.deaths} muertes` }); // story 019: no podium yet
+    else if (!m.over) {
       const mine = m.human.squad;
       Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Marcador final: tu equipo ${m.score[mine]} - ${m.score[1 - mine]} rivales` });
     }
@@ -317,8 +318,8 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D, w: 
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d') as CanvasRenderingContext2D, w, h);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
-const SIDE_HEX: Record<string, number> = { att: 0xf08a24, def: 0x1fb3a6 };
-const SIDE_CSS: Record<string, string> = { att: '#f39436', def: '#2cc4b6' };
+const SIDE_HEX: Record<string, number> = { att: 0xf08a24, def: 0x1fb3a6, ffa: 0xc04ad8 }; // ffa: Free for All, one colour for everybody (story 019)
+const SIDE_CSS: Record<string, string> = { att: '#f39436', def: '#2cc4b6', ffa: '#d46ae8' };
 
 /** Deterministic noise in 0..1 from three integers: the scenery must look the same on every run and every machine. */
 const hash3 = (x: number, y: number, s: number): number => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
@@ -1020,6 +1021,8 @@ const session = {
   buyTime: Number(tune.buy_time), friendlyFire: false, botLevel: 'normal' as BotLevel,
   /** Streak rewards (story 018), on by default; passed to createMatch as streakRewards. */
   streakRewards: true,
+  /** The game mode (story 019): 'bomb' (Bomba, the default) or 'ffa' (Free for All); passed to createMatch as mode. */
+  mode: 'bomb' as GameMode,
   /** Rows the last CSV upload skipped. */
   skipped: 0,
   /** Questions available for the current subject, topics and level (after the level fallback); null = generated. */
@@ -1042,7 +1045,7 @@ function startMatch(): void {
     // each match its own seed, so the first question changes; checks (?manual=1 or ?seed=) keep the fixed one
     seed: manual || params.get('seed') ? seedFrom(CONFIG.seed) : 1 + Math.floor(Math.random() * 2147483646), subject: session.subject, level: session.level, map: session.map,
     topics: session.subject === QUESTIONS.CUSTOM ? [] : session.topics[session.subject], custom: session.custom, customName: session.customName,
-    friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel, streakRewards: session.streakRewards,
+    friendlyFire: session.friendlyFire, buyTime: session.buyTime, botLevel: session.botLevel, streakRewards: session.streakRewards, mode: session.mode,
   });
   playEvents();
 }
@@ -1122,7 +1125,7 @@ function playEvents(list: Loose[] = state.events): void {
       case 'roundEnd': (e.win === state.human.squad ? SFX.win : SFX.lose)(); break;
       case 'round':
         for (const p of state.players) { models[p.id].team.color.setHex(SIDE_HEX[sideOf(state, p)]); models[p.id].group.rotation.set(0, p.yaw, 0); hitTint[p.id] = 0; }
-        for (const gm of gates) { gm.position.y = 1.5; gm.visible = true; }
+        for (const gm of gates) { gm.position.y = 1.5; gm.visible = state.gatesClosed; } // open from the start in Free for All (story 019)
         break;
       case 'unlock': if (locked) document.exitPointerLock(); break;
       case 'matchEnd': scene = 'results'; if (locked) document.exitPointerLock(); break;
@@ -1163,6 +1166,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
       if (act === 'ff') session.friendlyFire = !session.friendlyFire;
       if (act === 'streak') session.streakRewards = !session.streakRewards; // story 018
+      if (act === 'mode') session.mode = session.mode === 'bomb' ? 'ffa' : 'bomb'; // story 019
       if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
@@ -1610,6 +1614,14 @@ function drawHUD(paused?: boolean): void {
   drawStreak(p);
   // score and timer, top centre
   const theirSide = mySide === 'att' ? 'def' : 'att';
+  if (isFfa(state)) { // story 019: the clock, your kills and your place
+    const place = 1 + state.players.filter(q => q !== p && (q.kills > p.kills || (q.kills === p.kills && q.deaths < p.deaths))).length;
+    rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
+    text(`${p.kills}`, W / 2 - 110, 40, 30, '#fff'); text(p.kills === 1 ? 'baja' : 'bajas', W / 2 - 110, 64, 13, '#c8d2e6', 'center', 'normal');
+    text(`${place}º`, W / 2 + 110, 40, 30, place === 1 ? '#ffd06a' : '#fff'); text(`de ${state.players.length}`, W / 2 + 110, 64, 13, '#c8d2e6', 'center', 'normal');
+    text(fmtTime(state.roundT), W / 2, 36, 28, state.roundT < 30 ? '#ff9a7a' : '#ffffff');
+    text('FREE FOR ALL', W / 2, 62, 14, SIDE_CSS.ffa);
+  } else {
   rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
   text(`${state.score[p.squad]}`, W / 2 - 90, 44, 38, SIDE_CSS[mySide]);
   text(`${state.score[1 - p.squad]}`, W / 2 + 90, 44, 38, SIDE_CSS[theirSide]);
@@ -1618,6 +1630,7 @@ function drawHUD(paused?: boolean): void {
   if (b.state === 'planted') { drawBombIcon(W / 2 - 34, 36, 24); text(fmtTime(b.timer), W / 2 + 14, 36, 28, b.panicT > 0 ? '#ff5a4a' : '#ff9a7a'); }
   else text(state.phase === 'buy' ? fmtTime(state.phaseT) : fmtTime(state.roundT), W / 2, 36, 28, state.phase === 'buy' ? '#ffe28a' : '#ffffff');
   text(state.phase === 'buy' ? 'TIEMPO DE COMPRA' : `Ronda ${state.round}  |  Primero a ${tune.rounds_to_win}`, W / 2, 62, 14, '#c8d2e6');
+  }
   // kill feed
   state.feed.forEach((f, i) => {
     ctx.font = `bold 16px ${FONT}`; const w = ctx.measureText(f.s).width + 24;
@@ -1674,11 +1687,12 @@ function drawHUD(paused?: boolean): void {
       if (state.me.proneT > 0) rr(74, H - 101, 104 * (1 - state.me.proneT / tune.prone_time), 4, 2, '#ffd06a', null);
     }
     if (b.carrier === p) { rr(W - 290, H - 142, 160, 48, 10, 'rgba(15,20,32,0.78)', null); drawBombIcon(W - 256, H - 118, 30); text('Bomba', W - 182, H - 118, 18, '#ffd06a'); }
-  } else {
+  } else if (!(isFfa(state) && state.card)) { // story 019: the respawn card says it all
     const sp = state.specP;
     rr(W / 2 - 280, H - 92, 560, 64, 12, 'rgba(15,20,32,0.78)', null);
     text('Has caído', W / 2, H - 74, 20, '#ff8a7a');
-    text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. ${TOUCH ? 'Toca la pantalla para ver al siguiente' : 'Clic o Espacio para el siguiente'}` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
+    if (isFfa(state)) text('Responde bien la pregunta para volver a la partida', W / 2, H - 46, 16, '#fff'); // story 019
+    else text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. ${TOUCH ? 'Toca la pantalla para ver al siguiente' : 'Clic o Espacio para el siguiente'}` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
   }
   // the one hint that matters now
   let hint = '';
@@ -1774,11 +1788,14 @@ function drawScores(): void {
   const me = state.human, x = W / 2 - 330, y = 110, w = 660;
   rr(x, y, w, 120 + 8 * 40, 16, 'rgba(14,19,30,0.92)', '#ffd06a', 3);
   text('MARCADOR', x + 28, y + 36, 28, '#ffd06a', 'left');
+  const ffa = isFfa(state); // story 019: one list, best first, numbered
+  if (ffa) text(`Free for All  |  ${fmtTime(state.roundT)}`, x + w - 28, y + 36, 18, SIDE_CSS.ffa, 'right');
   text('Bajas', x + w - 170, y + 74, 17, '#c8d2e6'); text('Muertes', x + w - 70, y + 74, 17, '#c8d2e6');
   scoreRows.length = 0; for (const q of state.players) scoreRows.push(q);
-  const rows = scoreRows.sort((a, b) => (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1) || b.kills - a.kills || a.deaths - b.deaths);
+  const rows = scoreRows.sort((a, b) => (ffa ? 0 : (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1)) || b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
   rows.forEach((q, i) => {
-    const ry = y + 96 + i * 40 + (q.squad === me.squad ? 0 : 12);
+    const ry = y + 96 + i * 40 + (ffa || q.squad === me.squad ? 0 : 12);
+    if (ffa) text(`${i + 1}`, x + 20, ry + 17, 16, i === 0 ? '#ffd06a' : '#aab4c8', 'center');
     if (q === me) rr(x + 16, ry - 2, w - 32, 36, 8, 'rgba(255,208,106,0.16)', null);
     rr(x + 28, ry + 8, 18, 18, 4, SIDE_CSS[sideOf(state, q)], null);
     text(q.human ? q.name : `${q.name} (${ROLE_NAME[q.role]})`, x + 60, ry + 17, 20, q.alive ? '#fff' : '#7d8799', 'left');
@@ -1817,12 +1834,12 @@ function drawCard() {
   const c = state.card, q = c.q;
   const shake = c.wrongT > 0 ? Math.sin(c.wrongT * 60) * 10 * (c.wrongT / c.wrongTotal) : 0;
   const w = 820, h = 352, x = W / 2 - w / 2 + shake, y = H - h - 100 + (1 - c.anim) * 300;
-  const defuse = c.kind === 'defuse', it = SHOP.find(s => s.id === c.item);
-  const edge = c.okT > 0 ? '#7fe07a' : c.wrongT > 0 ? '#ff5a4a' : defuse ? '#ff7a5a' : '#ffd06a';
+  const defuse = c.kind === 'defuse', back = c.kind === 'respawn', it = SHOP.find(s => s.id === c.item);
+  const edge = c.okT > 0 ? '#7fe07a' : c.wrongT > 0 ? '#ff5a4a' : defuse ? '#ff7a5a' : back ? SIDE_CSS.ffa : '#ffd06a';
   rr(x, y, w, h, 18, 'rgba(250,248,240,0.97)', edge, 6);
   // The header: what the card is for; on a defuse it carries the bomb timer, so the card never hides it.
-  const head = defuse || !it ? `DESACTIVAR LA BOMBA  |  ${fmtTime(state.bomb.timer)}` : `COMPRAR ${it.name.toUpperCase()}  |  $${tune[it.price]}`;
-  rr(x + 18, y + 16, w - 36, 42, 10, defuse ? '#b8321f' : '#26324a', null);
+  const head = back ? `VOLVER A LA PARTIDA  |  ${fmtTime(state.roundT)}` : defuse || !it ? `DESACTIVAR LA BOMBA  |  ${fmtTime(state.bomb.timer)}` : `COMPRAR ${it.name.toUpperCase()}  |  $${tune[it.price]}`;
+  rr(x + 18, y + 16, w - 36, 42, 10, defuse ? '#b8321f' : back ? '#7a2a8c' : '#26324a', null);
   text(head, x + 36, y + 37, 22, '#fff', 'left');
   ctx.font = `bold 22px ${FONT}`;
   const tag = c.level ? `${q.topic}  ·  ${QUESTIONS.LEVEL_NAMES[c.level as Level]}` : q.topic;
@@ -1851,7 +1868,7 @@ function drawCard() {
   });
   const fy = y + h - 20;
   if (c.wrongT > 0 || c.okT > 0) { // the verdict in words and a drawn mark, never colour alone
-    const ok = c.okT > 0, msg = ok ? '¡Correcto!' : 'Incorrecto: ahora viene otra pregunta…', col = ok ? '#24702a' : '#b8321f';
+    const ok = c.okT > 0, msg = ok ? (back ? '¡Correcto! Vuelves a la partida' : '¡Correcto!') : back ? `Incorrecto: otra pregunta en ${Math.ceil(c.wrongT)} s…` : 'Incorrecto: ahora viene otra pregunta…', col = ok ? '#24702a' : '#b8321f';
     ctx.font = `bold 18px ${FONT}`;
     const sx = W / 2 + shake - (ctx.measureText(msg).width + 30) / 2;
     drawVerdict(ok, sx + 10, fy, 20, col);
@@ -1859,7 +1876,8 @@ function drawCard() {
   } else {
     const hint = defuse ? `1-4 o clic para responder  |  ${keyName(bind.use)} para alejarte${tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`
       : `1-4 o clic para responder  |  ${keyName(bind.buy)} para cancelar`;
-    if (TOUCH) { // no keys: a button closes the card (cancel a purchase, step away from the bomb)
+    if (back) text(TOUCH ? 'Toca la respuesta correcta para volver a la partida' : '1-4 o clic: responde bien para volver a la partida', W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal'); // story 019: it cannot be closed
+    else if (TOUCH) { // no keys: a button closes the card (cancel a purchase, step away from the bomb)
       text(`Toca una respuesta${defuse && tune.defuse_answers > 1 ? `  |  ${c.got}/${tune.defuse_answers} correctas` : ''}`, x + 36, fy, 16, '#3a465e', 'left', 'normal');
       button(x + w - 196, fy - 19, 172, 36, defuse ? 'Alejarte' : 'Cancelar', 'closecard', { size: 18 });
     } else text(hint, W / 2 + shake, fy, 16, '#3a465e', 'center', 'normal');
@@ -2098,24 +2116,33 @@ function drawTitle() {
     text(`${m.width * CELL} x ${m.height * CELL} m`, bx + bw / 2, 656, 15, on ? '#1b2232' : '#c8d2e6', 'center', 'normal');
   });
   // start
-  button(820, 612, 420, 60, TOUCH ? 'Empezar partida' : 'Empezar partida (Enter)', 'start', { size: 26, fill: '#e07a1c', stroke: '#7a3a08' });
+  // Story 019: the game mode beside the start button (the options row above is full).
+  button(820, 612, 196, 60, '', 'mode', lit(session.mode === 'ffa'));
+  text('Modo de juego', 918, 630, 14, session.mode === 'ffa' ? '#1b2232' : '#c8d2e6', 'center', 'normal');
+  text(session.mode === 'ffa' ? 'Free for All' : 'Bomba', 918, 654, 22, session.mode === 'ffa' ? '#1b2232' : '#fff');
+  button(1026, 612, 214, 60, '', 'start', { fill: '#e07a1c', stroke: '#7a3a08' });
+  text('Empezar partida', 1133, TOUCH ? 642 : 634, 24, '#fff');
+  if (!TOUCH) text('Enter', 1133, 659, 14, '#ffe2c4', 'center', 'normal');
   const move = [bind.forward, bind.left, bind.back, bind.right].map(keyName), k = (id: string): string => keyName(bind[id]);
   const line = TOUCH ? 'Palanca mover  |  Arrastrar a la derecha girar  |  Fuego, Apuntar, Saltar, Tumbarse, Agacharse, De pie, Recargar, Arma, Comprar, Botiquín y Bomba: botones  |  Tabla: marcador  |  Pausa: botón de arriba'
     : `${move.every(m => m.length === 1) ? move.join('') : move.join('/')} mover  |  Ratón girar  |  ${bind.shoot === 'Mouse0' ? 'Clic' : 'Clic o ' + k('shoot')} disparar  |  ${k('aim')} apuntar con el arma  |  ${k('reload')} recargar  |  ${k('buy')} comprar  |  1-4 responder  |  ${k('use')} plantar o desactivar  |  ${k('medkit')} botiquín  |  ${k('scores')} marcador  |  ${k('pause')} pausa  |  ${k('mute')} silencio`;
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 694, ls, '#e4e9f4', 'center', 'normal');
-  text(`Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 713, 14, '#aab4c8', 'center', 'normal');
+  text(session.mode === 'ffa' ? `Free for All: tú contra 7 bots, todos contra todos y sin bomba. Gana quien tenga más bajas en ${Math.round(tune.ffa_duration / 6) / 10} min; si caes, responde para volver.`
+    : `Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 713, 14, '#aab4c8', 'center', 'normal');
 }
 function drawResults() {
   buttons.length = 0;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(12,16,28,0.75)'; ctx.fillRect(0, 0, W, H);
-  const mine = state.human.squad, won = state.score[mine] > state.score[1 - mine];
+  const mine = state.human.squad, ffa = isFfa(state) && Array.isArray(state.podium);
+  const won = ffa ? state.podium[0].id === state.human.id : state.score[mine] > state.score[1 - mine];
   text(state.gained, W / 2, 80, 48, won ? '#9ff08a' : '#ff9a8a');
-  text(state.answered || (CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
+  const place = ffa ? 1 + state.podium.findIndex((r: { id: number }) => r.id === state.human.id) : 0; // story 019
+  text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
-  if (CLASS_MODE) drawClassResults(); else drawSoloTable();
+  if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else drawSoloTable();
   const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
 }
@@ -2131,6 +2158,33 @@ function drawSoloTable() {
     if (you) rr(276, y - 16, 728, 32, 8, 'rgba(255,208,106,0.18)', null);
     const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad === mine ? 0 : 1), p.kills, p.deaths, p.right, p.wrong];
     vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
+  });
+}
+/**
+ * Free for All's end (story 019): the podium (the first three on steps, gold, silver and bronze) and below it every
+ * player in order with kills, deaths and, for people, their questions right and wrong. `x`, `w`: the panel's place;
+ * `rows`: the standing (the server's podium, or one made from the kills when the teacher ended the match first).
+ */
+function drawPodium(x: number, w: number, rows = state.podium as { id: number; kills: number; deaths: number; right: number; wrong: number }[]): void {
+  rr(x, 196, w, 380, 14, 'rgba(14,19,30,0.92)', null);
+  text('Podio', x + 24, 222, 22, '#ffd06a', 'left');
+  const cx = x + w / 2, sw = Math.min(150, (w - 60) / 3), medal = ['#ffd06a', '#d8dee8', '#d89a5a'];
+  const steps = [[1, cx - sw - 6, 54], [0, cx, 76], [2, cx + sw + 6, 38]] as const; // second, first, third
+  for (const [rank, sx, sh] of steps) {
+    const r = rows[rank]; if (!r) continue;
+    const q = state.players[r.id], base = 352, you = q === state.human;
+    rr(sx - sw / 2, base - sh, sw, sh, 8, medal[rank], null);
+    text(`${rank + 1}º`, sx, base - sh / 2, 26, '#1b2232');
+    text(clip(q.name, sw - 6, 17, you ? 'bold' : 'normal'), sx, base - sh - 42, 17, you ? '#ffe7a8' : '#fff', 'center', you ? 'bold' : 'normal');
+    text(`${r.kills} ${r.kills === 1 ? 'baja' : 'bajas'} · ${r.deaths} ${r.deaths === 1 ? 'muerte' : 'muertes'}`, sx, base - sh - 22, 13, '#c8d2e6', 'center', 'normal');
+  }
+  const cols: [string, number, CanvasTextAlign][] = [['', x + 30, 'center'], ['Jugador', x + 48, 'left'], ['Bajas', x + w - 250, 'center'], ['Muertes', x + w - 175, 'center'], ['Bien', x + w - 100, 'center'], ['Mal', x + w - 40, 'center']];
+  cols.forEach(([n, cx2, a]) => text(n, cx2, 376, 14, '#ffd06a', a));
+  rows.forEach((r, i) => {
+    const y = 398 + i * 22, q = state.players[r.id], you = q === state.human;
+    if (you) rr(x + 14, y - 10, w - 28, 20, 6, 'rgba(255,208,106,0.18)', null);
+    const vals = [`${i + 1}`, clip(q.name, w - 330, 15, you ? 'bold' : 'normal'), r.kills, r.deaths, r.right < 0 ? '—' : r.right, r.wrong < 0 ? '—' : r.wrong];
+    vals.forEach((v, k) => text(String(v), cols[k][1], y, 15, k === 4 && r.right >= 0 ? '#9ff08a' : k === 5 && r.wrong >= 0 ? '#ff9a8a' : '#fff', cols[k][2], k === 1 && you ? 'bold' : 'normal'));
   });
 }
 /** The most topic rows the class results panel draws; past it the last row says how many more there are. */
@@ -2162,6 +2216,12 @@ function drawClassResults() {
       text(String(t.wrong), 590, y, 16, '#ff9a8a', 'center');
     });
     if (shown < r.topics.length) text(`y ${r.topics.length - shown} temas más`, 84, 352 + shown * 26, 16, '#aab4c8', 'left', 'normal');
+  }
+  if (isFfa(state) && Array.isArray(state.podium)) { drawPodium(660, 560); return; }
+  if (isFfa(state)) { // story 019: the teacher ended it before the clock, so there is no podium from the server: the standing by kills, then fewer deaths
+    const rows = [...state.players].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id)
+      .map(p => ({ id: p.id, kills: p.kills, deaths: p.deaths, right: -1, wrong: -1 }));
+    drawPodium(660, 560, rows); return;
   }
   const mine = state.human.squad;
   rr(660, 196, 560, 380, 14, 'rgba(14,19,30,0.92)', null);

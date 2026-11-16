@@ -106,6 +106,9 @@
       <h3>Mapa</h3>
       <div id="maps" class="chips"></div>
       <h3>Partida</h3>
+      <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas y al caer se responde para volver)</div>
+      <div id="mode" class="chips"></div>
+      <div class="hint" style="margin:8px 0 4px">Tiempo de compra</div>
       <div class="hint" style="margin-bottom:4px">Tiempo de compra</div>
       <div id="buytime" class="stepper"></div>
       <div class="hint" style="margin:8px 0 4px">Fuego amigo (los disparos dañan a los compañeros)</div>
@@ -143,7 +146,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 11;
+const V = 12;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -173,7 +176,7 @@ function connect() {
     else if (m.t === 'terror') say(m.text);
     else if (m.t === 'texported') download(m);
     // A refused choice leaves the server's session as it was: rebuild the session panel so it shows that again.
-    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps', 'buytime', 'ff', 'streak']) delete last[k]; if (st && info) render(); }
+    if (m.t === 'terror' || m.t === 'tcsvok') { for (const k of ['subjects', 'levels', 'topics', 'maps', 'buytime', 'ff', 'streak', 'mode']) delete last[k]; if (st && info) render(); }
   };
   ws.onclose = () => {
     $('conn').textContent = 'Sin conexión · reconectando…'; $('conn').className = 'off';
@@ -192,7 +195,7 @@ function put(id, html) {
 
 function sendSession(over) {
   const ss = st.session;
-  const s = Object.assign({ subject: ss.subject, level: ss.level, topics: ss.topics, map: ss.map, friendlyFire: ss.friendlyFire, buyTime: ss.buyTime, streakRewards: ss.streakRewards }, over);
+  const s = Object.assign({ subject: ss.subject, level: ss.level, topics: ss.topics, map: ss.map, friendlyFire: ss.friendlyFire, buyTime: ss.buyTime, streakRewards: ss.streakRewards, mode: ss.mode }, over);
   if (s.subject === CUSTOM) s.topics = [];
   send('tsession', s);
 }
@@ -215,6 +218,8 @@ function render() {
     + `<span class="chip val" aria-live="polite">${s.buyTime} s</span>`
     + `<button type="button" data-buy="1" aria-label="Más tiempo de compra"${s.buyTime < bt.max ? '' : ' disabled'}>+</button>`);
   put('ff', [[true, 'Sí'], [false, 'No']].map(([on, label]) => `<label class="chip"><input type="radio" name="ff" value="${on ? 1 : 0}"${s.friendlyFire === on ? ' checked' : ''}>${label}</label>`).join(''));
+  // Story 019: the game mode, from tinfo's list (Bomba by default), for every room.
+  put('mode', (info.modes || []).map(m => `<label class="chip"><input type="radio" name="mode" value="${m.id}"${s.mode === m.id ? ' checked' : ''}>${esc(m.name)}</label>`).join(''));
   // Story 018: streak rewards Sí / No (on by default).
   put('streak', [[true, 'Sí'], [false, 'No']].map(([on, label]) => `<label class="chip"><input type="radio" name="streak" value="${on ? 1 : 0}"${s.streakRewards === on ? ' checked' : ''}>${label}</label>`).join(''));
 
@@ -296,6 +301,7 @@ $('buytime').addEventListener('click', e => {
   sendSession({ buyTime: Math.min(bt.max, Math.max(bt.min, st.session.buyTime + Number(b.dataset.buy) * bt.step)) });
 });
 $('ff').addEventListener('change', e => sendSession({ friendlyFire: e.target.value === '1' }));
+$('mode').addEventListener('change', e => sendSession({ mode: e.target.value }));
 $('streak').addEventListener('change', e => sendSession({ streakRewards: e.target.value === '1' }));
 $('topics').addEventListener('change', () => sendSession({ topics: [...$('topics').querySelectorAll('input:checked')].map(i => i.value) }));
 $('upload').onclick = () => $('file').click();

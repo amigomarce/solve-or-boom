@@ -2,7 +2,7 @@
 // a running match and gives the seat back to a bot when they leave or their connection stops; a client's copy of the
 // match (src/net/mirror.ts) sets which player it views. No browser in here.
 import { anchorTo, routeTo } from './plans';
-import { botFresh, closeDesk, freshStance, sideOf, ROSTER, type Match } from './state';
+import { botFresh, closeDesk, freshStance, isFfa, sideOf, ROSTER, type Match } from './state';
 
 /**
  * A person takes seat `id` where its player stands, keeping its health, guns, money and the bomb. `name` is
@@ -34,6 +34,7 @@ export function seatBot(match: Match, id: number): void {
   Object.assign(p, botFresh());
   Object.assign(p.st, freshStance());
   if (match.bomb.carrier === p && match.phase === 'live') match.plantT = 0;
+  if (isFfa(match)) return; // story 019: a roaming bot needs no plan
   if (sideOf(match, p) === 'att') routeTo(match, p, 'site');
   else anchorTo(match, p, ['A', 'B', 'conn'][id % 3]);
 }

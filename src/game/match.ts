@@ -9,9 +9,10 @@ import { MAP_ID, loadMap, mapState } from './map';
 import { tune, CONFIG } from './tune';
 import { updateBomb } from './bomb';
 import { botUpdate } from './bots';
-import { humanUpdate, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
+import { humanUpdate, updateCard, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
 import { afterRound, checkRound, startRound } from './rounds';
-import { blankMatch, closeCard, deskOf, mulberry32, nextSpec, say, sideOf, type Match, type MatchOptions } from './state';
+import { startFfa, ffaTick } from './ffa';
+import { blankMatch, closeCard, deskOf, isFfa, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
 import * as QUESTIONS from '../questions';
 
 export * from './state';
@@ -33,14 +34,15 @@ export function createMatch(opts: MatchOptions): Match {
     buyTime: Number.isFinite(bt) ? Math.min(lim.max, Math.max(lim.min, bt)) : tune.buy_time,
     botLevel: !opts.classroom && (opts.botLevel === 'facil' || opts.botLevel === 'dificil') ? opts.botLevel : 'normal',
     streakRewards: opts.streakRewards !== false, // story 018: on unless turned off
-  };
+  } as Match['opts']; // opts.mode is set hidden just below (setMode)
+  setMode(match, opts.mode === 'ffa' ? 'ffa' : 'bomb'); // story 019
   const topics = opts.subject === QUESTIONS.CUSTOM ? [] : opts.topics;
   match.deck = QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, match.rng);
   // A classroom student's own deck (deskOf): same choices, its own seeded random, so it never draws from match.rng.
   if (match.classroom) match.newDeck = (id: number) => QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, mulberry32((opts.seed ^ Math.imul(id + 1, 0x9E3779B1)) >>> 0));
   match.subjectLabel = opts.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${opts.customName})`
     : `${QUESTIONS.SUBJECTS[opts.subject].name}: ${topics.map(t => QUESTIONS.SUBJECTS[opts.subject].topics[t]).join(', ')}`;
-  startRound(match);
+  if (isFfa(match)) startFfa(match); else startRound(match);
   match.events.push({ type: 'match', subject: opts.subject });
   return match;
 }
@@ -100,14 +102,18 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
   for (const p of match.players) {
     if (!p.human) continue;
     if (p.alive) humanUpdate(match, p, dt, inputs[p.id] ?? idleInput());
-    else { p.moving = false; if (p === human && (!match.specP || !match.specP.alive)) nextSpec(match); }
+    else {
+      p.moving = false;
+      if (isFfa(match) && deskOf(match, p).card) updateCard(match, p, dt, inputs[p.id] ?? idleInput()); // story 019: a dead person's respawn question
+      if (p === human && (!match.specP || !match.specP.alive)) nextSpec(match);
+    }
   }
   for (const p of match.players) if (!p.human && p.alive) botUpdate(match, p, dt);
   for (const k of match.pickups) k.age += dt; // dropped items fade after pickup_life (story 016)
   for (let i = match.pickups.length - 1; i >= 0; i--) if (match.pickups[i].age >= tune.pickup_life) match.pickups.splice(i, 1);
   for (const p of match.players) if (!p.alive) p.deadT += dt;
   updateBomb(match, dt);
-  checkRound(match);
+  if (isFfa(match)) ffaTick(match, dt); else checkRound(match);
   // timers
   match.msgT -= dt; match.flashT = Math.max(0, match.flashT - dt); match.hitT = Math.max(0, match.hitT - dt);
   match.killT = Math.max(0, match.killT - dt); match.boomT = Math.max(0, match.boomT - dt);

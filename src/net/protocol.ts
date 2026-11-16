@@ -15,7 +15,10 @@ import { LEVELS, type Level } from '../game/types';
 // 10: the own row ends with healT, the seconds left of a medkit being used (it takes medkit_time).
 // 11: streak rewards (story 018): tsession, tstate's session and begin carry `streakRewards`; the input's `ability` (a press, the
 //     kept Cazador); the own row ends with streak, kept (0/1) and hunterT (SCALE.time); gun code 4 is the Rifle dorado ('gold').
-export const PROTOCOL_VERSION = 11;
+// 12: the game mode (story 019): tsession, tstate's session and begin carry `mode` ('bomb' | 'ffa'), tinfo the `modes` list; a card's
+//     kind may be 'respawn' (Free for All: a dead student's question, judged by the server); bomb state code 5 is 'none' (no bomb);
+//     a Free for All `matchEnd` event carries `podium`, every player best first: { id, kills, deaths, right, wrong } (right and wrong -1 for a bot).
+export const PROTOCOL_VERSION = 12;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -107,7 +110,13 @@ export interface BeginMessage {
   friendlyFire: boolean; buyTime: number;
   /** Streak rewards on (story 018, protocol 11): the HUD shows the streak and the next reward only then. */
   streakRewards: boolean;
+  /** The game mode (story 019, protocol 12): 'bomb' or 'ffa' (Free for All). */
+  mode: GameModeId;
 }
+/** The game modes as the wire names them (protocol 12). */
+export const GAME_MODES = ['bomb', 'ffa'] as const;
+export type GameModeId = typeof GAME_MODES[number];
+const isMode = (v: unknown): v is GameModeId => v === 'bomb' || v === 'ffa';
 /** The wire codes of the guns (index in this list), as snapshots carry them. */
 export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'gold'] as const; // 'gold': the Rifle dorado (protocol 11), never sold
 /** The wire codes of the stances. */
@@ -147,7 +156,7 @@ export const PICKUPS_MAX = 2 * SEATS;
  */
 export interface CardView {
   /** 'buy' or 'defuse', the shop item id ('' for a defuse), the question's level ('' for a custom CSV). */
-  k: 'buy' | 'defuse'; i: string; lv: string;
+  k: 'buy' | 'defuse' | 'respawn'; i: string; lv: string;
   /** The question, its 4 choices in the order shown, its topic label. */
   q: string; o: string[]; tp: string;
   /** The choice picked (-1 none); the wrong-answer lockout left and its length; the right-answer confirmation left (SCALE.time). */
@@ -156,7 +165,7 @@ export interface CardView {
   g: number;
 }
 /** The bomb states, by their code in BombRow. */
-export const BOMB_STATES = ['carried', 'dropped', 'planted', 'defused', 'exploded'] as const;
+export const BOMB_STATES = ['carried', 'dropped', 'planted', 'defused', 'exploded', 'none'] as const; // 'none': Free for All (protocol 12)
 /**
  * Server to client, snapshot_hz times a second: the match as this student may see it, the last input it played
  * for them, and the events since the previous snapshot that concern them.
@@ -309,7 +318,7 @@ const isRoomView = (r: unknown): r is RoomView =>
 const isNums = (v: unknown, n?: number): v is number[] =>
   Array.isArray(v) && (n === undefined || v.length === n) && v.every(x => typeof x === 'number' && Number.isFinite(x));
 const isCard = (c: unknown): c is CardView =>
-  isObject(c) && (c.k === 'buy' || c.k === 'defuse') && isStr(c.i) && isStr(c.lv) && isStr(c.q) && isStr(c.tp)
+  isObject(c) && (c.k === 'buy' || c.k === 'defuse' || c.k === 'respawn') && isStr(c.i) && isStr(c.lv) && isStr(c.q) && isStr(c.tp)
   && Array.isArray(c.o) && c.o.length >= 2 && c.o.length <= 4 && c.o.every(isStr) && [c.pk, c.w, c.wt, c.ok, c.g].every(isInt);
 const isRoomInfo = (r: unknown): r is RoomInfo =>
   isObject(r) && isStr(r.id) && (r.status === 'waiting' || r.status === 'running' || r.status === 'paused' || r.status === 'ended' || r.status === 'failed') && isStr(r.map)
@@ -344,9 +353,9 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
         && Array.isArray(raw.names) && raw.names.length === SEATS && raw.names.every(isStr) && isStr(raw.subject) && isStr(raw.level) && (LEVELS as readonly string[]).includes(raw.level)
         && typeof raw.friendlyFire === 'boolean' && typeof raw.buyTime === 'number' && Number.isFinite(raw.buyTime) && raw.buyTime >= 1 && raw.buyTime <= 600
-        && typeof raw.streakRewards === 'boolean'
+        && typeof raw.streakRewards === 'boolean' && isMode(raw.mode)
         ? { v, t: 'begin', map: raw.map, seat: raw.seat, match: raw.match, hz: raw.hz, names: [...raw.names] as string[], subject: raw.subject, level: raw.level,
-          friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards } : null;
+          friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
         && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 20)
@@ -388,9 +397,9 @@ export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove',
 
 /**
  * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
- * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7); `streakRewards` (story 018, protocol 11).
+ * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7); `streakRewards` (story 018, protocol 11); `mode` the game mode (story 019, protocol 12).
  */
-export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number; streakRewards: boolean }
+export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number; streakRewards: boolean; mode: GameModeId }
 /** Teacher to server: a CSV of questions. `data` is the file's bytes in base64 (the server decodes UTF-8, else Windows-1252, like single player). */
 export interface TCsvMessage { v: number; t: 'tcsv'; name: string; data: string }
 /** Teacher to server: "Repartir automáticamente": replace the waiting rooms by rooms of up to 4 v 4 holding the connected students. */
@@ -423,6 +432,8 @@ export interface TeacherInfoMessage {
   csvMaxBytes: number; csvMaxQuestions: number;
   /** The buy time's range and step in seconds (data/config.json buy_time), for the page's selector (story 017). */
   buyTime: { min: number; max: number; step: number };
+  /** The game modes and their names, for the page's "Modo de juego" choice (story 019, protocol 12). */
+  modes: { id: GameModeId; name: string }[];
 }
 /** One seat as the teacher sees it: `student` is the id used by tmove (null for a bot). */
 export interface TeacherSeat { index: number; team: number; kind: 'human' | 'bot'; name: string; student: number | null }
@@ -439,6 +450,8 @@ export interface TeacherSession {
   subject: string; level: Level; topics: string[]; map: string;
   /** The match options (story 017): shots hurt teammates; the buy phase's length in seconds. Story 018: streak rewards on. */
   friendlyFire: boolean; buyTime: number; streakRewards: boolean;
+  /** The game mode (story 019). */
+  mode: GameModeId;
   /** The CSV loaded (null for none): kept when another subject is chosen. */
   csv: { name: string; count: number; skipped: number } | null;
   /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
@@ -468,7 +481,7 @@ export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsv
 export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
-  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
+  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards', 'mode'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
   tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], ping: ['v', 't'],
 };
 /**
@@ -495,8 +508,8 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'tsession':
       if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
       if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;
-      if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime) || typeof raw.streakRewards !== 'boolean') return bad; // the range is the server's check (teacher.ts)
-      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards } };
+      if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime) || typeof raw.streakRewards !== 'boolean' || !isMode(raw.mode)) return bad; // the range is the server's check (teacher.ts)
+      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } };
     case 'tcsv':
       if (!isStr(raw.name) || raw.name.length < 1 || raw.name.length > 80 || !isStr(raw.data) || !B64.test(raw.data)) return bad;
       return { ok: true, msg: { v, t: 'tcsv', name: raw.name.replace(/[\u0000-\u001f<>]/g, '').trim() || 'preguntas.csv', data: raw.data } };

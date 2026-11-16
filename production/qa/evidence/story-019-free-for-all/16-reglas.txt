@@ -1,0 +1,33 @@
+PASS default mode bomb, hidden from serialised opts
+PASS bomb: buy phase, bomb carried, squads 0/1
+PASS ffa: live at once, no bomb (none), gates open
+PASS ffa: every player is their own squad
+PASS clock 300 = ffa_duration
+PASS start: buy menu open with its timer
+PASS kill on seat 2 by seat 1 (old teammates) counts: kills 1, money +300
+PASS death opens respawn card (respawn)
+PASS the dead lose the primary (back with the pistol)
+PASS wrong: wait 4s, wrong=1
+PASS after the wait another question ("135 − 16 = ?" -> "181 − 77 = ?")
+PASS respawn card cannot be closed
+PASS right: alive, hp 100, pistol, right=1
+PASS buy menu opens at respawn
+  spawn 22.5,10.5 nearest enemy at respawn time 31.7 m (ffa_spawn_dist 30)
+PASS spawn distance printed
+PASS buy menu closes after ffa_buy_menu_time
+PASS bot dead
+PASS bot still dead before 6s
+PASS bot respawned after its wait
+PASS bots fight each other: kills 6 -> 13, alive 7
+PASS snapshot v12 parses, card respawn, bomb code 5
+PASS snapshot card has no answer index
+PASS out-of-range answer refused
+PASS answer during the wrong wait refused (no respawn)
+PASS respawn answers counted in results: [[2,false]]
+PASS input with a made-up answer value refused by the parser
+PASS begin carries mode
+PASS tsession mode validated
+PASS timed end: winner seat 6 (5 kills 1 death) over seat 4 (5 kills 3 deaths); "Bot Iker gana con 5 bajas"
+PASS podium: answers for people only
+PASS no rounds / halftime
+ALL PASS

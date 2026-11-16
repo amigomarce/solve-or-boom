@@ -34,3 +34,4 @@ Build order from the brief:
 | 016 | Combat and economy | Integration | Complete | N/A |
 | 017 | Match options | Integration | Complete | N/A |
 | 018 | Streak rewards | Integration | Complete | N/A |
+| 019 | Free for All mode | Integration | Complete | N/A |

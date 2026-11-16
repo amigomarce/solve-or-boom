@@ -4,7 +4,7 @@ import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } f
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeDesk, feed, level, nextSpec, say, sideOf, tell, WEAPON, type Match } from './state';
+import { closeDesk, feed, isFfa, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive) return;
@@ -29,8 +29,8 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const team = friendly(from, t);
   match.count?.kill(from && from !== t && !team ? from : null, t);
   if (from && from !== t && !team) {
-    from.kills++; from.money = Math.min(tune.max_money, from.money + tune.kill_money);
-    if (!match.firstKill) { // the round's first kill pays a bonus (story 016)
+    from.kills++; from.money = Math.min(tune.max_money, from.money + (isFfa(match) ? tune.ffa_kill_money : tune.kill_money)); // story 019: Free for All pays its own amount, with no first-kill bonus
+    if (!match.firstKill && !isFfa(match)) { // the round's first kill pays a bonus (story 016)
       match.firstKill = true; from.money = Math.min(tune.max_money, from.money + tune.first_kill_bonus);
       tell(match, from, `Primera baja: +$${tune.first_kill_bonus}`, 3);
     }
@@ -41,6 +41,7 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const h = t.st.y + 0.5, side = (dx: number): number => (solidAt(t.x + dx, t.z, h, h) ? t.x : t.x + dx);
   match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: side(-tune.pickup_offset), z: t.z, y: t.st.y, age: 0 },
     { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: side(tune.pickup_offset), z: t.z, y: t.st.y, age: 0 });
+  if (isFfa(match)) resetGuns(t); // story 019: the dead come back with the pistol (the drop above already took the gun in hand)
   const me = match.human;
   // "Tú eliminaste a Bot Kira", "Bot Kira te eliminó", "Bot Kira eliminó a Bot Rex", "La bomba te eliminó"
   const killer = from ? (from === me ? 'Tú' : from.name) : 'La bomba';

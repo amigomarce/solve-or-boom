@@ -225,3 +225,12 @@ holds no comments. The values themselves are in `data/config.json`.
 - `sfx_gold_level`, `sfx_gold_tail`, `fx_gold_flash`, `fx_gold_tracer_w`, `fx_gold_tracer_life`: the Rifle dorado's shot sound (the rifle's sound design) and flash and tracer sizes
 - `gold_color` 0xffc400, `gold_dark_color` 0xb27e00, `gold_tracer_color` 0xffe280 (as decimal numbers): the Rifle dorado's body, its darker parts and its tracer, in the hand and on the model
 - `hunter_color` 0xff6666 (decimal): the enemy marks on the minimap and the bar while the Cazador runs
+
+## Story 019: Free for All mode (option "Modo de juego: Bomba / Free for All", Bomba by default)
+- `ffa_duration` 300: seconds a Free for All match lasts (one timed match, no rounds); the most kills wins, a tie goes to fewer deaths
+- `ffa_wrong_wait` 4: seconds a wrong answer to the respawn question waits before another question (fixed, it does not grow like wrong_delay)
+- `ffa_bot_respawn` 6: seconds a dead bot waits before it comes back (no question)
+- `ffa_kill_money` 300 (kill_money in Bomba is 300): money per kill in Free for All; there is no round pay and no first-kill bonus
+- `ffa_spawn_dist` 30: metres a respawn point should be from every living enemy (one is drawn at random among those that far; when none is, the farthest); the points are the two bases and the bots' route, anchor and hold cells of the map
+- `ffa_buy_menu_time` 10: seconds the buy menu stays open after a respawn and at the start (a buy question open holds it; the player can close it before)
+- `ffa_bot_skill` 0.5: the bots' skill ramp (0 = bot_acc_start/bot_react_start, 1 = the _end values) in Free for All, where there are no rounds to ramp over; the bot level's multipliers apply on top
