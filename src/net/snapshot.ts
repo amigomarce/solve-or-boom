@@ -35,7 +35,7 @@ export function eventsFor(match: Match, seat: number, events: Loose[], rangeM: n
       continue;
     }
     if (!ROOM_EVENTS.has(e.type)) continue;
-    if (e.type === 'round') out.push({ ...e, side: sideOf(match, me) });
+    if (e.type === 'round') out.push({ ...e, side: e.side === 'duel' ? 'duel' : sideOf(match, me) }); // story 024: Duelo por equipos has no attack or defence
     else if (e.type === 'beep' || e.type === 'boom') out.push({ ...e, x: r2(e.x), z: r2(e.z) });
     else out.push({ ...e, ...(Array.isArray(e.score) ? { score: [...e.score] } : {}) });
   }

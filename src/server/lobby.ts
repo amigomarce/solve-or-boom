@@ -70,7 +70,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
   const keyOf = (name: string): string => name.toLocaleLowerCase('es');
   const stateOf = (room: Room): RoomView['state'] => (deps.rooms.get(room.id) === room && (room.status === 'running' || room.status === 'waiting' || room.status === 'paused') ? room.status : 'ended');
   const view = (room: Room): RoomView => ({
-    roomId: room.id, state: stateOf(room), mode: room.match.opts.mode === 'ffa' ? 'ffa' : 'bomb',
+    roomId: room.id, state: stateOf(room), mode: room.match.opts.mode, // 'bomb', 'ffa' or 'duel' (story 024)
     seats: room.seats.map((s): SeatView => (s.kind === 'human' && s.name !== null
       ? { index: s.index, team: s.team, kind: 'human', name: s.name } : { index: s.index, team: s.team, kind: 'bot', name: `Bot ${s.index + 1}` })),
   });

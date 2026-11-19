@@ -12,7 +12,8 @@ import { botUpdate } from './bots';
 import { humanUpdate, updateCard, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
 import { afterRound, checkRound, startRound } from './rounds';
 import { startFfa, ffaTick, syncHidden } from './ffa';
-import { blankMatch, closeCard, deskOf, isFfa, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
+import { startDuel, duelTick } from './teamduel';
+import { blankMatch, closeCard, deskOf, isDuel, isFfa, isRoam, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
 import * as QUESTIONS from '../questions';
 
 export * from './state';
@@ -35,14 +36,14 @@ export function createMatch(opts: MatchOptions): Match {
     botLevel: !opts.classroom && (opts.botLevel === 'facil' || opts.botLevel === 'dificil') ? opts.botLevel : 'normal',
     streakRewards: opts.streakRewards !== false, // story 018: on unless turned off
   } as Match['opts']; // opts.mode is set hidden just below (setMode)
-  setMode(match, opts.mode === 'ffa' ? 'ffa' : 'bomb'); // story 019
+  setMode(match, opts.mode === 'ffa' ? 'ffa' : opts.mode === 'duel' ? 'duel' : 'bomb'); // story 019, 024
   const topics = opts.subject === QUESTIONS.CUSTOM ? [] : opts.topics;
   match.deck = QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, match.rng);
   // A classroom student's own deck (deskOf): same choices, its own seeded random, so it never draws from match.rng.
   if (match.classroom) match.newDeck = (id: number) => QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, mulberry32((opts.seed ^ Math.imul(id + 1, 0x9E3779B1)) >>> 0));
   match.subjectLabel = opts.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${opts.customName})`
     : `${QUESTIONS.SUBJECTS[opts.subject].name}: ${topics.map(t => QUESTIONS.SUBJECTS[opts.subject].topics[t]).join(', ')}`;
-  if (isFfa(match)) startFfa(match); else startRound(match);
+  if (isFfa(match)) startFfa(match); else if (isDuel(match)) startDuel(match); else startRound(match);
   match.events.push({ type: 'match', subject: opts.subject });
   return match;
 }
@@ -75,7 +76,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
     if (inp.buyItem && (!match.classroom || (d.menu && !d.card))) tryBuy(match, p, inp.buyItem);
     if (inp.answer >= 0) answer(match, p, inp.answer);
     if (inp.closeShop) d.menu = false;
-    if (isFfa(match)) syncHidden(match, p); // story 021: closing the shop ends the hiding
+    if (isRoam(match)) syncHidden(match, p); // story 021: closing the shop ends the hiding
     if (inp.closeCard) closeCard(match, p);
     if (p === human && (inp.spectate || (!p.alive && inp.spectateKey))) nextSpec(match);
   }
@@ -105,7 +106,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
     if (p.alive) humanUpdate(match, p, dt, inputs[p.id] ?? idleInput());
     else {
       p.moving = false;
-      if (isFfa(match) && deskOf(match, p).card) updateCard(match, p, dt, inputs[p.id] ?? idleInput()); // story 019: a dead person's respawn question
+      if (isRoam(match) && deskOf(match, p).card) updateCard(match, p, dt, inputs[p.id] ?? idleInput()); // story 019: a dead person's respawn question
       if (p === human && (!match.specP || !match.specP.alive)) nextSpec(match);
     }
   }
@@ -114,7 +115,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
   for (let i = match.pickups.length - 1; i >= 0; i--) if (match.pickups[i].age >= tune.pickup_life) match.pickups.splice(i, 1);
   for (const p of match.players) if (!p.alive) p.deadT += dt;
   updateBomb(match, dt);
-  if (isFfa(match)) ffaTick(match, dt); else checkRound(match);
+  if (isFfa(match)) ffaTick(match, dt); else if (isDuel(match)) duelTick(match, dt); else checkRound(match);
   // timers
   match.msgT -= dt; match.flashT = Math.max(0, match.flashT - dt); match.hitT = Math.max(0, match.hitT - dt);
   match.killT = Math.max(0, match.killT - dt); match.boomT = Math.max(0, match.boomT - dt);

@@ -3,12 +3,12 @@
 import { MAP, SITE, siteCells, hasHeights, cellLevels, type Cell } from './map';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { isFfa, sideOf, type Match } from './state';
+import { isRoam, sideOf, type Match } from './state';
 
 /** A bot buys at the start of a round (not the first of a half): it answers like a student, sometimes wrong, and
  *  spends on its role's guns, then armour. */
 export function botBuy(match: Match, b: Loose): void {
-  const firstOfHalf = !isFfa(match) && (match.round === 1 || match.round === tune.halftime_after + 1);
+  const firstOfHalf = !isRoam(match) && (match.round === 1 || match.round === tune.halftime_after + 1);
   if (firstOfHalf) return; // pistol rounds for the bots: round 1 is fair
   const ask = () => { // a bot answers like a student: sometimes wrong, then a new question
     for (let k = 0; k < 6; k++) { if (match.rng() < tune.bot_answer_right) { b.right++; return true; } b.wrong++; }

@@ -11,7 +11,7 @@
 // player.ts); every snapshot says which input the server played last (`a`), and the client restarts from the
 // server's position and replays the inputs it sent after that. A small difference is blended out
 // (net_correct_blend per snapshot); one over net_snap_m metres is taken at once.
-import { blankMatch, feed, isFfa, say, setMode, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
+import { blankMatch, feed, isDuel, isFfa, say, setMode, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
 import { hasHeights, loadMap, MAP_ID, mapState, moveBody } from '../game/map';
 import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
@@ -53,6 +53,7 @@ export function createMirror(begin: BeginMessage): Mirror {
   match.opts.streakRewards = begin.streakRewards; // story 018
   setMode(match, begin.mode); // story 019
   if (begin.mode === 'ffa') { for (const p of match.players) p.squad = p.id; match.bomb.state = 'none'; } // everybody their own side, as the server has it
+  if (begin.mode === 'duel') match.bomb.state = 'none'; // story 024: the roster's two squads, no bomb
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
   return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };
@@ -201,7 +202,7 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
       const mine = e.by === m.name || e.who === m.name;
       const iShot = e.by === m.name, iDied = e.who === m.name; // "Tú eliminaste a Beto", "Ana te eliminó", "Ana eliminó a Beto"
       const what = iShot ? (iDied ? 'te eliminaste' : `eliminaste a ${e.who}`) : iDied ? 'te eliminó' : `eliminó a ${e.who}`;
-      feed(match, `${iShot ? 'Tú' : e.by || 'La bomba'} ${what}${e.ff ? ' (fuego amigo)' : ''}`, mine);
+      feed(match, `${iShot ? 'Tú' : e.by || 'La bomba'} ${what}${e.ff ? ' (fuego amigo)' : ''}`, mine, e.bt === 0 || e.bt === 1 ? e.bt : undefined); // story 024: the killer's team
       break;
     }
     case 'plant': say(match, `¡Bomba plantada en ${e.site}! ${tune.bomb_time} segundos`, 4); break;
@@ -209,6 +210,7 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
     case 'round':
       match.banner = null; match.gateT = 0;
       if (e.side === 'ffa') { say(match, 'Free for All: gana quien tenga más bajas. Si caes, responde para volver', 5); break; }
+      if (e.side === 'duel') { say(match, 'Duelo por equipos: gana el equipo con más bajas. Si caes, responde para volver', 5); break; } // story 024
       say(match, e.side === 'att' ? `Ronda ${match.round}: ATAQUE. Planta la bomba en A o B` : `Ronda ${match.round}: DEFENSA. Evita que planten`, 5);
       break;
     case 'roundEnd': {
@@ -221,6 +223,15 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
         match.podium = e.podium;
         const w = (e.podium as { id: number; kills: number }[])[0], won = w.id === m.seat;
         match.gained = `${won ? '¡Ganaste!' : match.players[w.id].name + ' gana'} con ${w.kills} ${w.kills === 1 ? 'baja' : 'bajas'}`;
+        match.answered = ''; match.over = true;
+        break;
+      }
+      if (isDuel(match) && Array.isArray(e.podium)) { // story 024: the table best first, the winning team (-1 a tie) and the teams' kills
+        match.podium = e.podium;
+        const win = Number(e.win), sc = Array.isArray(e.score) ? (e.score as number[]) : match.score;
+        match.score = [Number(sc[0]) || 0, Number(sc[1]) || 0]; match.winTeam = win === 0 || win === 1 ? win : -1;
+        const a = match.score[me.squad], b = match.score[1 - me.squad];
+        match.gained = match.winTeam < 0 ? `Empate ${a} - ${b}` : `${match.winTeam === me.squad ? 'Tu equipo gana' : 'Los rivales ganan'} ${a} - ${b}`;
         match.answered = ''; match.over = true;
         break;
       }

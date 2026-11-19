@@ -10,7 +10,7 @@ import { MAP, MAP_ID, MW, MH, center, levelY, mapState, hasHeights, grid, grid1,
 import { tune } from './tune';
 import type { Loose } from './types';
 import { botBuy } from './plans';
-import { botFresh, deskOf, freshStance, isFfa, openCard, personal, resetGuns, say, tell, type Match } from './state';
+import { botFresh, deskOf, freshStance, isRoam, openCard, personal, resetGuns, say, tell, type Match } from './state';
 import { yawTo } from './rules';
 
 /** Every cell a person or bot may start or come back on (story 021): each walkable floor cell of the whole map, the first floor too (as [cx, cy, level]), ramps left out; only cells a body can walk to from the bases (no closed-off pockets). Built once per map. */
@@ -52,7 +52,7 @@ export function pickSpawn(match: Match, p: Loose): number[] {
   return scored.reduce((a, b) => (b.d > a.d ? b : a)).c;
 }
 /** Puts `p` on spawn cell `spot` at full health, facing the middle of the map; its guns are as they are. */
-function place(p: Loose, spot: number[]): void {
+export function place(p: Loose, spot: number[]): void {
   p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]); p.st.y = levelY(spot[2] ?? 0);
   p.yaw = yawTo(center(MW / 2) - p.x, center(MH / 2) - p.z); p.pitch = 0; p.recoil = 0; p.scoped = false; p.st.aimGun = '';
   p.target = null; p.path = []; p.wps = []; p.arrived = false; p.defusing = false; p.plantT = 0; p.deadT = 0; p.alertT = 0;
@@ -80,13 +80,13 @@ export function startFfa(match: Match): void {
  * Opens `p`'s buy menu for tune.ffa_buy_menu_time seconds. `hide` (the start, a respawn): the person is invisible and untouchable
  * (p.hidden) until the menu is closed or that time runs out; a menu opened by the buy key during the match hides nobody.
  */
-function openMenu(match: Match, p: Loose, hide: boolean): void {
+export function openMenu(match: Match, p: Loose, hide: boolean): void {
   const d = deskOf(match, p);
   d.menu = true; d.menuT = tune.ffa_buy_menu_time; personal(match, p, { type: 'unlock' });
   p.hidden = hide; p.hideT = hide ? tune.ffa_buy_menu_time : 0;
 }
 /** A classroom student seated as the match is made (src/server/room.ts) gets the start's buy menu, hidden, like the start gives a single player (story 021). */
-export function startShop(match: Match, p: Loose): void { if (isFfa(match) && p.human && p.alive) openMenu(match, p, true); }
+export function startShop(match: Match, p: Loose): void { if (isRoam(match) && p.human && p.alive) openMenu(match, p, true); }
 /** The shop opened with the buy key or the touch button while the match is live (story 021): visible and vulnerable, the same menu and timer. */
 export function openShop(match: Match, p: Loose): void { openMenu(match, p, false); }
 /** Ends `p`'s hiding when its menu is shut, its time is up, or it is no longer a living person: it appears, visible and vulnerable. */

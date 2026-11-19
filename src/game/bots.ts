@@ -8,7 +8,7 @@ import type { Loose } from './types';
 import { botShoot, finishReload, siteAlert, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { anchorTo, routeTo } from './plans';
-import { isFfa, level, sideOf, type Match } from './state';
+import { isDuel, isRoam, level, sideOf, type Match } from './state';
 import { randomSpot } from './ffa';
 
 export function botSpeed(b: Loose): number { return tune['bot_speed_' + b.role] * (b.cur === 'sniper' ? tune.sniper_speed_mult : 1); }
@@ -159,7 +159,7 @@ const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export function botUpdate(match: Match, b: Loose, dt: number): void {
   b.cool = Math.max(0, b.cool - dt); b.alertT = Math.max(0, b.alertT - dt); b.flashT = Math.max(0, b.flashT - dt);
   if (b.reloadT > 0) { b.reloadT -= dt; if (b.reloadT <= 0) finishReload(b); }
-  const side = sideOf(match, b), live = match.phase === 'live', bomb = match.bomb;
+  const side = isDuel(match) ? 'duel' : sideOf(match, b), live = match.phase === 'live', bomb = match.bomb;
   b.moving = false;
   // Look for enemies a few times a second.
   b.scanT -= dt;
@@ -265,7 +265,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
   if (!live) return;
   if (b.coverT > 0) { turnTo(b, yawTo(b.threatX - b.x, b.threatZ - b.z), 5, dt); coverStep(match, b, dt, speed, false); return; }
   // No enemy in sight: follow the plan (Free for All, story 019: roam from spot to spot, there is no bomb or site to go to).
-  if (isFfa(match) && !b.wps.length && b.pathI >= b.path.length) { b.wps = [randomSpot(match)]; b.arrived = false; }
+  if (isRoam(match) && !b.wps.length && b.pathI >= b.path.length) { b.wps = [randomSpot(match)]; b.arrived = false; }
   if (side === 'att') {
     if (bomb.state === 'dropped' && !b.fetching && !match.players.some(p => p.fetching && p.alive && sideOf(match, p) === 'att')) {
       b.fetching = true; b.wps = [cellAt(bomb.x, bomb.z, bomb.y ?? 0)]; b.path = []; b.arrived = false; b.after = [];

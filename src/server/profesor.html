@@ -109,7 +109,7 @@
       <h3>Mapa</h3>
       <div id="maps" class="chips"></div>
       <h3>Partida</h3>
-      <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas y al caer se responde para volver)</div>
+      <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas. Duelo por equipos: dos equipos de 4, sin bomba; gana el equipo con más bajas. En los dos, al caer se responde para volver)</div>
       <div id="mode" class="chips"></div>
       <div class="hint" style="margin:8px 0 4px">Tiempo de compra</div>
       <div class="hint" style="margin-bottom:4px">Tiempo de compra</div>
@@ -149,7 +149,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 14;
+const V = 15;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -248,7 +248,7 @@ function render() {
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
     `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span></div>`
-    + `<div class="meta">${r.mode === 'ffa' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
+    + `<div class="meta">${r.mode === 'ffa' || r.mode === 'duel' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
@@ -266,7 +266,7 @@ function roomCard(r) {
   const played = r.status !== 'waiting';
   return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
     + `<span class="hint">Mapa ${esc(mapName(r.map))}</span></div>`
-    + `<div class="meta">${ffa ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + `<div class="meta">${ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
     + b('end', 'Terminar', true) + '</div></div>';

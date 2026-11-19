@@ -23,7 +23,10 @@ import { LEVELS, type Level } from '../game/types';
 //     (no position, aim, flags, gun or stance; x = z = 0 is inside the map's outer wall, so it is never a real position).
 // 14: rooms and students follow the game mode (story 023): a room view (joined's `room`, the `room` message) carries `mode`, and a
 //     teacher room carries `mode` and `summary` (Free for All: who leads and the time left), so Free for All shows no teams.
-export const PROTOCOL_VERSION = 14;
+// 15: Duelo por equipos (story 024): the mode id 'duel' joins GAME_MODES (everywhere a mode travels: begin, tsession, tstate, room views); its
+//     `round` event carries side 'duel' and its `matchEnd` event carries `podium` (as Free for All's), `win` (0 or 1, the winning team; -1 a tie)
+//     and `score` (the teams' kills); its `kill` event carries `bt`, the killer's team (none for a self-kill). The snapshot's `s` is the teams' kills in that mode; a teacher room's `summary` says the teams' kills.
+export const PROTOCOL_VERSION = 15;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -123,9 +126,9 @@ export interface BeginMessage {
   mode: GameModeId;
 }
 /** The game modes as the wire names them (protocol 12). */
-export const GAME_MODES = ['bomb', 'ffa'] as const;
+export const GAME_MODES = ['bomb', 'ffa', 'duel'] as const;
 export type GameModeId = typeof GAME_MODES[number];
-const isMode = (v: unknown): v is GameModeId => v === 'bomb' || v === 'ffa';
+const isMode = (v: unknown): v is GameModeId => (GAME_MODES as readonly unknown[]).includes(v);
 /** The wire codes of the guns (index in this list), as snapshots carry them. */
 export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'gold'] as const; // 'gold': the Rifle dorado (protocol 11), never sold
 /** The wire codes of the stances. */

@@ -234,3 +234,10 @@ holds no comments. The values themselves are in `data/config.json`.
 - `ffa_spawn_dist` 30: metres a respawn point should be from every living enemy (one is drawn at random among those that far; when none is, the farthest); story 021: the points are every walkable cell of the whole map (the first floor too, ramps left out), at the start of the match and at each respawn
 - `ffa_buy_menu_time` 10: seconds the buy menu stays open after a respawn and at the start (a buy question open holds it; the player can close it before). Story 021: the same seconds are how long that person stays invisible and untouchable (a hard clock: an open question does not stretch it); a shop opened later with the buy key (B) or the touch button uses the same time to close by itself but hides nobody
 - `ffa_bot_skill` 0.5: the bots' skill ramp (0 = bot_acc_start/bot_react_start, 1 = the _end values) in Free for All, where there are no rounds to ramp over; the bot level's multipliers apply on top
+- `duel_duration` 300: seconds a Duelo por equipos match lasts (one timed match, no rounds, bomb, sites or halftime); the team with more kills wins, equal kills is "Empate"
+- `duel_bot_respawn` 6: seconds a dead bot waits before it comes back in Duelo por equipos (no question); a person answers the respawn question (the wrong-answer wait is `ffa_wrong_wait`)
+- `duel_kill_money` 300: money per kill in Duelo por equipos; there is no round pay and no first-kill bonus (a teammate's kill by friendly fire pays nothing)
+- `duel_rival_dist` 25: metres a respawn point should be from every living rival (one is drawn at random among those that far; when none is, the farthest)
+- `duel_mate_dist` 12: metres from the nearest living teammate within which a respawn point is looked for (with no living teammate any point of the map may be drawn)
+- `duel_mate_gap` 2: metres a respawn point keeps from every living teammate, so nobody lands on top of another
+- `duel_bot_skill` 0.5: the bots' skill ramp (0 = bot_acc_start/bot_react_start, 1 = the _end values) in Duelo por equipos; the bot level's multipliers apply on top

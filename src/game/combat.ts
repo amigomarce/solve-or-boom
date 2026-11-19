@@ -4,7 +4,7 @@ import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } f
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeDesk, feed, isFfa, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
+import { closeDesk, feed, isDuel, isFfa, isRoam, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive || t.hidden) return; // story 021: a Free for All player buying at the start or a respawn cannot be hurt
@@ -29,8 +29,9 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const team = friendly(from, t);
   match.count?.kill(from && from !== t && !team ? from : null, t);
   if (from && from !== t && !team) {
-    from.kills++; from.money = Math.min(tune.max_money, from.money + (isFfa(match) ? tune.ffa_kill_money : tune.kill_money)); // story 019: Free for All pays its own amount, with no first-kill bonus
-    if (!match.firstKill && !isFfa(match)) { // the round's first kill pays a bonus (story 016)
+    from.kills++; from.money = Math.min(tune.max_money, from.money + (isFfa(match) ? tune.ffa_kill_money : isDuel(match) ? tune.duel_kill_money : tune.kill_money)); // story 019: Free for All pays its own amount, with no first-kill bonus; 024: so does Duelo por equipos
+    if (isDuel(match)) match.score[from.squad]++; // story 024: the team's kills are the match score
+    if (!match.firstKill && !isRoam(match)) { // the round's first kill pays a bonus (story 016)
       match.firstKill = true; from.money = Math.min(tune.max_money, from.money + tune.first_kill_bonus);
       tell(match, from, `Primera baja: +$${tune.first_kill_bonus}`, 3);
     }
@@ -41,13 +42,13 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const h = t.st.y + 0.5, side = (dx: number): number => (solidAt(t.x + dx, t.z, h, h) ? t.x : t.x + dx);
   match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: side(-tune.pickup_offset), z: t.z, y: t.st.y, age: 0 },
     { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: side(tune.pickup_offset), z: t.z, y: t.st.y, age: 0 });
-  if (isFfa(match)) resetGuns(t); // story 019: the dead come back with the pistol (the drop above already took the gun in hand)
+  if (isRoam(match)) resetGuns(t); // story 019: the dead come back with the pistol (the drop above already took the gun in hand)
   const me = match.human;
   // "Tú eliminaste a Bot Kira", "Bot Kira te eliminó", "Bot Kira eliminó a Bot Rex", "La bomba te eliminó"
   const killer = from ? (from === me ? 'Tú' : from.name) : 'La bomba';
   const what = from && from === me ? (t === me ? 'te eliminaste' : `eliminaste a ${t.name}`) : t === me ? 'te eliminó' : `eliminó a ${t.name}`;
   feed(match, `${killer} ${what}${team ? ' (fuego amigo)' : from && from !== t ? ' (' + WEAPON[from.cur].name + ')' : ''}`,
-    (from && from === me) || t === me);
+    (from && from === me) || t === me, isDuel(match) && from && from !== t ? from.squad : undefined); // story 024: the killer's team
   if (from && from.human && from !== t && !team) { if (from === me) match.killT = 0.4; match.events.push({ type: 'killmark', p: from.id }); }
   if (match.bomb.state === 'carried' && match.bomb.carrier === t) {
     match.bomb.state = 'dropped'; match.bomb.x = t.x; match.bomb.z = t.z; match.bomb.y = t.st.y; match.bomb.carrier = null;
@@ -55,7 +56,9 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   }
   if (match.bomb.defuser === t) match.bomb.defuser = null;
   if (t.human) { t.scoped = false; t.st.aimGun = ''; closeDesk(match, t); if (t === me) { match.spec = 0; nextSpec(match); } }
-  match.events.push(team ? { type: 'kill', who: t.name, by: from.name, ff: true } : { type: 'kill', who: t.name, by: from ? from.name : '' }); // ff: a teammate's kill, for the classroom feed (protocol 7)
+  const ev: Loose = team ? { type: 'kill', who: t.name, by: from.name, ff: true } : { type: 'kill', who: t.name, by: from ? from.name : '' }; // ff: a teammate's kill, for the classroom feed (protocol 7)
+  if (isDuel(match) && from && from !== t) ev.bt = from.squad; // story 024 (protocol 15): the killer's team, for the classroom feed
+  match.events.push(ev);
 }
 
 export function humanShoot(match: Match, p: Loose): void {
@@ -146,7 +149,7 @@ export function makeNoise(match: Match, x: number, z: number, r: number, squad: 
 /** A defender bot that saw or heard an enemy at (x, z) within bot_site_alert metres of a site calls that site:
  *  the squad's other defenders (not the sniper) rotate there together. */
 export function siteAlert(match: Match, b: Loose, x: number, z: number): void {
-  if (sideOf(match, b) !== 'def') return;
+  if (isDuel(match) || sideOf(match, b) !== 'def') return; // no sites in Duelo por equipos
   const toA = Math.hypot(x - center(SITE.A.cx), z - center(SITE.A.cy)), toB = Math.hypot(x - center(SITE.B.cx), z - center(SITE.B.cy));
   if (Math.min(toA, toB) < tune.bot_site_alert) match.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: match.t };
 }

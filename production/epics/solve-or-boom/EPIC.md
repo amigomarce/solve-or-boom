@@ -39,3 +39,5 @@ Build order from the brief:
 | 021 | Free for All map and spawn changes | Integration | Complete | N/A |
 | 022 | CSV template on the teacher panel | UI | Complete | N/A |
 | 023 | Rooms and student view follow the game mode | Integration | Complete | N/A |
+| 024 | Team duel mode | Integration | Complete | N/A |
+| 025 | Cooperative waves mode | Integration | Ready | N/A |

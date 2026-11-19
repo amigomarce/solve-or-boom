@@ -14,6 +14,7 @@
 //    students take the seats in order (0, 1, 2...), the room size unchanged.
 //  - Changing the game mode rebuilds the waiting rooms at once (their students stay seated; nothing was played) and pushes
 //    each room's seating, so the students' waiting rooms follow on their next message; running and paused rooms are not touched.
+//  - Duelo por equipos (story 024) keeps Bomba's teams and seat spread (alternating); its rooms show a `summary` with the teams' kills and the time left.
 //  - Free for All rooms show a `summary` instead of the team score: who leads and the time left (a finished room: who won or led).
 import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
@@ -96,7 +97,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
-      modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }],
+      modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }, { id: 'duel', name: 'Duelo por equipos' }],
     }),
     state() {
       const students = deps.lobby.list();
@@ -108,6 +109,12 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       const mmss = (t: number): string => { const n = Math.max(0, Math.ceil(t)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
       /** Free for All: who leads and the time left ('' in Bomba). Names come from the seats (a bot is "Bot n"). */
       const summaryOf = (r: Room): string => {
+        if (r.match.opts.mode === 'duel') { // story 024: the teams' kills (match.score), the time left and, when over, the winner
+          if (r.status === 'waiting') return 'Todavía no ha empezado';
+          const [a, b] = r.match.score, tally = `Equipo 1 ${a} – ${b} Equipo 2`, left = r.status === 'running' || r.status === 'paused';
+          if (r.match.over) return a === b ? `Empate · ${tally}` : `Ganó el Equipo ${a > b ? 1 : 2} · ${tally}`;
+          return left ? `${tally} · Quedan ${mmss(r.match.roundT)}` : tally;
+        }
         if (r.match.opts.mode !== 'ffa') return '';
         if (r.status === 'waiting') return 'Todavía no ha empezado';
         const lead = ranking(r.match)[0], seat = r.seats[lead.id], name = seat.kind === 'human' ? seat.name ?? '' : `Bot ${seat.index + 1}`;
@@ -118,7 +125,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         return left ? `Va primero ${name} con ${kills} · Quedan ${mmss(r.match.roundT)}` : `Iba primero ${name} con ${kills}`;
       };
       const row = (r: Room, live: boolean): TeacherRoom => ({
-        mode: r.match.opts.mode === 'ffa' ? 'ffa' : 'bomb', summary: summaryOf(r),
+        mode: r.match.opts.mode, summary: summaryOf(r),
         id: r.id, status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });

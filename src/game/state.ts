@@ -47,11 +47,11 @@ export interface MatchOptions {
   botLevel?: BotLevel;
   /** Streak rewards (story 018): right answers in a row earn the Escudo, the Cazador and the Rifle dorado. Default true (absent = on). Read in src/game/streak.ts. */
   streakRewards?: boolean;
-  /** The game mode (story 019): 'bomb' (default, absent = bomb) or 'ffa', Free for All: everybody against everybody, no bomb, teams or rounds, one timed match. Read in src/game/ffa.ts and wherever a team or the bomb matters. */
+  /** The game mode (story 019): 'bomb' (default, absent = bomb) 'ffa' (Free for All: everybody against everybody, no bomb, teams or rounds, one timed match) or 'duel' (story 024, Duelo por equipos: two teams of 4, no bomb or rounds, one timed match, the team with more kills wins). Read in src/game/ffa.ts, src/game/teamduel.ts and wherever a team or the bomb matters. */
   mode?: GameMode;
 }
 /** The game modes of a match (story 019). */
-export type GameMode = 'bomb' | 'ffa';
+export type GameMode = 'bomb' | 'ffa' | 'duel';
 /** A bot level: multipliers on the bots' reaction and accuracy ramps, in data/config.json (bot_<level>_react_mult, bot_<level>_acc_mult). */
 export type BotLevel = 'facil' | 'normal' | 'dificil';
 
@@ -218,16 +218,20 @@ export const sideOf = (match: Match, p: Loose): string => (isFfa(match) ? 'ffa' 
 export function setMode(match: Match, mode: GameMode): void { Object.defineProperty(match.opts, 'mode', { value: mode, enumerable: false, writable: true }); }
 /** True in Free for All (story 019): every player is their own side (`p.squad` is the player's id), so everybody else is an enemy. */
 export const isFfa = (match: Match): boolean => match.opts.mode === 'ffa';
+/** True in Duelo por equipos (story 024): two squads of 4 (the roster's), a timed match with respawns, no bomb, sites, gates or halftime. */
+export const isDuel = (match: Match): boolean => match.opts.mode === 'duel';
+/** True in the modes that are one timed match with respawns and no bomb (Free for All and Duelo por equipos). */
+export const isRoam = (match: Match): boolean => match.opts.mode === 'ffa' || match.opts.mode === 'duel';
 /** A squad as the screens name it. */
 export const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
 /** True while `d` has the buy menu or a question card open: a match (its viewer's) or a deskOf(). */
 export const uiOpen = (d: Loose): boolean => !!(d.menu || d.card);
 /** How far the bots' skill has ramped, 0 to 1. */
-export const level = (match: Match): number => (isFfa(match) ? tune.ffa_bot_skill : levelFor(match.round, tune.ramp_rounds));
+export const level = (match: Match): number => (isFfa(match) ? tune.ffa_bot_skill : isDuel(match) ? tune.duel_bot_skill : levelFor(match.round, tune.ramp_rounds));
 /** Shows a HUD message for t seconds (match.msg, match.msgT). */
 export function say(match: Match, m: string, t = 3.5): void { match.msg = m; match.msgT = t; }
-/** Adds a line to the kill feed (the newest first, at most 5). */
-export function feed(match: Match, s: string, mine: boolean): void { match.feed.unshift({ s, t: 6, mine }); match.feed.length = Math.min(match.feed.length, 5); }
+/** Adds a line to the kill feed (the newest first, at most 5). `team` (story 024, Duelo por equipos only): the killer's squad, shown as Equipo 1/2; absent elsewhere, so other modes' lines are as before. */
+export function feed(match: Match, s: string, mine: boolean, team?: number): void { match.feed.unshift(team === undefined ? { s, t: 6, mine } : { s, t: 6, mine, team }); match.feed.length = Math.min(match.feed.length, 5); }
 /** The loaded map's spawn cells for a side (data/maps/). */
 export function spawnSpots(side: string): Cell[] {
   return side === 'att' ? MAP.spawns.att : MAP.spawns.def;

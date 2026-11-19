@@ -9,7 +9,8 @@ import { defuseBomb, plantBomb } from './bomb';
 import { routeTo } from './plans';
 import { streakRight, streakWrong, useAbility, hunterTick, hunterSpeed } from './streak';
 import { respawn, openShop, syncHidden } from './ffa';
-import { closeCard, deskOf, feed, isFfa, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
+import { duelRespawn } from './teamduel';
+import { closeCard, deskOf, feed, isDuel, isRoam, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
 
 /**
  * One human player's inputs for one step: actions, not keys. "Held" fields are true while the control is
@@ -115,7 +116,7 @@ export function updateCard(match: Match, p: Loose, dt: number, inp: PlayerInput)
     c.okT -= dt;
     if (c.okT <= 0) {
       if (c.kind === 'buy') { grant(match, p, c.item); d.card = null; }
-      else if (c.kind === 'respawn') { d.card = null; respawn(match, p); } // story 019: the right answer brings the player back
+      else if (c.kind === 'respawn') { d.card = null; (isDuel(match) ? duelRespawn : respawn)(match, p); } // story 019: the right answer brings the player back
       else {
         c.got++;
         if (c.got >= tune.defuse_answers) { d.card = null; defuseBomb(match, p); }
@@ -210,7 +211,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   p.cool = Math.max(0, p.cool - dt); p.flashT = Math.max(0, p.flashT - dt);
   p.recoil *= Math.exp(-dt * 7);
   if (p.reloadT > 0) { p.reloadT -= dt; if (p.reloadT <= 0) finishReload(p); }
-  const live = match.phase === 'live', buy = match.phase === 'buy' || isFfa(match), me = p.st as Stance, d = deskOf(match, p); // Free for All: the menu is open after a respawn, any time
+  const live = match.phase === 'live', buy = match.phase === 'buy' || isRoam(match), me = p.st as Stance, d = deskOf(match, p); // Free for All: the menu is open after a respawn, any time
   // Stance: the prone change and the jump run even with a card open, so nothing stops mid-air.
   stanceStep(match, p, dt, inp);
   hunterTick(p, dt); // story 018: a running Cazador's clock runs with a menu or card open too
@@ -218,11 +219,11 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   if (inp.shop) {
     if (d.card && d.card.kind === 'buy') closeCard(match, p);
     else if (d.menu) d.menu = false;
-    else if (isFfa(match)) openShop(match, p); // story 021: the shop opens at any time in Free for All, with no base to stand in
+    else if (isRoam(match)) openShop(match, p); // story 021: the shop opens at any time in Free for All, with no base to stand in
     else if (buy && inOwnBase(match, p)) { d.menu = true; personal(match, p, { type: 'unlock' }); }
     else tell(match, p, buy ? 'Compra en tu propia base' : 'Solo se compra durante el tiempo de compra');
   }
-  if (isFfa(match)) syncHidden(match, p); // the shop key may just have closed a hiding person's menu
+  if (isRoam(match)) syncHidden(match, p); // the shop key may just have closed a hiding person's menu
   if (d.card && d.card.kind === 'defuse') {
     if (match.bomb.state !== 'planted') closeCard(match, p, true);
     else if (inp.usePress) closeCard(match, p);
