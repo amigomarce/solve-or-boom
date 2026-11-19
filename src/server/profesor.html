@@ -100,6 +100,8 @@
       <div id="topics" class="topics" style="margin-top:8px"></div>
       <h3>Tus preguntas</h3>
       <button id="upload" type="button">Subir CSV</button>
+      <button id="template" type="button">Descargar plantilla</button>
+      <div id="tplhelp" class="hint" style="margin-top:6px"></div>
       <input id="file" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
       <div id="csv" class="csvline"></div>
       <div id="available" class="csvline"></div>
@@ -211,6 +213,7 @@ function render() {
   put('csv', s.csv ? `Archivo: <b>${esc(s.csv.name)}</b> · <span class="good">${s.csv.count === 1 ? '1 pregunta' : s.csv.count + ' preguntas'}</span>`
       + (s.csv.skipped ? ` · <span class="skip">${s.csv.skipped === 1 ? '1 fila omitida' : s.csv.skipped + ' filas omitidas'}</span>` : '')
     : `<span class="hint">Todavía no hay archivo. Máximo ${Math.floor(info.csvMaxBytes / 1024)} KB y ${info.csvMaxQuestions} preguntas.</span>`);
+  put('tplhelp', templateHelp());
   put('maps', info.maps.map(m => `<label class="chip"><input type="radio" name="map" value="${esc(m.id)}"${m.id === s.map ? ' checked' : ''}>${esc(m.name)}</label>`).join(''));
   // The match options (story 017): the buy time steps by tinfo's step inside its range; friendly fire Sí / No.
   const bt = info.buyTime;
@@ -284,6 +287,32 @@ function download(m) {
   say(m.rows === 1 ? 'Descargado resultados.csv con 1 fila.' : `Descargado resultados.csv con ${m.rows} filas.`, true);
 }
 
+/** The example rows of the question template, one place; each loads with 0 skipped rows through parseCSV (src/game/csv.ts). */
+const TEMPLATE_ROWS = [
+  'pregunta,correcta,mala1,mala2,mala3,nivel',
+  '¿Cuánto es 7 x 8?,56,54,63,48,facil',
+  '¿Cuál es la capital de Francia?,París,Roma,Madrid,Lisboa,medio',
+  '¿Qué elemento tiene el símbolo O?,Hidrógeno,Oxígeno,Osmio,Oro,2,medio',
+  '¿Cuántos lados tiene un hexágono?,5,6,7,8,b,dificil',
+  '¿Quién escribió Don Quijote?,Cervantes',
+  '¿Qué planeta es el planeta rojo?,Marte'
+];
+/** Saves the question template from the browser (no server): UTF-8 with a leading BOM so Excel reads the accents. */
+function downloadTemplate() {
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + TEMPLATE_ROWS.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'plantilla-preguntas.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  say('Descargado plantilla-preguntas.csv.', true);
+}
+/** The Spanish explanation under the template button: columns, separators, levels and the page's own limits. */
+function templateHelp() {
+  return 'La plantilla trae un ejemplo de cada forma. Columnas: <b>pregunta</b>, <b>correcta</b> (la respuesta buena), <b>mala1</b>, <b>mala2</b>, <b>mala3</b> (tres respuestas malas) y <b>nivel</b> (opcional: facil, medio o dificil). '
+    + 'Otra forma: pregunta, cuatro respuestas y un número 1-4 o una letra a-d que indica cuál es la correcta, y después el nivel (opcional). '
+    + 'Forma corta: solo pregunta y respuesta; las respuestas malas se toman de otras filas, así que hacen falta varias filas. '
+    + 'Puedes separar con coma, punto y coma o tabulador. La primera fila (pregunta, correcta...) es el encabezado y no cuenta. '
+    + `Máximo ${Math.floor(info.csvMaxBytes / 1024)} KB y ${info.csvMaxQuestions} preguntas.`;
+}
+
 // ---- the teacher's actions ----
 $('export').onclick = () => send('texport');
 $('clear').onclick = () => { if (confirm('¿Borrar los resultados de todos los alumnos? No se puede deshacer. Los alumnos que están jugando seguirán sumando desde cero.')) send('tclear'); };
@@ -304,6 +333,7 @@ $('ff').addEventListener('change', e => sendSession({ friendlyFire: e.target.val
 $('mode').addEventListener('change', e => sendSession({ mode: e.target.value }));
 $('streak').addEventListener('change', e => sendSession({ streakRewards: e.target.value === '1' }));
 $('topics').addEventListener('change', () => sendSession({ topics: [...$('topics').querySelectorAll('input:checked')].map(i => i.value) }));
+$('template').onclick = downloadTemplate;
 $('upload').onclick = () => $('file').click();
 $('file').addEventListener('change', () => {
   const f = $('file').files[0]; $('file').value = '';
