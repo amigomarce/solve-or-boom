@@ -21,7 +21,9 @@ import { LEVELS, type Level } from '../game/types';
 // 13: Free for All hiding (story 021): the own row ends with `hidden` (1 while this student buys at the start or a respawn, invisible
 //     and untouchable; 0 otherwise); a player hidden from the receiver comes as a blank row: [id, 0, 0, 0, 0, 0, 0, 0, 0, kills, deaths, 0, 0?]
 //     (no position, aim, flags, gun or stance; x = z = 0 is inside the map's outer wall, so it is never a real position).
-export const PROTOCOL_VERSION = 13;
+// 14: rooms and students follow the game mode (story 023): a room view (joined's `room`, the `room` message) carries `mode`, and a
+//     teacher room carries `mode` and `summary` (Free for All: who leads and the time left), so Free for All shows no teams.
+export const PROTOCOL_VERSION = 14;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -75,7 +77,11 @@ export type RoomState = 'waiting' | 'running' | 'paused' | 'ended';
 /** One seat as students see it. Open seats are shown as bots. `name` is a student's name or the bot's ("Bot 3"); display only. */
 export interface SeatView { index: number; team: number; kind: 'human' | 'bot'; name: string }
 /** A room's seating: who sits where. Seats are always 8, in index order (0-3 team 0, 4-7 team 1). */
-export interface RoomView { roomId: string; state: RoomState; seats: SeatView[] }
+export interface RoomView {
+  roomId: string; state: RoomState; seats: SeatView[];
+  /** The room's game mode (story 023, protocol 14): in 'ffa' the waiting room shows no teams. A waiting room follows the teacher's session. */
+  mode: GameModeId;
+}
 /** Who the student is on the server: the name they got (made unique), their room, seat and team. */
 export interface You { name: string; room: string; seat: number; team: number }
 /** Server to client: the answer to a hello that got a seat (or got its old seat back). */
@@ -320,7 +326,7 @@ const isSeatView = (s: unknown): s is SeatView =>
   isObject(s) && isInt(s.index) && isInt(s.team) && (s.kind === 'human' || s.kind === 'bot') && isStr(s.name);
 const isRoomView = (r: unknown): r is RoomView =>
   isObject(r) && isStr(r.roomId) && (r.state === 'waiting' || r.state === 'running' || r.state === 'paused' || r.state === 'ended')
-  && Array.isArray(r.seats) && r.seats.length === SEATS && r.seats.every(isSeatView);
+  && isMode(r.mode) && Array.isArray(r.seats) && r.seats.length === SEATS && r.seats.every(isSeatView);
 const isNums = (v: unknown, n?: number): v is number[] =>
   Array.isArray(v) && (n === undefined || v.length === n) && v.every(x => typeof x === 'number' && Number.isFinite(x));
 const isCard = (c: unknown): c is CardView =>
@@ -347,13 +353,13 @@ export function parseServerMessage(text: string): ServerMessage | null {
     case 'error':
       return isStr(raw.code) && Object.hasOwn(ERROR_TEXT, raw.code) && isStr(raw.text) ? { v, t: 'error', code: raw.code as ErrorCode, text: raw.text } : null;
     case 'room':
-      return isRoomView(raw) ? { v, t: 'room', roomId: raw.roomId, state: raw.state, seats: raw.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } : null;
+      return isRoomView(raw) ? { v, t: 'room', roomId: raw.roomId, state: raw.state, mode: raw.mode, seats: raw.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } : null;
     case 'joined': {
       const y = raw.you;
       if (!isObject(y) || !isStr(y.name) || !isStr(y.room) || !isInt(y.seat) || !isInt(y.team) || !isRoomView(raw.room)) return null;
       const r = raw.room;
       return { v, t: 'joined', you: { name: y.name, room: y.room, seat: y.seat, team: y.team },
-        room: { roomId: r.roomId, state: r.state, seats: r.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } };
+        room: { roomId: r.roomId, state: r.state, mode: r.mode, seats: r.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } };
     }
     case 'begin':
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
@@ -448,6 +454,10 @@ export interface TeacherRoom {
   id: string; status: RoomInfo['status']; managed: boolean; map: string; round: number; score: number[]; matches: number;
   /** Why the room ended or failed ('' otherwise). */
   reason: string; seats: TeacherSeat[];
+  /** The room's game mode (story 023, protocol 14); a waiting room shows the session's. */
+  mode: GameModeId;
+  /** Free for All only (story 023): who leads and the time left, in Spanish ('' in Bomba). */
+  summary: string;
 }
 /** One student on the server. `connected` is false while their seat is held for a rejoin. `room` is '' when unseated. */
 export interface TeacherStudent { id: number; name: string; connected: boolean; room: string; seat: number; team: number }

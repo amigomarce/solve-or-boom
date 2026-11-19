@@ -10,7 +10,11 @@
 //  - Teacher rooms never rematch: a won match ends the room and its students reach the results screen.
 //  - "Repartir automáticamente" refuses while any room runs or is paused, replaces the waiting rooms, and makes
 //    ceil(students / 8) rooms with the students spread evenly (so nobody is left out: 10 students make two rooms of 5,
-//    3 v 2 plus bots), teams alternating. The free seats stay bots.
+//    3 v 2 plus bots), teams alternating. The free seats stay bots. In Free for All (story 023) there are no teams: the
+//    students take the seats in order (0, 1, 2...), the room size unchanged.
+//  - Changing the game mode rebuilds the waiting rooms at once (their students stay seated; nothing was played) and pushes
+//    each room's seating, so the students' waiting rooms follow on their next message; running and paused rooms are not touched.
+//  - Free for All rooms show a `summary` instead of the team score: who leads and the time left (a finished room: who won or led).
 import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
 import { parseCSV, decodeCSV, type ParsedQuestion } from '../game/csv';
@@ -18,6 +22,7 @@ import * as QUESTIONS from '../questions';
 import { CONFIG, tune } from '../game/tune';
 import { PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type GameModeId, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
 import { rebuildMatch, type Room } from './room';
+import { ranking } from '../game/ffa';
 import type { Rooms } from './rooms';
 import type { Lobby } from './lobby';
 import type { Results } from './results';
@@ -60,6 +65,11 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   const start = (room: Room): boolean => rebuildMatch(room, matchChoices(), seed()) && deps.rooms.transition(room.id, 'start');
   const refresh = (room: Room | undefined): void => { if (room) deps.lobby.refresh(room); };
 
+  /** The mode changed (story 023): each waiting room is rebuilt with the session (its students keep their seats) and its students get the new seating; other rooms keep their match. */
+  const followMode = (): void => {
+    for (const room of deps.rooms.all()) if (room.managed && room.status === 'waiting' && rebuildMatch(room, matchChoices(), seed())) refresh(room);
+  };
+
   const split = (): TeacherReply | null => {
     if (deps.rooms.all().some(r => r.status === 'running' || r.status === 'paused')) return err('salas_en_marcha', 'Hay salas en marcha o en pausa: termínalas antes de repartir.');
     const students = deps.lobby.list().filter(s => s.connected);
@@ -71,8 +81,8 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
     fresh.forEach((room, k) => {
       const size = Math.floor(students.length / count) + (k < students.length % count ? 1 : 0);
       for (let j = 0; j < size; j++) {
-        const team = j % 2, seat = team * SEATS_PER_TEAM + Math.floor(j / 2);
-        deps.lobby.move(students[next++].id, room.id, team, seat);
+        const ffa = session.mode === 'ffa', team = ffa ? 0 : j % 2, seat = ffa ? j : team * SEATS_PER_TEAM + Math.floor(j / 2);
+        deps.lobby.move(students[next++].id, room.id, ffa ? Math.floor(seat / SEATS_PER_TEAM) : team, seat);
       }
     });
     for (const r of old) deps.rooms.remove(r.id);
@@ -95,7 +105,20 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         name: s.kind === 'human' ? s.name ?? '' : `Bot ${s.index + 1}`,
         student: s.kind === 'human' ? students.find(x => x.room === r.id && x.seat === s.index)?.id ?? null : null,
       }));
+      const mmss = (t: number): string => { const n = Math.max(0, Math.ceil(t)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
+      /** Free for All: who leads and the time left ('' in Bomba). Names come from the seats (a bot is "Bot n"). */
+      const summaryOf = (r: Room): string => {
+        if (r.match.opts.mode !== 'ffa') return '';
+        if (r.status === 'waiting') return 'Todavía no ha empezado';
+        const lead = ranking(r.match)[0], seat = r.seats[lead.id], name = seat.kind === 'human' ? seat.name ?? '' : `Bot ${seat.index + 1}`;
+        const kills = `${lead.kills} ${lead.kills === 1 ? 'baja' : 'bajas'}`;
+        if (r.match.over) return `Ganó ${name} con ${kills}`;
+        const left = r.status === 'running' || r.status === 'paused';
+        if (!lead.kills) return left ? `Sin bajas todavía · Quedan ${mmss(r.match.roundT)}` : 'Sin bajas';
+        return left ? `Va primero ${name} con ${kills} · Quedan ${mmss(r.match.roundT)}` : `Iba primero ${name} con ${kills}`;
+      };
       const row = (r: Room, live: boolean): TeacherRoom => ({
+        mode: r.match.opts.mode === 'ffa' ? 'ffa' : 'bomb', summary: summaryOf(r),
         id: r.id, status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });
@@ -116,10 +139,12 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const topics = [...new Set(msg.topics)];
           if (!MAP_IDS.includes(msg.map)) return err('mapa', 'Ese mapa no existe.');
           if (msg.buyTime < buyRange.min || msg.buyTime > buyRange.max) return err('compra', `El tiempo de compra va de ${buyRange.min} a ${buyRange.max} segundos.`);
+          const modeChanged = msg.mode !== session.mode;
           const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards, mode: msg.mode };
           if (msg.subject === QUESTIONS.CUSTOM) {
             if (!session.custom.length) return err('sin_csv', 'Primero sube un archivo CSV de preguntas.');
             Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map, ...options });
+            if (modeChanged) followMode();
             return null;
           }
           if (!Object.hasOwn(QUESTIONS.SUBJECTS, msg.subject)) return err('materia', 'Esa materia no existe.');
@@ -128,6 +153,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const n = QUESTIONS.availableCount(msg.subject, topics, msg.level, session.custom);
           if (n !== null && n < 1) return err('sin_preguntas', 'Esa elección no tiene preguntas.');
           Object.assign(session, { subject: msg.subject, level: msg.level, topics, map: msg.map, ...options });
+          if (modeChanged) followMode();
           return null;
         }
         case 'tcsv': {

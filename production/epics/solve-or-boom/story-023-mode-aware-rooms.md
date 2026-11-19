@@ -1,7 +1,7 @@
 # Story 023: Rooms and student view follow the game mode
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: M
@@ -57,8 +57,11 @@
 
 ## Files
 
-- src/server/profesor.html, src/server/teacher.ts, src/server/lobby.ts (rooms and placement without teams in Free for All)
-- src/net/protocol.ts, snapshot.ts, mirror.ts (only if the mode must be sent), src/main.ts (waiting room, Tab table, results, end text)
+- src/net/protocol.ts (protocol 14: the room view and the teacher room carry the mode; the teacher room carries a Free for All summary)
+- src/server/lobby.ts (the mode in the room view; moving into a Free for All room takes any free seat)
+- src/server/teacher.ts (spread without teams in Free for All; waiting rooms follow a mode change; the Free for All summary)
+- src/server/profesor.html (V = 14; one Jugadores list, the summary line and a room-only move menu in Free for All)
+- src/main.ts (the waiting room without teams in Free for All; the end text fallback)
 - No test files: tests are waived at qa.level minimal
 
 ## QA Test Cases
@@ -80,3 +83,17 @@
 
 - Depends on: `production/epics/solve-or-boom/story-019-free-for-all.md`
 - Unlocks: None
+
+## Completion Notes
+**Completed**: 2026-11-19
+**Criteria**: 7/7 passing
+**Deviations**: None. The class server must be rebuilt and students must reload the page (protocol 14).
+**Test Evidence**: waived at qa.level minimal; production/qa/evidence/story-023-mode-aware-rooms/ (9 screenshots, stamp unchanged)
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke
+
+## Calls beyond the design
+- Teacher Free for All line "Va primero NAME con N bajas · Quedan m:ss" / "Sin bajas todavía · Quedan m:ss" / "Ganó NAME con N bajas"; one "Jugadores" column; the move menu shows the room only (`src/server/teacher.ts`, `src/server/profesor.html`) · kept 2026-11-19
+- Moving a student into a Free for All room takes the first free seat ("Esa sala no tiene sitio libre."); the spread fills seats 0, 1, 2…; a student who joins by name still gets a balanced seat (`src/server/lobby.ts`, `src/server/teacher.ts`) · kept 2026-11-19
+- A mode change rebuilds the waiting rooms and students keep their seats, so after Free for All to Bomba they can all be on Equipo 1 until the teacher spreads again (`src/server/teacher.ts` followMode) · kept 2026-11-19
+- Student waiting room "Modo: Free for All" with one "Jugadores" list and "Todos contra todos, sin equipos…"; end text fallback "Terminaste con N bajas" (`src/main.ts`) · kept 2026-11-19

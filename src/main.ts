@@ -30,6 +30,7 @@ import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
 import { connect, savedName, type Connection } from './net/client';
 import type { ResultsMessage, RoomView, You } from './net/protocol';
+import { SEATS_PER_TEAM } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 
 // ---- Class mode ------------------------------------------------------------------------
@@ -153,7 +154,7 @@ function joinClass(): void {
     },
     onRoom: m => {
       if (gen !== aula.gen) return;
-      aula.room = { roomId: m.roomId, state: m.state, seats: m.seats };
+      aula.room = { roomId: m.roomId, state: m.state, seats: m.seats, mode: m.mode };
       if (net.mirror) setNames(net.mirror, m.seats);
       if (m.state === 'ended' && (scene === 'play' || scene === 'pause' || (scene === 'controls' && ctl.from === 'pause'))) showClassResults();
     },
@@ -2054,17 +2055,22 @@ function drawWaiting() {
   // who and where
   rr(40, 146, 1200, 84, 16, 'rgba(14,19,30,0.92)', null);
   const roomNo = room.roomId.replace(/^sala-/, '');
-  ([['Tu nombre', you.name, 80], ['Sala', `Sala ${roomNo}`, 560], ['Tu equipo', `Equipo ${you.team + 1}`, 900]] as const).forEach(([k, v, x]) => {
+  const ffa = room.mode === 'ffa'; // story 023: Free for All shows the mode instead of a team, and one list of players
+  const third: [string, string, number] = ffa ? ['Modo', 'Free for All', 900] : ['Tu equipo', `Equipo ${you.team + 1}`, 900];
+  ([['Tu nombre', you.name, 80], ['Sala', `Sala ${roomNo}`, 560], third] as [string, string, number][]).forEach(([k, v, x]) => {
     text(k, x, 172, 15, '#aab4c8', 'left', 'normal');
     text(clip(v, 420, 26), x, 204, 26, x === 80 ? '#ffd06a' : '#fff', 'left');
   });
-  // the two teams, 4 seats each
+  // Bomba: the two teams, 4 seats each. Free for All: one panel "Jugadores", the 8 seats in index order in two columns of 4.
+  if (ffa) { rr(40, 246, 1200, 314, 16, 'rgba(14,19,30,0.92)', null); text('Jugadores', 64, 276, 24, '#ffd06a', 'left'); }
   for (let t = 0; t < 2; t++) {
-    const px = 40 + t * 610;
-    rr(px, 246, 590, 314, 16, 'rgba(14,19,30,0.92)', null);
-    text(`Equipo ${t + 1}`, px + 24, 276, 24, '#ffd06a', 'left');
-    if (t === you.team) text('tu equipo', px + 566, 276, 16, '#aab4c8', 'right', 'normal');
-    room.seats.filter(s => s.team === t).forEach((s, i) => {
+    const px = 40 + t * (ffa ? 600 : 610);
+    if (!ffa) {
+      rr(px, 246, 590, 314, 16, 'rgba(14,19,30,0.92)', null);
+      text(`Equipo ${t + 1}`, px + 24, 276, 24, '#ffd06a', 'left');
+      if (t === you.team) text('tu equipo', px + 566, 276, 16, '#aab4c8', 'right', 'normal');
+    }
+    (ffa ? room.seats.slice(t * SEATS_PER_TEAM, (t + 1) * SEATS_PER_TEAM) : room.seats.filter(s => s.team === t)).forEach((s, i) => {
       const y = 306 + i * 62, me = s.index === you.seat, human = s.kind === 'human';
       rr(px + 20, y, 550, 52, 10, me ? 'rgba(255,208,106,0.18)' : 'rgba(255,255,255,0.05)', me ? '#ffd06a' : null, 2);
       const ix = px + 50, iy = y + 26, c = human ? (me ? '#ffd06a' : '#e4e9f4') : '#6f7a8e';
@@ -2084,7 +2090,8 @@ function drawWaiting() {
   if (aula.retry) {
     rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
     text(aula.retry, W / 2, 598, 20, '#ffe28a');
-  } else text('Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
+  } else text(ffa ? 'Todos contra todos, sin equipos: gana quien tenga más bajas. Los sitios libres los juegan bots.'
+    : 'Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
   button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
   if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, TOUCH ? 'Volver a la pantalla de entrada' : 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
 }
@@ -2209,7 +2216,7 @@ function drawResults() {
   const won = ffa ? state.podium[0].id === state.human.id : state.score[mine] > state.score[1 - mine];
   text(state.gained, W / 2, 80, 48, won ? '#9ff08a' : '#ff9a8a');
   const place = ffa ? 1 + state.podium.findIndex((r: { id: number }) => r.id === state.human.id) : 0; // story 019
-  text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
+  text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : isFfa(state) ? `Terminaste con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
   if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else drawSoloTable();
   const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : 'Volver a la pantalla de entrada') + enter;

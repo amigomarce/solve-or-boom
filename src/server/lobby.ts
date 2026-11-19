@@ -48,7 +48,7 @@ export interface Lobby {
   idOf(connId: number): number | undefined;
   /**
    * Teacher: moves a student to a free seat of `team` in room `roomId` (the given seat, else the team's lowest
-   * free one). The student gets a new `joined`; both rooms' students get the new seating. Returns an error
+   * free one; in a Free for All room the team is ignored and the lowest free seat is taken). The student gets a new `joined`; both rooms' students get the new seating. Returns an error
    * sentence in Spanish, or '' when done.
    */
   move(id: number, roomId: string, team: number, seat?: number): string;
@@ -70,7 +70,7 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
   const keyOf = (name: string): string => name.toLocaleLowerCase('es');
   const stateOf = (room: Room): RoomView['state'] => (deps.rooms.get(room.id) === room && (room.status === 'running' || room.status === 'waiting' || room.status === 'paused') ? room.status : 'ended');
   const view = (room: Room): RoomView => ({
-    roomId: room.id, state: stateOf(room),
+    roomId: room.id, state: stateOf(room), mode: room.match.opts.mode === 'ffa' ? 'ffa' : 'bomb',
     seats: room.seats.map((s): SeatView => (s.kind === 'human' && s.name !== null
       ? { index: s.index, team: s.team, kind: 'human', name: s.name } : { index: s.index, team: s.team, kind: 'bot', name: `Bot ${s.index + 1}` })),
   });
@@ -155,9 +155,10 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       const st = [...byKey.values()].find(x => x.id === id), to = deps.rooms.get(roomId);
       if (!st) return 'Ese alumno ya no está conectado.';
       if (!to) return 'Esa sala no existe o ya terminó.';
-      if (seat !== undefined && Math.floor(seat / SEATS_PER_TEAM) !== team) return 'Ese asiento no es del equipo elegido.';
-      const free = to.seats.filter(s => s.kind !== 'human' && s.team === team && (seat === undefined || s.index === seat));
-      if (!free.length) return seat === undefined ? 'Ese equipo no tiene sitio libre.' : 'Ese asiento está ocupado.';
+      const ffa = to.match.opts.mode === 'ffa'; // story 023: Free for All has no teams, so the team asked is ignored and any free seat does
+      if (!ffa && seat !== undefined && Math.floor(seat / SEATS_PER_TEAM) !== team) return 'Ese asiento no es del equipo elegido.';
+      const free = to.seats.filter(s => s.kind !== 'human' && (ffa || s.team === team) && (seat === undefined || s.index === seat));
+      if (!free.length) return seat === undefined ? (ffa ? 'Esa sala no tiene sitio libre.' : 'Ese equipo no tiene sitio libre.') : 'Ese asiento está ocupado.';
       const from = st.room, owner = from.seats[st.seat].owner!;
       leaveSeat(from, owner, nowS());
       const taken = takeSeat(to, owner, st.name, free[0].index)!;

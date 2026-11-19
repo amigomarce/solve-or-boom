@@ -1,0 +1,5 @@
+Reviewed-Content-Hash: src/net/protocol.ts cbf0b717d8752e7d9929acc35d6191331105d9db
+Reviewed-Content-Hash: src/server/lobby.ts abd47ca20586c43139a0ee0871bcae5bb712097e
+Reviewed-Content-Hash: src/server/teacher.ts f185c02b9bf272be9cfcbc6e72698391d968d6d9
+Reviewed-Content-Hash: src/server/profesor.html 6c46e418674bff092f4bb205370705c913060bc2
+Reviewed-Content-Hash: src/main.ts af7e970beaa357e77b68b124ec56e544620e9561

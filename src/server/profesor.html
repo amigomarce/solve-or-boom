@@ -60,6 +60,7 @@
   .meta { color: var(--soft); font-size: 14px; margin: 4px 0 8px; }
   .meta strong { color: var(--text); font-size: 16px; }
   .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .teams.one { grid-template-columns: 1fr; }
   .team h4 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
   .seat { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.04); margin-bottom: 4px; font-size: 15px; min-width: 0; }
   .seat .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -148,7 +149,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 13;
+const V = 14;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -235,17 +236,19 @@ function render() {
   $('count').textContent = st.students.length ? `(${on} conectados${st.students.length > on ? ', ' + (st.students.length - on) + ' sin conexión' : ''})` : '';
   put('students', !st.students.length ? '<div class="empty">Todavía no hay alumnos. Los alumnos entran escribiendo su nombre en la página del juego.</div>'
     : '<ul class="students">' + st.students.map(x => {
-      const opts = live.flatMap(r => [0, 1].map(t => `<option value="${esc(r.id)}|${t}"${x.room === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(r.id))} · Equipo ${t + 1}</option>`));
+      // Story 023: a Free for All room has no teams, so it is one option (the room); Bomba keeps one per team.
+      const opts = live.flatMap(r => r.mode === 'ffa' ? [`<option value="${esc(r.id)}|0"${x.room === r.id ? ' selected' : ''}>${esc(roomName(r.id))}</option>`]
+        : [0, 1].map(t => `<option value="${esc(r.id)}|${t}"${x.room === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(r.id))} · Equipo ${t + 1}</option>`));
       const here = live.some(r => r.id === x.room);
       return `<li><span class="name" title="${esc(x.name)}">${esc(x.name)}${x.connected ? '' : ' <span class="gone">(sin conexión)</span>'}</span>`
-        + `<select data-student="${x.id}" aria-label="Sala y equipo de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
+        + `<select data-student="${x.id}" aria-label="Sala${live.some(r => r.id === x.room && r.mode === 'ffa') ? '' : ' y equipo'} de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
     }).join('') + '</ul>');
 
   put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : live.map(roomCard).join(''));
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
     `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span></div>`
-    + `<div class="meta">Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
+    + `<div class="meta">${r.mode === 'ffa' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
@@ -253,15 +256,18 @@ function render() {
 }
 
 function roomCard(r) {
-  const teams = [0, 1].map(t => `<div class="team"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(x => x.kind === 'human'
+  const ffa = r.mode === 'ffa'; // story 023: one group of players, no team headings or team score
+  const seatDiv = x => x.kind === 'human'
     ? `<div class="seat human"><span class="tag">Alumno</span><span class="who" title="${esc(x.name)}">${esc(x.name)}</span></div>`
-    : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`).join('') + '</div>').join('');
+    : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`;
+  const teams = ffa ? `<div class="team"><h4>Jugadores</h4>${r.seats.map(seatDiv).join('')}</div>`
+    : [0, 1].map(t => `<div class="team"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(seatDiv).join('') + '</div>').join('');
   const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
   const played = r.status !== 'waiting';
   return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
     + `<span class="hint">Mapa ${esc(mapName(r.map))}</span></div>`
-    + `<div class="meta">${played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
-    + `<div class="teams">${teams}</div><div class="actions">`
+    + `<div class="meta">${ffa ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
     + b('end', 'Terminar', true) + '</div></div>';
 }

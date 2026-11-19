@@ -38,4 +38,4 @@ Build order from the brief:
 | 020 | Smooth weapon models | Visual/Feel | Complete | N/A |
 | 021 | Free for All map and spawn changes | Integration | Complete | N/A |
 | 022 | CSV template on the teacher panel | UI | Complete | N/A |
-| 023 | Rooms and student view follow the game mode | Integration | Ready | N/A |
+| 023 | Rooms and student view follow the game mode | Integration | Complete | N/A |
