@@ -332,11 +332,11 @@ function bombPlan(match: Match, b: Loose, dt: number, side: string): boolean {
     if (bomb.state === 'planted') {
       const d = Math.abs(bomb.y - b.st.y) < tune.bomb_reach_y ? Math.hypot(bomb.x - b.x, bomb.z - b.z) : Infinity; // under or over the bomb is not near it
       if (!b.guarding) { b.guarding = true; b.rotating = false; b.wps = [cellAt(bomb.x, bomb.z, bomb.y ?? 0)]; b.path = []; b.arrived = false; }
-      if (d < 1.7 && (!bomb.defuser || bomb.defuser === b)) {
+      if (d < tune.bot_defuse_reach && (!bomb.defuser || bomb.defuser === b)) {
         if (!b.defusing) { b.defusing = true; bomb.defuser = b; b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, match.rng()); b.defuseRight = 0; }
         b.thinkT -= dt;
         if (b.thinkT <= 0) {
-          if (match.rng() < tune.bot_defuse_right) { b.right++; b.defuseRight++; } else { b.wrong++; bomb.panicT = 1.0; }
+          if (match.rng() < tune.bot_defuse_right) { b.right++; b.defuseRight++; } else { b.wrong++; bomb.panicT = tune.bomb_panic_time; } // the same fast red beeping as a student's wrong answer
           if (b.defuseRight >= tune.defuse_answers) { defuseBomb(match, b); return true; }
           b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, match.rng());
         }

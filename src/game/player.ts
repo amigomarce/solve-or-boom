@@ -105,7 +105,7 @@ export function answer(match: Match, p: Loose, i: number): void {
     c.wrongT = c.wrongTotal = c.kind === 'respawn' ? tune.ffa_wrong_wait // story 019: a fixed wait, then another question
       : Math.min(tune.wrong_delay_max, tune.wrong_delay * tune.wrong_delay_growth ** (d.wrongStreak - 1));
     d.deck.miss(c.q); personal(match, p, { type: 'answer', right: false });
-    if (c.kind === 'defuse') match.bomb.panicT = 1.6;
+    if (c.kind === 'defuse') match.bomb.panicT = tune.bomb_panic_time; // the fast red beeping after a wrong defuse answer
   }
 }
 /** One step of `p`'s open card: number keys answer, a confirmed right answer completes the buy or defuse, a lockout ends in a new question. */
@@ -288,7 +288,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
       }
     }
   }
-  if (live && b.state === 'planted' && sideOf(match, p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < 2 && Math.abs(me.y - b.y) < tune.bomb_reach_y && inp.usePress) {
+  if (live && b.state === 'planted' && sideOf(match, p) === 'def' && Math.hypot(p.x - b.x, p.z - b.z) < tune.defuse_reach && Math.abs(me.y - b.y) < tune.bomb_reach_y && inp.usePress) {
     // One student defuses at a time: a teammate's open defuse card keeps the bomb theirs.
     if (b.defuser && b.defuser !== p && b.defuser.human && deskOf(match, b.defuser).card?.kind === 'defuse') tell(match, p, 'Un compañero ya está desactivando la bomba');
     else {

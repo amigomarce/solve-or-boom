@@ -30,7 +30,7 @@ export function updateBomb(match: Match, dt: number): void {
   if (b.state === 'carried' && b.carrier) { b.x = b.carrier.x; b.z = b.carrier.z; b.y = b.carrier.st.y; }
   if (b.state === 'dropped') {
     for (const p of match.players) {
-      if (p.alive && sideOf(match, p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < 1.3 && Math.abs(p.st.y - b.y) < tune.bomb_reach_y) {
+      if (p.alive && sideOf(match, p) === 'att' && Math.hypot(p.x - b.x, p.z - b.z) < tune.bomb_pickup_reach && Math.abs(p.st.y - b.y) < tune.bomb_reach_y) {
         b.state = 'carried'; b.carrier = p; p.fetching = false;
         if (!p.human) routeTo(match, p, 'site');
         if (p === match.human) say(match, 'Recogiste la bomba'); break;
