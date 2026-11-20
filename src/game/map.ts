@@ -68,6 +68,8 @@ export const CRATE_FILL = 0.92;
  *  wooden crates, four barrels with one on top, three pallets with cartons, five courses of sandbags. A player's shot
  *  passes over a crate cell above this height (story 015); sight, bots and walking still treat the cell as a full block. */
 export const CRATE_TOP: Record<string, number> = { crate: 2.2, barrel: 2.62, pallet: 2.12, sandbag: 1.5 };
+/** One wooden crate's height: two stacked make CRATE_TOP.crate, so the drawn stack and the shots' crate top agree (TD-010). */
+export const CRATE_H = CRATE_TOP.crate / 2;
 /** The loaded map's id and data. */
 export let MAP_ID = '', MAP: MapData;
 /** The loaded map's size in cells. */

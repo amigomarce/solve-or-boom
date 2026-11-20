@@ -7,7 +7,7 @@ import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeom
 import { tune } from './config';
 import { type Loose } from './game/types';
 import { clock, params } from './hook';
-import { CELL, CRATES, CRATE_FILL, MAP, MAP_ID, MH, MW, SITE, WALL_H, canStepXY, center, grid, grid1, hasHeights, idx, isGate, levelHeight, loadMap, rampAt, rampHeight, zone, zone1 } from './game/map';
+import { CELL, CRATES, CRATE_FILL, CRATE_H, MAP, MAP_ID, MH, MW, SITE, WALL_H, canStepXY, center, grid, grid1, hasHeights, idx, isGate, levelHeight, loadMap, rampAt, rampHeight, zone, zone1 } from './game/map';
 import { lerp } from './game/rules';
 import { ROSTER } from './game/match';
 import { TOUCH, renderRatio } from './touch';
@@ -164,7 +164,7 @@ function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: num
   });
   const tex = slabTex, topMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: tex });
   const crateMat = (): THREE.Material => new THREE.MeshLambertMaterial({ map: crateTex });
-  const crateGeo = new THREE.BoxGeometry(CELL * CRATE_FILL, 1.1, CELL * CRATE_FILL);
+  const crateGeo = new THREE.BoxGeometry(CELL * CRATE_FILL, CRATE_H, CELL * CRATE_FILL);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const g1 = grid1[idx(x, y)];
     if (!g1) continue;
@@ -173,7 +173,7 @@ function drawFirstFloor(put: PutFn, bx: (w: number, h: number, d: number, x: num
     const uv = top.getAttribute('uv');
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (x + uv.getX(i)) / MW, 1 - (y + 1 - uv.getY(i)) / MH);
     put('slabtop', topMat, top, center(x), H1, center(y)); top.dispose(); // put() keeps a clone
-    if (g1 === 2) { put('crate1', crateMat, crateGeo, center(x), H1 + 0.55, center(y)); put('crate1', crateMat, crateGeo, center(x), H1 + 1.65, center(y), ((x + y) % 3) * 0.2); }
+    if (g1 === 2) { put('crate1', crateMat, crateGeo, center(x), H1 + CRATE_H / 2, center(y)); put('crate1', crateMat, crateGeo, center(x), H1 + CRATE_H * 1.5, center(y), ((x + y) % 3) * 0.2); } // two crates, the top one turned
     for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // an open edge: not more slab, not a wall, not the top of a stair
       const nx = x + dx, ny = y + dy;
       if (up(nx, ny) || nx < 0 || ny < 0 || nx >= MW || ny >= MH || grid[idx(nx, ny)] === 0) continue;
@@ -345,10 +345,10 @@ function buildWorld(): void {
     });
     walls.matrixAutoUpdate = false; group.add(walls);
     const wood = CRATES.filter(([x, y, l]) => l !== 1 && !kinds.has(idx(x, y))); // first-floor crates are drawn with the first floor
-    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * CRATE_FILL, 1.1, CELL * CRATE_FILL), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
+    const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL * CRATE_FILL, CRATE_H, CELL * CRATE_FILL), new THREE.MeshLambertMaterial({ map: crateTex }), wood.length * 2);
     wood.forEach(([x, y], i) => {
-      m.makeTranslation(center(x), 0.55, center(y)); crates.setMatrixAt(i * 2, m);
-      m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), 1.65, center(y)); crates.setMatrixAt(i * 2 + 1, m);
+      m.makeTranslation(center(x), CRATE_H / 2, center(y)); crates.setMatrixAt(i * 2, m);
+      m.makeRotationY(((x + y) % 3) * 0.2); m.setPosition(center(x), CRATE_H * 1.5, center(y)); crates.setMatrixAt(i * 2 + 1, m);
     });
     crates.matrixAutoUpdate = false; group.add(crates);
   }
