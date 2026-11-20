@@ -42,4 +42,4 @@ Build order from the brief:
 | 024 | Team duel mode | Integration | Complete | N/A |
 | 025 | Cooperative waves mode | Integration | Complete | N/A |
 | 026 | Teacher page layout and class status | UI | Complete | N/A |
-| 027 | Students, rooms and results on the teacher page | Integration | Ready | N/A |
+| 027 | Students, rooms and results on the teacher page | Integration | Complete | N/A |

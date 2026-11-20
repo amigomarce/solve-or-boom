@@ -38,8 +38,8 @@ export interface Results {
   size(): number;
   /** The student table (by name) and the topic view (weakest first), for the teacher page. */
   view(): { students: ResultRow[]; topics: TopicRow[] };
-  /** The CSV text with a leading byte-order mark; one row per student, room, topic and level. */
-  csv(): string;
+  /** The CSV text with a leading byte-order mark; `label` names a room id in the Sala column (default "Sala N"; story 027); one row per student, room, topic and level. */
+  csv(label?: (room: string) => string): string;
 }
 
 /** A room id as people read it: "sala-2" is "Sala 2". */
@@ -90,13 +90,13 @@ export function createResults(maxStudents: number): Results {
         topics: [...topics.values()].map(r => ({ topic: r.topic, right: r.right, wrong: r.wrong, students: r.who.size })).sort((a, b) => pct(a) - pct(b) || by(a.topic, b.topic)),
       };
     },
-    csv() {
+    csv(label = roomLabel) {
       const lines = [CSV_HEADER.map(csvCell).join(CSV_SEP)];
       for (const e of [...rows.values()].sort((a, b) => by(a.name, b.name))) {
         const cells = [...e.t.cells.values()].sort((a, b) => by(a.room, b.room) || by(a.topic, b.topic) || by(a.level, b.level));
         // A student with no answers still gets one row (empty topic, zeros) so the teacher sees who took part.
         const list = cells.length ? cells : [{ room: e.room, topic: '', level: '', right: 0, wrong: 0 }];
-        for (const c of list) lines.push([csvCell(e.name), csvCell(roomLabel(c.room)), csvCell(c.topic), csvCell(levelLabel(c.level)), String(c.right), String(c.wrong)].join(CSV_SEP));
+        for (const c of list) lines.push([csvCell(e.name), csvCell(label(c.room)), csvCell(c.topic), csvCell(levelLabel(c.level)), String(c.right), String(c.wrong)].join(CSV_SEP));
       }
       return '﻿' + lines.join('\r\n') + '\r\n';
     },

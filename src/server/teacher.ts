@@ -30,10 +30,10 @@ import { rebuildMatch, type Room } from './room';
 import { ranking } from '../game/ffa';
 import type { Rooms } from './rooms';
 import type { Lobby } from './lobby';
-import type { Results } from './results';
+import { roomLabel, type Results } from './results';
 
 /** The teacher's limits (data/aula.json). */
-export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; maxRooms: number; finishedShown: number; weakBelowPct: number; weakMinAnswers: number }
+export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; maxRooms: number; roomNameMax: number; finishedShown: number; weakBelowPct: number; weakMinAnswers: number }
 /** What the teacher needs: the rooms, the lobby (students) and a log. */
 export interface TeacherDeps { rooms: Rooms; lobby: Lobby; results: Results; log: (line: string) => void }
 /** The teacher screen's brain. */
@@ -46,6 +46,8 @@ export interface Teacher {
   handle(msg: TeacherMessage): TeacherReply | null;
   /** Adds one empty waiting room built from the session; null at the room limit. */
   addRoom(): Room | null;
+  /** Sets the address the students type (tinfo's `address`); aula.ts calls it once the port is known. */
+  setAddress(url: string): void;
 }
 
 /**
@@ -57,6 +59,9 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
     friendlyFire: false, buyTime: Number(tune.buy_time), streakRewards: true, mode: 'bomb' as GameModeId };
   const buyRange = CONFIG.buy_time as { min: number; max: number; step: number };
   const v = PROTOCOL_VERSION;
+  let address = '';
+  /** A room's name for the CSV: the teacher's, else "Sala N" (a removed room has none). */
+  const labelOf = (id: string): string => deps.rooms.get(id)?.name || roomLabel(id);
   const err = (code: string, text: string): TeacherReply => ({ v, t: 'terror', code, text });
   const matchChoices = () => ({
     subject: session.subject, level: session.level, topics: session.subject === QUESTIONS.CUSTOM ? [] : [...session.topics],
@@ -84,6 +89,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
     const count = Math.ceil(students.length / cap), old = deps.rooms.all().filter(r => r.managed && r.status === 'waiting');
     if (deps.rooms.all().length - old.length + count > lim.maxRooms) return err('demasiadas_salas', `Harían falta ${count} salas y el máximo es ${lim.maxRooms}.`);
     const fresh = Array.from({ length: count }, () => make()!);
+    fresh.forEach((room, k) => { if (old[k]) room.name = old[k].name; }); // story 027: the teacher's room names stay with their place in the order
     let next = 0;
     fresh.forEach((room, k) => {
       const size = Math.floor(students.length / count) + (k < students.length % count ? 1 : 0);
@@ -103,6 +109,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
+      address,
       modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }, { id: 'duel', name: 'Duelo por equipos' }, { id: 'waves', name: 'Oleadas cooperativas' }],
     }),
     state() {
@@ -143,7 +150,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         : `${r.match.opts.mode === 'bomb' ? `Marcador final ${r.match.score[0]} – ${r.match.score[1]}` : summaryOf(r)}${r.reason ? ' · ' + r.reason : ''}`;
       const row = (r: Room, live: boolean): TeacherRoom => ({
         mode: r.match.opts.mode, summary: summaryOf(r), last: live ? lastOf(r.prev) : '',
-        id: r.id, status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
+        id: r.id, name: deps.rooms.get(r.id)?.name ?? '', status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });
       return {
@@ -156,6 +163,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       };
     },
     addRoom: make,
+    setAddress(url) { address = url; },
     handle(msg) {
       switch (msg.t) {
         case 'ping': return { v, t: 'pong' };
@@ -195,9 +203,16 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           return { v, t: 'tcsvok', ok: true, name: msg.name, count: res.questions.length, skipped: res.skipped,
             text: `${res.questions.length === 1 ? 'Cargada 1 pregunta' : `Cargadas ${res.questions.length} preguntas`} de ${msg.name}` };
         }
-        case 'texport': { const text = deps.results.csv(); return { v, t: 'texported', name: 'resultados.csv', text, rows: text.split('\r\n').length - 2 }; }
+        case 'texport': { const text = deps.results.csv(labelOf); return { v, t: 'texported', name: 'resultados.csv', text, rows: text.split('\r\n').length - 2 }; }
         case 'tclear': deps.results.clear(); deps.log('Resultados borrados por el profesor'); return null;
         case 'taddroom': return make() ? null : err('demasiadas_salas', `Ya hay ${lim.maxRooms} salas, el máximo.`);
+        case 'trename': {
+          const room = deps.rooms.get(msg.room), name = msg.name.replace(/[\u0000-\u001f<>]/g, '').trim();
+          if (!room) return err('sala', 'Esa sala no existe o ya terminó.');
+          if (name.length > lim.roomNameMax) return err('nombre_largo', `El nombre de la sala puede tener hasta ${lim.roomNameMax} letras.`);
+          room.name = name;
+          return null;
+        }
         case 'tsplit': return split();
         case 'tmove': {
           const problem = deps.lobby.move(msg.student, msg.room, msg.team, msg.seat);

@@ -157,6 +157,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `demo_rooms` 0: the server no longer starts running rooms of bots (they would take students before the teacher sets up). `--salas N` still makes N.
 - `waiting_rooms` 4: empty waiting rooms made at start so arriving students have a seat (4 rooms = 32 students) until "Repartir automáticamente" replaces them. 0 = students get "sin cupo" until the teacher adds a room.
 - `max_rooms` 16: most live rooms (the split and "add room" refuse past it). `finished_rooms_shown` 8: ended rooms still listed to the teacher.
+- `teacher_room_name_max` 24: most letters in a room's name ("3.º A", "Grupo rojo"); the teacher's rename is trimmed, a blank one clears it, a longer one is refused in Spanish (story 027). The name lives on the server's room record until the room is removed.
 - `teacher_update_ms` 500: how often the teacher page's state is checked and pushed if changed; `teacher_heartbeat_s` 5: pushed anyway at least this often.
 - `teacher_max_message_bytes` 393216: largest teacher frame (a 262144-byte CSV is 349528 base64 chars). `csv_max_bytes` 262144 and `csv_max_questions` 500: the CSV limits (single player has none; these protect the server).
 

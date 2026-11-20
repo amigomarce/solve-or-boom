@@ -34,7 +34,9 @@ import { LEVELS, type Level } from '../game/types';
 //     sends the results and the room goes back to 'waiting' with the same students (a `room` message with state 'waiting'); its next start is
 //     a new `begin` (match + 1). The teacher's `troom` takes action 'remove' ("Quitar sala", a waiting room only), and a teacher room carries
 //     `last`, its last finished match in Spanish ('' before the first).
-export const PROTOCOL_VERSION = 17;
+// 18: the teacher page (story 027): `tinfo` carries `address`, the URL the students type ('' when unknown); a teacher room carries `name` (the teacher's
+//     name for it, '' for none); the teacher's new `trename` {room, name} names a room (trimmed; blank clears; over aula.json's teacher_room_name_max is refused).
+export const PROTOCOL_VERSION = 18;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -416,7 +418,7 @@ export const TEACHER_PATH = '/profesor';
 /** The teacher's WebSocket path (accepted only from loopback). */
 export const TEACHER_WS_PATH = '/ws-profesor';
 /** Every message type only the teacher may send. */
-export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear'] as const;
+export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear', 'trename'] as const;
 
 /**
  * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
@@ -435,6 +437,8 @@ export interface TMoveMessage { v: number; t: 'tmove'; student: number; room: st
 export type RoomAction = 'start' | 'pause' | 'resume' | 'end' | 'remove';
 /** Teacher to server: start (waiting), pause (running), resume (paused), end the match of (running or paused) or remove (waiting) one room. */
 export interface TRoomMessage { v: number; t: 'troom'; room: string; action: RoomAction }
+/** Teacher to server: name a room ("3.º A"); the server trims it, a blank name clears it, one over the limit is refused (protocol 18). */
+export interface TRenameMessage { v: number; t: 'trename'; room: string; name: string }
 /** Teacher to server: start every waiting room, or end every room. */
 export interface TAllMessage { v: number; t: 'tall'; action: 'start' | 'end' }
 /** Teacher to server: "Exportar CSV": asks for the results as CSV text (answered with `texported`). */
@@ -442,7 +446,7 @@ export interface TExportMessage { v: number; t: 'texport' }
 /** Teacher to server: "Borrar resultados": forgets every student's results (a student mid-match counts from zero afterwards). */
 export interface TClearMessage { v: number; t: 'tclear' }
 /** Every message the teacher may send ('ping' is also accepted and answered with 'pong'). */
-export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRoomMessage | TAllMessage | TExportMessage | TClearMessage | PingMessage;
+export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRenameMessage | TRoomMessage | TAllMessage | TExportMessage | TClearMessage | PingMessage;
 
 /** The catalogue the form is built from, sent once on connect. */
 export interface TeacherInfoMessage {
@@ -457,12 +461,14 @@ export interface TeacherInfoMessage {
   buyTime: { min: number; max: number; step: number };
   /** The game modes and their names, for the page's "Modo de juego" choice (story 019, protocol 12). */
   modes: { id: GameModeId; name: string }[];
+  /** The address the students type (the one `npm run aula` prints), e.g. "http://192.168.1.20:8080"; '' when the PC has no network address (protocol 18). */
+  address: string;
 }
 /** One seat as the teacher sees it: `student` is the id used by tmove (null for a bot). */
 export interface TeacherSeat { index: number; team: number; kind: 'human' | 'bot'; name: string; student: number | null }
 /** One room as the teacher sees it. `managed` is false for demo rooms; ended rooms have no seats filled. */
 export interface TeacherRoom {
-  id: string; status: RoomInfo['status']; managed: boolean; map: string; round: number; score: number[]; matches: number;
+  id: string; /** The teacher's name for the room ('' for none: the page shows "Sala N"; protocol 18). */ name: string; status: RoomInfo['status']; managed: boolean; map: string; round: number; score: number[]; matches: number;
   /** Why the room ended or failed ('' otherwise). */
   reason: string; seats: TeacherSeat[];
   /** The room's game mode (story 023, protocol 14); a waiting room shows the session's. */
@@ -511,7 +517,7 @@ export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; cod
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
   tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards', 'mode'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
-  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], ping: ['v', 't'],
+  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], trename: ['v', 't', 'room', 'name'], ping: ['v', 't'],
 };
 /**
  * Checks one text frame from the teacher's connection: size, JSON, version, type, exact keys and each field's
@@ -546,6 +552,9 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
       if (!isInt(raw.student) || raw.student < 0 || !isStr(raw.room) || !ROOM_ID.test(raw.room) || (raw.team !== 0 && raw.team !== 1)) return bad;
       if (raw.seat !== undefined && (!isInt(raw.seat) || raw.seat < 0 || raw.seat >= SEATS)) return bad;
       return { ok: true, msg: raw.seat === undefined ? { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team } : { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team, seat: raw.seat as number } };
+    case 'trename':
+      if (!isStr(raw.room) || !ROOM_ID.test(raw.room) || !isStr(raw.name) || raw.name.length > 200) return bad; // the limit is the server's check (teacher.ts)
+      return { ok: true, msg: { v, t: 'trename', room: raw.room, name: raw.name } };
     case 'troom':
       if (!isStr(raw.room) || !ROOM_ID.test(raw.room) || !(raw.action === 'start' || raw.action === 'pause' || raw.action === 'resume' || raw.action === 'end' || raw.action === 'remove')) return bad;
       return { ok: true, msg: { v, t: 'troom', room: raw.room, action: raw.action } };

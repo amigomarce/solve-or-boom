@@ -52,6 +52,8 @@ export interface Room {
   managed: boolean;
   /** The match in play; replaced by a new one on a rematch. */
   match: Match;
+  /** The teacher's name for the room ('' for none); kept while the room waits again after a match, gone with the room (story 027). */
+  name: string;
   /** Matches finished in this room. */
   matches: number;
   status: RoomInfo['status'];
@@ -181,7 +183,7 @@ export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimi
     index, team: index < SEATS_PER_TEAM ? 0 : 1, kind: spec.openSeats.includes(index) ? 'open' : 'bot', owner: null, name: null, present: false,
   }));
   const room: Room = {
-    id, spec, seats, managed: !!spec.managed, match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
+    id, spec, seats, managed: !!spec.managed, name: '', match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
     matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null, prev: null,
     tally: new Map(), report: null, reported: false, results,

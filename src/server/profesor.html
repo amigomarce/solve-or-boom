@@ -70,6 +70,19 @@
   ul.students li:first-child { border-top: 0; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .gone { color: var(--soft); font-weight: 400; font-size: 14px; }
+  /* Story 027: the students summary; one without a room or without a connection stands out. */
+  ul.students li { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; border-left: 4px solid transparent; padding-left: 6px; }
+  ul.students li.noroom { border-left-color: var(--bad); background: rgba(255,154,138,.08); }
+  ul.students li.off { border-left-color: var(--warn); opacity: .75; }
+  .pill { font-size: 14px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: #22301f; color: var(--ok); }
+  .pill.off { background: #3d2a12; color: var(--warn); } .pill.noroom { background: #5a2a22; color: #ffd9cf; border: 1px solid var(--bad); }
+  .seat select { min-width: 0; flex: 1; font-size: 14px; }
+  .room-head .rename { font-size: 14px; padding: 2px 8px; }
+  input.rn { font: inherit; font-size: 16px; color: var(--text); background: #0f1424; border: 1px solid var(--gold); border-radius: 6px; padding: 3px 6px; min-width: 0; width: 12em; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; font-size: 14px; color: var(--soft); }
+  .filters label { display: inline-flex; align-items: center; gap: 6px; }
+  button.sortb { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+  button.sortb:hover { color: var(--text); }
     .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
   .room { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
   .room.s-running { border-color: #4f8a45; } .room.s-paused { border-color: #a8913f; } .room.s-failed { border-color: #a24d43; }
@@ -173,9 +186,11 @@
       <h2 id="h-results">Resultados</h2>
       <div class="bar">
         <button id="export" type="button" class="main">Exportar CSV</button>
+        <select id="exportwhat" aria-label="Qué exportar"><option value="view">Lo que se ve</option><option value="all">Todo</option></select>
         <button id="clear" type="button">Borrar resultados</button>
         <span class="hint">Solo se guardan en la memoria de este programa: desaparecen al cerrar el servidor. Exporta el CSV para conservarlos.</span>
       </div>
+      <div id="resfilters" class="filters"></div>
       <div id="restopics"></div>
       <div id="resstudents"></div>
     </section>
@@ -184,14 +199,18 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 17;
+const V = 18;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
 const CUSTOM = 'custom';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const roomName = id => 'Sala ' + String(id).replace(/^sala-/, '');
+const roomNumber = id => 'Sala ' + String(id).replace(/^sala-/, '');
+/** A room as people read it (story 027): the teacher's name for it when there is one, else "Sala N". */
+const roomName = id => { const r = st && st.rooms.find(x => x.id === id && x.name); return r ? r.name : roomNumber(id); };
+/** The room being renamed (its card shows an input), or null. */
+let renaming = null;
 let ws = null, info = null, st = null, retryMs = 1000, timer = 0;
 /** The topics last chosen per subject, so going back to a subject keeps them (like the session screen). */
 const chosen = {};
@@ -227,7 +246,8 @@ setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ v: V
 function put(id, html) {
   const el = $(id);
   if (last[id] === html) return;
-  if (el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+  const f = document.activeElement;
+  if (el.contains(f) && (f.tagName === 'SELECT' || (f.tagName === 'INPUT' && f.classList.contains('rn')))) return;
   last[id] = html; el.innerHTML = html;
 }
 
@@ -269,20 +289,19 @@ function render() {
   const live = st.rooms.filter(r => r.seats.length && (r.status === 'waiting' || r.status === 'running' || r.status === 'paused'));
   const on = st.students.filter(x => x.connected).length;
   $('count').textContent = st.students.length ? `(${on} conectados${st.students.length > on ? ', ' + (st.students.length - on) + ' sin conexión' : ''})` : '';
+  // Story 027: a summary (name, room, connection); a student moves from their room's card. One with no room or no connection stands out.
   put('students', !st.students.length ? '<div class="empty">Todavía no hay alumnos. Los alumnos entran escribiendo su nombre en la página del juego.</div>'
     : '<ul class="students">' + st.students.map(x => {
-      // Story 023: a Free for All room has no teams, so it is one option (the room); Bomba keeps one per team.
-      const opts = live.flatMap(r => r.mode === 'ffa' || r.mode === 'waves' ? [`<option value="${esc(r.id)}|0"${x.room === r.id ? ' selected' : ''}>${esc(roomName(r.id))}</option>`]
-        : [0, 1].map(t => `<option value="${esc(r.id)}|${t}"${x.room === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(r.id))} · Equipo ${t + 1}</option>`));
       const here = live.some(r => r.id === x.room);
-      return `<li><span class="name" title="${esc(x.name)}">${esc(x.name)}${x.connected ? '' : ' <span class="gone">(sin conexión)</span>'}</span>`
-        + `<select data-student="${x.id}" aria-label="Sala${live.some(r => r.id === x.room && (r.mode === 'ffa' || r.mode === 'waves')) ? '' : ' y equipo'} de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
+      return `<li class="${here ? '' : 'noroom'}${x.connected ? '' : ' off'}"><span class="name" title="${esc(x.name)}">${esc(x.name)}</span>`
+        + `<span>${here ? esc(roomName(x.room)) : '<span class="pill noroom">Sin sala</span>'}</span>`
+        + `<span class="pill${x.connected ? '' : ' off'}">${x.connected ? 'Conectado' : 'Sin conexión'}</span></li>`;
     }).join('') + '</ul>');
 
   put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : live.map(roomCard).join(''));
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
-    `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span></div>`
+    `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span><span class="hint">Partidas jugadas: ${r.matches}</span></div>`
     + `<div class="meta">${r.mode === 'ffa' || r.mode === 'duel' || r.mode === 'waves' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   renderBar(live, on);
@@ -301,6 +320,7 @@ function renderBar(live, on) {
   $('st-game').innerHTML = `Modo: <b>${esc(md ? md.name : st.session.mode)}</b> · Mapa: <b>${esc(mapName(st.session.map))}</b>`;
   const h = location.hostname, local = h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
   const url = `http://${h}:${location.port || 80}`;
+  if (info.address) { $('st-addr').innerHTML = `Los alumnos escriben: <b>${esc(info.address)}</b>`; return; }
   $('st-addr').innerHTML = local ? `Alumnos: escriben la dirección de red que muestra el programa al arrancar (esta página está en <b>${esc(url)}</b>, solo para el profesor).`
     : `Los alumnos escriben: <b>${esc(url)}</b>`;
 }
@@ -338,16 +358,25 @@ initFolds();
 
 function roomCard(r) {
   const ffa = r.mode === 'ffa' || r.mode === 'waves'; // story 023 (025: Oleadas cooperativas too): one group of players, no team headings or team score
-  const seatDiv = x => x.kind === 'human'
+  const targets = st.rooms.filter(q => q.seats.length && (q.status === 'waiting' || q.status === 'running' || q.status === 'paused'));
+  /** The menu that moves a student (tmove): Bomba and Duelo offer room and team, Free for All and Oleadas only the room. */
+  const moveMenu = x => `<select data-student="${x.student}" aria-label="Sala${ffa ? '' : ' y equipo'} de ${esc(x.name)}">` + targets.flatMap(q => q.mode === 'ffa' || q.mode === 'waves'
+    ? [`<option value="${esc(q.id)}|0"${q.id === r.id ? ' selected' : ''}>${esc(roomName(q.id))}</option>`]
+    : [0, 1].map(t => `<option value="${esc(q.id)}|${t}"${q.id === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(q.id))} · Equipo ${t + 1}</option>`)).join('') + '</select>';
+  const seatDiv = x => x.kind === 'human' && x.student !== null
+    ? `<div class="seat human"><span class="tag">Alumno</span>${moveMenu(x)}</div>`
+    : x.kind === 'human'
     ? `<div class="seat human"><span class="tag">Alumno</span><span class="who" title="${esc(x.name)}">${esc(x.name)}</span></div>`
     : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`;
   const teams = ffa ? `<div class="team"><h4>Jugadores</h4>${r.seats.map(seatDiv).join('')}</div>`
     : [0, 1].map(t => `<div class="team"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(seatDiv).join('') + '</div>').join('');
   const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
   const played = r.status !== 'waiting';
-  return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
-    + `<span class="hint">Mapa ${esc(mapName(r.map))}</span></div>`
-    + `<div class="meta">${!played && r.last ? `Partidas jugadas: <strong>${r.matches}</strong> · Última: ${esc(r.last)}` : ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+  const title = renaming === r.id ? `<input class="rn" data-rename="${esc(r.id)}" value="${esc(r.name)}" placeholder="${esc(roomNumber(r.id))}" aria-label="Nombre de la sala (Intro guarda, Esc cancela)">`
+    : `<b>${esc(roomName(r.id))}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(roomName(r.id))}">Renombrar</button>`;
+  return `<div class="room s-${r.status}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
+    + `<span class="hint">Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
+    + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
     + b('end', 'Terminar', played) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';
@@ -355,23 +384,73 @@ function roomCard(r) {
 
 /** The percent right as text ("—" with no answers). */
 const pct = (right, wrong) => (right + wrong ? Math.round(100 * right / (right + wrong)) + ' %' : '—');
-/** The topic view (weakest first, the ones to reinforce marked) and the student table. */
+/** The results filters (a room id, a student name; '' for all) and each table's sort (key, 1 up or -1 down); null keeps the server's order. */
+let fRoom = '', fStudent = '';
+const sorts = { topics: null, students: null };
+/** The value a table sorts on: name, right, pct (percent right; none sorts last) or kills. */
+const sortVal = (x, key) => key === 'name' ? (x.name !== undefined ? x.name : x.topic) : key === 'right' ? x.right : key === 'kills' ? x.kills : (x.right + x.wrong ? x.right / (x.right + x.wrong) : -1);
+/** A table's rows in the order the teacher chose (a copy). */
+function sorted(rows, table) {
+  const k = sorts[table]; if (!k) return rows;
+  return rows.slice().sort((a, b) => { const x = sortVal(a, k.key), y = sortVal(b, k.key); return (typeof x === 'string' ? x.localeCompare(y, 'es', { numeric: true }) : x - y) * k.dir; });
+}
+/** A sortable header: a button with an arrow when it is the column in use. */
+const th = (table, key, label, cls) => {
+  const k = sorts[table], on = k && k.key === key;
+  return `<th${cls ? ` class="${cls}"` : ''} aria-sort="${on ? (k.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" class="sortb" data-table="${table}" data-sort="${key}">${label}${on ? (k.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
+};
+/** The student rows after the room and student filters. */
+const shownStudents = () => st.results.students.filter(x => (!fRoom || x.room === fRoom) && (!fStudent || x.name === fStudent));
+/** The topic view (weakest first, the ones to reinforce marked) and the student table, with the filters and the sort. */
 function renderResults() {
   const r = st.results, weak = t => t.right + t.wrong >= info.weakMinAnswers && 100 * t.right / (t.right + t.wrong) < info.weakBelowPct;
+  const rooms = [...new Set(r.students.map(x => x.room))], names = [...new Set(r.students.map(x => x.name))];
+  if (fRoom && !rooms.includes(fRoom)) fRoom = '';
+  if (fStudent && !names.includes(fStudent)) fStudent = '';
+  put('resfilters', !r.students.length ? '' : `<label>Sala <select id="f-room"><option value="">Todas</option>${rooms.map(id => `<option value="${esc(id)}"${id === fRoom ? ' selected' : ''}>${esc(roomName(id))}</option>`).join('')}</select></label>`
+    + `<label>Alumno <select id="f-student"><option value="">Todos</option>${names.map(n => `<option value="${esc(n)}"${n === fStudent ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`
+    + `<span>${fRoom || fStudent ? 'Se ven ' + shownStudents().length + ' de ' + r.students.length + ' alumnos (los temas suman toda la clase).' : ''}</span>`);
   put('restopics', !r.topics.length ? '<div class="empty">Todavía no hay respuestas. Aquí verás qué temas reforzar.</div>'
-    : '<h3>Por tema (los más flojos primero)</h3><table class="res"><thead><tr><th>Tema</th><th>Correctas</th><th>Incorrectas</th><th>% correctas</th><th>Alumnos</th><th class="l"></th></tr></thead><tbody>'
-      + r.topics.map(t => `<tr${weak(t) ? ' class="weak"' : ''}><td class="name">${esc(t.topic)}</td><td>${t.right}</td><td>${t.wrong}</td><td>${pct(t.right, t.wrong)}</td><td>${t.students}</td><td class="l">${weak(t) ? '<span class="flag">A reforzar</span>' : ''}</td></tr>`).join('')
+    : '<h3>Por tema (los más flojos primero)</h3><table class="res"><thead><tr>' + th('topics', 'name', 'Tema') + th('topics', 'right', 'Correctas') + '<th>Incorrectas</th>' + th('topics', 'pct', '% correctas') + '<th>Alumnos</th><th class="l"></th></tr></thead><tbody>'
+      + sorted(r.topics, 'topics').map(t => `<tr${weak(t) ? ' class="weak"' : ''}><td class="name">${esc(t.topic)}</td><td>${t.right}</td><td>${t.wrong}</td><td>${pct(t.right, t.wrong)}</td><td>${t.students}</td><td class="l">${weak(t) ? '<span class="flag">A reforzar</span>' : ''}</td></tr>`).join('')
       + '</tbody></table>');
-  put('resstudents', !r.students.length ? '' : '<h3>Por alumno</h3><table class="res"><thead><tr><th>Alumno</th><th class="l">Sala</th><th>Correctas</th><th>Incorrectas</th><th>% correctas</th><th>Bajas</th><th>Muertes</th></tr></thead><tbody>'
-    + r.students.map(x => `<tr><td class="name" title="${esc(x.name)}">${esc(x.name)}</td><td class="l">${esc(roomName(x.room))}</td><td>${x.right}</td><td>${x.wrong}</td><td>${pct(x.right, x.wrong)}</td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join('')
+  const rows = shownStudents();
+  put('resstudents', !r.students.length ? '' : '<h3>Por alumno</h3><table class="res"><thead><tr>' + th('students', 'name', 'Alumno') + '<th class="l">Sala</th>' + th('students', 'right', 'Correctas') + '<th>Incorrectas</th>' + th('students', 'pct', '% correctas') + th('students', 'kills', 'Bajas') + '<th>Muertes</th></tr></thead><tbody>'
+    + (rows.length ? sorted(rows, 'students').map(x => `<tr><td class="name" title="${esc(x.name)}">${esc(x.name)}</td><td class="l">${esc(roomName(x.room))}</td><td>${x.right}</td><td>${x.wrong}</td><td>${pct(x.right, x.wrong)}</td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join('') : '<tr><td colspan="7" class="l">Ningún alumno con ese filtro.</td></tr>')
     + '</tbody></table>');
 }
+/** Splits one CSV line of quoted cells (the server's format: "a";"b";3) into its text cells. */
+function csvCells(line) {
+  const out = []; let i = 0;
+  while (i <= line.length) {
+    if (line[i] === '"') { let c = ''; i++; while (i < line.length) { if (line[i] === '"') { if (line[i + 1] === '"') { c += '"'; i += 2; continue; } i++; break; } c += line[i++]; } out.push(c); }
+    else { const j = line.indexOf(';', i), e = j < 0 ? line.length : j; out.push(line.slice(i, e)); i = e; }
+    if (line[i] === ';') i++; else break;
+  }
+  return out;
+}
+/** The text a CSV cell holds for a value (the server puts an apostrophe before = + - @ so a sheet shows it as text). */
+const csvText = v => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
+/** The CSV text kept to the filtered room and student: the header row and the byte-order mark stay. */
+function filterCsv(text) {
+  if (!fRoom && !fStudent) return { text, rows: text.split('\r\n').length - 2 };
+  const bom = text.startsWith('﻿') ? '﻿' : '', lines = text.slice(bom.length).split('\r\n').filter(l => l !== '');
+  const room = fRoom ? csvText(roomName(fRoom)) : null, who = fStudent ? csvText(fStudent) : null;
+  const keep = lines.slice(1).filter(l => { const c = csvCells(l); return (room === null || c[1] === room) && (who === null || c[0] === who); });
+  return { text: bom + [lines[0], ...keep].join('\r\n') + '\r\n', rows: keep.length };
+}
+/** A file-name piece from a room's name: no accents, no ordinal signs, letters and digits joined by "-" ("3.º A" gives "3-A"). */
+const fileSafe = n => n.normalize('NFKD').replace(/[ºª̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+/** What the export button asked for: 'view' (the filtered rows) or 'all'; the answer to texport is cut to it. */
+let exportWhat = 'all';
 /** Saves the CSV the server built (its text starts with the byte-order mark, so the Blob's UTF-8 bytes start EF BB BF and Excel reads the accents). */
 function download(m) {
-  const url = URL.createObjectURL(new Blob([m.text], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a'); a.href = url; a.download = m.name; document.body.appendChild(a); a.click(); a.remove();
+  const cut = exportWhat === 'view' ? filterCsv(m.text) : { text: m.text, rows: m.rows };
+  const piece = exportWhat === 'view' && fRoom ? fileSafe(roomName(fRoom)) : '', name = piece ? `resultados-${piece}.csv` : m.name;
+  const url = URL.createObjectURL(new Blob([cut.text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  say(m.rows === 1 ? 'Descargado resultados.csv con 1 fila.' : `Descargado resultados.csv con ${m.rows} filas.`, true);
+  say(cut.rows === 1 ? `Descargado ${name} con 1 fila.` : `Descargado ${name} con ${cut.rows} filas.`, true);
 }
 
 /** The example rows of the question template, one place; each loads with 0 skipped rows through parseCSV (src/game/csv.ts). */
@@ -401,7 +480,7 @@ function templateHelp() {
 }
 
 // ---- the teacher's actions ----
-$('export').onclick = () => send('texport');
+$('export').onclick = () => { exportWhat = $('exportwhat').value; send('texport'); };
 $('clear').onclick = () => { if (confirm('¿Borrar los resultados de todos los alumnos? No se puede deshacer. Los alumnos que están jugando seguirán sumando desde cero.')) send('tclear'); };
 $('subjects').addEventListener('change', e => {
   const id = e.target.value;
@@ -435,16 +514,48 @@ $('file').addEventListener('change', () => {
   rd.onerror = () => say('No se pudo leer el archivo.');
   rd.readAsArrayBuffer(f);
 });
-$('students').addEventListener('change', e => {
+$('rooms').addEventListener('change', e => {
   const sel = e.target; if (!sel.dataset.student || !sel.value) return;
   const [room, team] = sel.value.split('|');
   sel.blur();
   send('tmove', { student: Number(sel.dataset.student), room, team: Number(team) });
 });
+/** Closes the rename input (saving the name when `save`) and draws the cards again. */
+function endRename(save, input) {
+  const id = renaming; renaming = null;
+  if (save && id) send('trename', { room: id, name: input.value });
+  if (input) input.blur(); // put() skips a section whose rename input has the focus: let go of it first, or the card stays an input
+  delete last.rooms; if (st && info) render();
+}
+$('rooms').addEventListener('keydown', e => {
+  if (!e.target.classList.contains('rn')) return;
+  if (e.key === 'Enter') { e.preventDefault(); endRename(true, e.target); }
+  else if (e.key === 'Escape') { e.preventDefault(); endRename(false, e.target); }
+});
+$('rooms').addEventListener('focusout', e => {
+  if (!e.target.classList.contains('rn')) return;
+  setTimeout(() => { if (renaming && !(document.activeElement && document.activeElement.classList.contains('rn'))) endRename(false); });
+});
+$('resfilters').addEventListener('change', e => {
+  if (e.target.id === 'f-room') fRoom = e.target.value; else if (e.target.id === 'f-student') fStudent = e.target.value; else return;
+  e.target.blur(); delete last.resfilters; delete last.resstudents; renderResults();
+});
+for (const id of ['restopics', 'resstudents']) $(id).addEventListener('click', e => {
+  const b = e.target.closest('button[data-sort]'); if (!b) return;
+  const t = b.dataset.table, k = sorts[t];
+  // The first click sorts (names A-Z, numbers highest first), the second turns it the other way, the third clears it.
+  sorts[t] = k && k.key === b.dataset.sort ? (k.flipped ? null : { key: k.key, dir: -k.dir, flipped: true }) : { key: b.dataset.sort, dir: b.dataset.sort === 'name' ? 1 : -1 };
+  delete last[id]; renderResults();
+});
 $('rooms').addEventListener('click', e => {
   const b = e.target.closest('button[data-act]'); if (!b || b.disabled) return;
-  if (b.dataset.act === 'end' && !confirm(`¿Terminar la partida de la ${roomName(b.dataset.room)}? Sus alumnos verán los resultados y la sala quedará esperando con los mismos alumnos.`)) return;
-  if (b.dataset.act === 'remove' && !confirm(`¿Quitar la ${roomName(b.dataset.room)}? Sus alumnos volverán a la pantalla de entrada.`)) return;
+  if (b.dataset.act === 'rename') {
+    renaming = b.dataset.room; delete last.rooms; render();
+    const inp = $('rooms').querySelector('input.rn'); if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
+  if (b.dataset.act === 'end' && !confirm(`¿Terminar la partida de «${roomName(b.dataset.room)}»? Sus alumnos verán los resultados y la sala quedará esperando con los mismos alumnos.`)) return;
+  if (b.dataset.act === 'remove' && !confirm(`¿Quitar «${roomName(b.dataset.room)}»? Sus alumnos volverán a la pantalla de entrada.`)) return;
   send('troom', { room: b.dataset.room, action: b.dataset.act });
 });
 $('all-start').onclick = () => send('tall', { action: 'start' });

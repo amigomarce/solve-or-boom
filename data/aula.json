@@ -28,6 +28,7 @@
   "waiting_rooms": { "value": 4, "min": 0, "max": 16, "step": 1 },
   "max_rooms": { "value": 16, "min": 1, "max": 64, "step": 1 },
   "finished_rooms_shown": { "value": 8, "min": 0, "max": 50, "step": 1 },
+  "teacher_room_name_max": { "value": 24, "min": 4, "max": 60, "step": 1 },
   "teacher_update_ms": { "value": 500, "min": 100, "max": 5000, "step": 100 },
   "teacher_heartbeat_s": { "value": 5, "min": 1, "max": 60, "step": 1 },
   "teacher_max_message_bytes": { "value": 393216, "min": 4096, "max": 2097152, "step": 4096 },

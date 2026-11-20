@@ -1,13 +1,13 @@
 # Story 027: Students, rooms and results on the teacher page
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: L
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: 2026-11-19
+> **Last Updated**: 2026-11-20
 
 ## Context
 
@@ -59,8 +59,13 @@
 
 ## Files
 
-- src/server/profesor.html, src/server/teacher.ts, src/server/results.ts, src/server/rooms.ts, src/server/room.ts
-- src/net/protocol.ts (a teacher message and a room name, if the wire changes), data/aula.json (limits)
+- src/net/protocol.ts (protocol 18: tinfo.address, a teacher room's name, the trename message)
+- src/server/room.ts (a room keeps its name)
+- src/server/teacher.ts (trename, the address, room names in the state and the CSV)
+- src/server/results.ts (the CSV room column takes a room label)
+- src/server/aula.ts (hands the teacher the address the students type)
+- src/server/profesor.html (room names everywhere, the rename control, the student menus on the cards, the students summary, results filters, sorting and the export choice)
+- data/aula.json, data/config-notes.md (teacher_room_name_max)
 - No test files: tests are waived at qa.level minimal
 
 ## QA Test Cases
@@ -82,3 +87,16 @@
 
 - Depends on: `production/epics/solve-or-boom/story-026-teacher-page-layout.md`
 - Unlocks: None
+
+## Completion Notes
+**Completed**: 2026-11-20
+**Criteria**: 8/8 passing
+**Deviations**: None. The class server must be rebuilt and students must reload the page (protocol 18). At closing the lead found that "Repartir automáticamente" dropped the room names (it replaces the waiting rooms); fixed in `src/server/teacher.ts` (each new room takes the name of the one it replaces, in order) and seen in the browser in Bomba only; the four-mode run of the programmer was made before that fix.
+**Test Evidence**: waived at qa.level minimal; production/qa/evidence/story-027-teacher-students-rooms-results/ (9 files: screenshots and the evidence stamp, restamped after the fix)
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke
+
+## Calls beyond the design
+- A room name has up to 24 letters (`teacher_room_name_max` in `data/aula.json`), control characters and `<` `>` are stripped; a removed room shows as "Sala N" in the finished list and the CSV; the students' address on the bar is the first network URL the program prints (`src/server/teacher.ts`, `src/server/aula.ts`) · kept 2026-11-20
+- The export file is `resultados-<name>.csv` only when one room is filtered ("3.º A" gives `resultados-3-o-A.csv`); the default is "Lo que se ve"; the filters change only the "Por alumno" table; the table shows each student's last room while the CSV has a row per room played (`src/server/profesor.html`) · kept 2026-11-20
+- A first click on a column sorts (names A-Z, numbers highest first), the second reverses, the third clears; confirmations quote the room's name between « »; the rename input closes with Enter or Esc (`src/server/profesor.html`) · kept 2026-11-20
