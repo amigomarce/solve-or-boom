@@ -29,6 +29,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `headshot_mult`: the player's shots only
 
 ---- Rounds -------------------------------------------------------------------------
+- `results_countdown_s`: s; single player's results screen counts down this long (on the game's fixed step, only while the results show) and then starts the next match with the chosen mode and map (30)
 - `buy_time`: s; gates closed, buying open. The default of a match (35); the session screen steps it by `step` between `min` and `max`, and a teacher's choice is clamped to that range
 - round time: s until defenders win by time; each map has its own, `round_time` in data/maps/<map>.json (Pequeño 105, Grande 150, Patio 140, Pasillos 180, Dos pisos 150)
 - `bomb_time`: s from plant to boom

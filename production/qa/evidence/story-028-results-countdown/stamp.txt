@@ -1,0 +1,4 @@
+Reviewed-Content-Hash: src/main.ts 26f6815e43b7ce001a040ca192598aa74b787b3c
+Reviewed-Content-Hash: src/session-screen.ts 1cc5bf4df728a4212a3e5c5519dd665308b943bb
+Reviewed-Content-Hash: data/config.json 0984982ed32ee8678491f593aa65e7c0674a9ba6
+Reviewed-Content-Hash: data/config-notes.md eeec64f7e61d3807d1dcee27e9de5f8deb051426

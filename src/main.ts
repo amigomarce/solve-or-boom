@@ -331,6 +331,8 @@ export const session = {
     return QUESTIONS.availableCount(this.subject, topics, this.level, this.custom);
   },
 };
+/** Single player's results countdown (story 028), in game steps left; set when a match ends, counted down by the results scene. */
+export const resultsCountdown = { steps: 0 };
 export const SUBJECT_LIST = ['matematicas', 'ciencias', 'geografia', 'lengua', QUESTIONS.CUSTOM];
 // ---- The match: the rules run in src/game/; this screen only sends inputs and reads state and events ----
 /** The match (src/game/match.ts); window.game shows it as `state`. */
@@ -429,7 +431,7 @@ function playEvents(list: Loose[] = state.events): void {
         for (const gm of gates) { gm.position.y = 1.5; gm.visible = state.gatesClosed; } // open from the start in Free for All (story 019)
         break;
       case 'unlock': if (locked) document.exitPointerLock(); break;
-      case 'matchEnd': scene = 'results'; if (locked) document.exitPointerLock(); break;
+      case 'matchEnd': scene = 'results'; resultsCountdown.steps = Math.round(Number(tune.results_countdown_s) / STEP); if (locked) document.exitPointerLock(); break;
     }
   }
   list.length = 0;
@@ -595,7 +597,12 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
         if (pressed('Enter') || act === 'menu' || next.match.phase !== 'buy') { state = next.match; scene = 'play'; }
         return;
       }
-      if (pressed('Enter') || act === 'menu') { scene = 'title'; }
+      // Story 028: Enter and Continuar start the next match now; the mode and map buttons step to the next one (the countdown goes on);
+      // the countdown reaching 0 does the same as Continuar; the session-screen button leaves the scene, which stops the countdown.
+      if (act === 'menu') { scene = 'title'; return; }
+      if (act === 'rmode') { session.mode = nextMode(session.mode); useMap(session.map, !MODE_INFO[session.mode].bomb); }
+      if (act === 'rmap') pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
+      if (pressed('Enter') || act === 'go' || --resultsCountdown.steps <= 0) { startMatch(); scene = 'play'; }
     },
     draw() { drawWorld(); drawResults(); },
   },

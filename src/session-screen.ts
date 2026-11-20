@@ -6,13 +6,13 @@ import * as THREE from 'three';
 import { CONFIG, tune } from './config';
 import { LEVELS, type Level } from './game/types';
 import { CELL, MAP, MAPS, MAP_IDS, MH, MW } from './game/map';
-import { ROLE_NAME, isDuel, isFfa, isWaves, squadName } from './game/match';
+import { ROLE_NAME, STEP, isDuel, isFfa, isWaves, squadName } from './game/match';
 import { buttons } from './input';
 import { TOUCH } from './touch';
 import { bind, keyName } from './keys';
 import { type ButtonOpts, FONT, H, W, button, clear, clip, ctx, rr, text, wrapText } from './screen';
 import { type GameModeId, MODE_INFO, SEATS_PER_TEAM } from './net/protocol';
-import { CLASS_MODE, NAME_MAX, ROOM_STATE, SUBJECT_LIST, _v, aula, menuSel, net, project, session, state, step, titleT } from './main';
+import { CLASS_MODE, NAME_MAX, ROOM_STATE, SUBJECT_LIST, _v, aula, menuSel, net, project, resultsCountdown, session, state, step, titleT } from './main';
 import { SIDE_CSS, SIDE_HEX, camera, lam, makeBomb, makeSoldier, poseSoldier, renderer, setSide, viewGuns, world } from './scene3d';
 
 /** Each mode's rules in one line under a class room's seats (story 023, 024, 025). */
@@ -293,8 +293,32 @@ export function drawResults() {
   text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : isFfa(state) ? `Terminaste con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : waves ? `Tus bajas: ${state.human.kills}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
   if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else if (waves) drawWavesTable(260, 760); else if (duel) drawDuelTable(260, 760, true); else drawSoloTable();
-  const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : aula.room && aula.room.state !== 'ended' ? 'Volver a la sala' : 'Volver a la pantalla de entrada') + enter;
+  if (!CLASS_MODE) drawResultsChoices();
+  const enter = TOUCH || !CLASS_MODE ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : aula.room && aula.room.state !== 'ended' ? 'Volver a la sala' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
+}
+/**
+ * The mode choice button (story 028): "Modo: <name>", lit when the mode is not Bomba like the session screen's. Its press is `act`.
+ * Story 029 draws it again on the class results screen.
+ */
+export function drawModeChoice(x: number, y: number, w: number, h: number, mode: GameModeId, act: string): void {
+  const alt = !MODE_INFO[mode].bomb;
+  button(x, y, w, h, clip(`Modo: ${MODE_INFO[mode].name}`, w - 16, 17), act, { size: 17, fill: alt ? '#ffd06a' : undefined, color: alt ? '#1b2232' : '#fff', stroke: alt ? '#fff3c4' : undefined });
+}
+/** The map choice button (story 028): "Mapa: <name>". Its press is `act`; the screen steps to the next map in MAP_IDS order. */
+export function drawMapChoice(x: number, y: number, w: number, h: number, map: string, act: string): void {
+  button(x, y, w, h, clip(`Mapa: ${MAPS[map].name}`, w - 16, 17), act, { size: 17 });
+}
+/** Single player's results: the countdown to the next match and the three choices (mode, map, Continuar), in the column right of the table. */
+function drawResultsChoices(): void {
+  const x = 1036, w = 224, per = Math.round(1 / STEP);
+  rr(x, 196, w, 380, 14, 'rgba(14,19,30,0.92)', null);
+  text('Siguiente partida en', x + w / 2, 226, 17, '#ffd06a');
+  text(`${Math.ceil(resultsCountdown.steps / per)} s`, x + w / 2, 290, 56, '#fff');
+  text('Elige el modo y el mapa', x + w / 2, 340, 15, '#c8d2e6', 'center', 'normal');
+  drawModeChoice(x + 12, 364, w - 24, 52, session.mode, 'rmode');
+  drawMapChoice(x + 12, 428, w - 24, 52, session.map, 'rmap');
+  button(x + 12, 504, w - 24, 56, TOUCH ? 'Continuar' : 'Continuar (Enter)', 'go', { size: 20, fill: '#e07a1c', stroke: '#7a3a08' });
 }
 /** Single player's results table: every player's kills, deaths and right and wrong answers. */
 function drawSoloTable() {
