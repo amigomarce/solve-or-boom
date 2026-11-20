@@ -138,6 +138,28 @@ export interface BeginMessage {
 /** The game modes as the wire names them (protocol 12). */
 export const GAME_MODES = ['bomb', 'ffa', 'duel', 'waves'] as const;
 export type GameModeId = typeof GAME_MODES[number];
+/** What a game mode is like, wherever a screen, a room or the mirror needs it (TD-017): a check asks for the trait, not the mode's name. */
+export interface ModeInfo {
+  /** The mode's name on every screen. */
+  name: string;
+  /** A bomb, sites and zones on the map, rounds won as the score (Bomba only). */
+  bomb: boolean;
+  /** Two teams the players pick or are split into (Bomba, Duelo por equipos); false: one list of players. */
+  teams: boolean;
+  /** Only the first team's seats (0..SEATS_PER_TEAM-1) take people; the others are enemy bots (Oleadas cooperativas, story 025). */
+  coop: boolean;
+  /** Everybody is their own side (Free for All, story 019). */
+  solo: boolean;
+}
+/** Every mode's name and traits, in the order of GAME_MODES. */
+export const MODE_INFO: Record<GameModeId, ModeInfo> = {
+  bomb: { name: 'Bomba', bomb: true, teams: true, coop: false, solo: false },
+  ffa: { name: 'Free for All', bomb: false, teams: false, coop: false, solo: true },
+  duel: { name: 'Duelo por equipos', bomb: false, teams: true, coop: false, solo: false },
+  waves: { name: 'Oleadas cooperativas', bomb: false, teams: false, coop: true, solo: false },
+};
+/** The mode after `id` in GAME_MODES (the session screen's mode button cycles them). */
+export const nextMode = (id: GameModeId): GameModeId => GAME_MODES[(GAME_MODES.indexOf(id) + 1) % GAME_MODES.length];
 const isMode = (v: unknown): v is GameModeId => (GAME_MODES as readonly unknown[]).includes(v);
 /** The wire codes of the guns (index in this list), as snapshots carry them. */
 export const WEAPON_IDS = ['pistol', 'smg', 'rifle', 'sniper', 'gold'] as const; // 'gold': the Rifle dorado (protocol 11), never sold

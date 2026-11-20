@@ -17,7 +17,7 @@ import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
 import type { Level } from '../game/types';
 import { tune } from '../game/tune';
-import { FLAG, isBlankRow, PICKUP_KINDS, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type BeginMessage, type SnapMessage, type SeatView } from './protocol';
+import { FLAG, isBlankRow, MODE_INFO, PICKUP_KINDS, SCALE, STANCES, WEAPON_IDS, BOMB_STATES, type BeginMessage, type SnapMessage, type SeatView } from './protocol';
 
 /** The client's copy of the match. */
 export interface Mirror {
@@ -52,9 +52,9 @@ export function createMirror(begin: BeginMessage): Mirror {
   match.opts.friendlyFire = begin.friendlyFire; match.opts.buyTime = begin.buyTime; // the room's match options (story 017)
   match.opts.streakRewards = begin.streakRewards; // story 018
   setMode(match, begin.mode); // story 019
-  if (begin.mode === 'ffa') { for (const p of match.players) p.squad = p.id; match.bomb.state = 'none'; } // everybody their own side, as the server has it
-  if (begin.mode === 'waves') match.bomb.state = 'none'; // story 025: squad 0 (seats 0..3) against the enemy bots (4..7)
-  if (begin.mode === 'duel') match.bomb.state = 'none'; // story 024: the roster's two squads, no bomb
+  const info = MODE_INFO[begin.mode];
+  if (info.solo) for (const p of match.players) p.squad = p.id; // Free for All: everybody their own side, as the server has it
+  if (!info.bomb) match.bomb.state = 'none'; // Free for All, Duelo (the roster's two squads) and Oleadas (seats 0..3 against 4..7): no bomb
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
   return { match, seat: begin.seat, name: begin.names[begin.seat], seq: 0, unacked: [], snaps: [], base: null, lastError: 0, lastErrorY: 0 };

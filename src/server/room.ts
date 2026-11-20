@@ -9,7 +9,7 @@ import { startShop } from '../game/ffa';
 import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, type MatchOptions, type PlayerInput } from '../game/match';
 import type { Loose } from '../game/types';
 import { MAP_ID, loadMap } from '../game/map';
-import { SEATS, SEATS_PER_TEAM, type RoomInfo, type SeatKind } from '../net/protocol';
+import { MODE_INFO, SEATS, SEATS_PER_TEAM, type RoomInfo, type SeatKind } from '../net/protocol';
 import { addAnswer, newTally, nameKey, type Results, type Tally } from './results';
 
 /** One of the 8 seats. `owner` is a connection id while a student sits there (never a name). */
@@ -220,7 +220,7 @@ export function stepRoom(room: Room, clockMs: () => number): void {
  */
 export function takeSeat(room: Room, owner: number, name: string, index?: number): Seat | null {
   if (room.status !== 'running' && room.status !== 'waiting' && room.status !== 'paused') return null;
-  const coop = room.match.opts.mode === 'waves'; // story 025: students sit only in seats 0..3, the others are the enemy bots
+  const coop = MODE_INFO[room.match.opts.mode].coop; // story 025: students sit only in seats 0..3, the others are the enemy bots
   const free = room.seats.filter(s => s.kind !== 'human' && (!coop || s.team === 0) && (index === undefined || s.index === index));
   const humans = (team: number): number => room.seats.filter(s => s.kind === 'human' && s.team === team).length;
   const first = humans(1) < humans(0) ? 1 : 0;

@@ -30,7 +30,7 @@ import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
 import { connect, savedName, type Connection } from './net/client';
 import type { ResultsMessage, RoomView, You } from './net/protocol';
-import { SEATS_PER_TEAM } from './net/protocol';
+import { MODE_INFO, nextMode, SEATS_PER_TEAM, type GameModeId } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 
 // ---- Class mode ------------------------------------------------------------------------
@@ -164,7 +164,7 @@ function joinClass(): void {
       if (gen !== aula.gen) return;
       // After a rematch the old match's last snapshot (its matchEnd) came first: the old copy, over, stays on the end screen.
       const old = net.mirror, ended = !!old && b.match !== net.matchNo && old.match.over;
-      useMap(b.map, b.mode !== 'bomb'); // story 024: Duelo por equipos is drawn without zones too
+      useMap(b.map, !MODE_INFO[b.mode].bomb); // story 024: every mode but Bomba is drawn without zones
       net.mirror = createMirror(b); Object.assign(net, { matchNo: b.match, dressed: false, cool: 0 });
       models.forEach((m, i) => { m.group.visible = i !== b.seat; });
       if (!ended || scene === 'waiting') { // a teacher room started again while its student waited in it: straight to the match
@@ -1104,7 +1104,7 @@ const LOG = new Set(['match', 'round', 'kill', 'plant', 'roundEnd', 'answer', 'b
 /** Mouse turning since the last step, in radians: the next step adds it to the aim. */
 let lookYaw = 0, lookPitch = 0;
 function startMatch(): void {
-  useMap(session.map, session.mode !== 'bomb');
+  useMap(session.map, !MODE_INFO[session.mode].bomb);
   state = createMatch({
     // each match its own seed, so the first question changes; checks (?manual=1 or ?seed=) keep the fixed one
     seed: manual || params.get('seed') ? seedFrom(CONFIG.seed) : 1 + Math.floor(Math.random() * 2147483646), subject: session.subject, level: session.level, map: session.map,
@@ -1230,7 +1230,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
       if (act === 'ff') session.friendlyFire = !session.friendlyFire;
       if (act === 'streak') session.streakRewards = !session.streakRewards; // story 018
-      if (act === 'mode') { session.mode = session.mode === 'bomb' ? 'ffa' : session.mode === 'ffa' ? 'duel' : session.mode === 'duel' ? 'waves' : 'bomb'; useMap(session.map, session.mode !== 'bomb'); } // story 024: Bomba, Free for All, Duelo por equipos in turn; // story 019; 021: the map behind shows the mode
+      if (act === 'mode') { session.mode = nextMode(session.mode); useMap(session.map, !MODE_INFO[session.mode].bomb); } // story 024: Bomba, Free for All, Duelo por equipos in turn; // story 019; 021: the map behind shows the mode
       if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
@@ -1406,7 +1406,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
 const ctl = { sel: 0, capture: false, note: '', from: 'title' };
 /** Picks the session's map and shows it behind the session screen. */
 function pickMap(id: string): void {
-  session.map = id; useMap(id, session.mode !== 'bomb');
+  session.map = id; useMap(id, !MODE_INFO[session.mode].bomb);
 }
 function toggleTopic(t: string): void {
   const list = session.topics[session.subject];
@@ -1993,6 +1993,20 @@ function drawCard() {
   }
 }
 
+/** Each mode's rules in one line under a class room's seats (story 023, 024, 025). */
+const ROOM_RULES: Record<GameModeId, string> = {
+  bomb: 'Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.',
+  ffa: 'Todos contra todos, sin equipos: gana quien tenga más bajas. Los sitios libres los juegan bots.',
+  duel: 'Duelo por equipos: gana el equipo con más bajas; si caes, responde para volver. Los sitios libres los juegan bots.',
+  waves: 'Oleadas cooperativas: todos juntos contra oleadas de bots; pierden cuando caen todos. Los sitios libres los juegan bots.',
+};
+/** Each mode's rules in one line at the foot of the session screen (story 019, 024, 025); the durations come from the config. */
+const SESSION_RULES: Record<GameModeId, () => string> = {
+  bomb: () => `Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`,
+  ffa: () => `Free for All: tú contra 7 bots, todos contra todos y sin bomba. Gana quien tenga más bajas en ${Math.round(tune.ffa_duration / 6) / 10} min; si caes, responde para volver.`,
+  duel: () => `Duelo por equipos: tú y 3 compañeros bot contra 4 bots rivales, sin bomba. Gana el equipo con más bajas en ${Math.round(tune.duel_duration / 6) / 10} min; si caes, responde para volver.`,
+  waves: () => `Oleadas cooperativas: tú y 3 compañeros bot contra oleadas de bots enemigos, cada una mayor y más dura; sin bomba. Si caes, responde para volver en la siguiente; pierden si caéis todos.`,
+};
 // ---- Drawing: the session screen, results and figures -------------------------------------
 function flyover() {
   const a = titleT * 0.06, [rx, rz, fy] = MAP.view.flyover;
@@ -2089,9 +2103,10 @@ function drawWaiting() {
   // who and where
   rr(40, 146, 1200, 84, 16, 'rgba(14,19,30,0.92)', null);
   const roomNo = room.roomId.replace(/^sala-/, '');
-  const waves = room.mode === 'waves'; // story 025: one panel of players (seats 0..3), the enemy seats are not shown
-  const ffa = room.mode === 'ffa' || waves; // story 023: Free for All shows the mode instead of a team, and one list of players
-  const third: [string, string, number] = ffa ? ['Modo', waves ? 'Oleadas cooperativas' : 'Free for All', 900] : ['Tu equipo', `Equipo ${you.team + 1}`, 900];
+  const info = MODE_INFO[room.mode];
+  const waves = info.coop; // story 025: one panel of players (seats 0..3), the enemy seats are not shown
+  const ffa = !info.teams; // story 023: with no teams (Free for All, Oleadas) the mode shows instead of a team, and one list of players
+  const third: [string, string, number] = ffa ? ['Modo', info.name, 900] : ['Tu equipo', `Equipo ${you.team + 1}`, 900];
   ([['Tu nombre', you.name, 80], ['Sala', `Sala ${roomNo}`, 560], third] as [string, string, number][]).forEach(([k, v, x]) => {
     text(k, x, 172, 15, '#aab4c8', 'left', 'normal');
     text(clip(v, 420, 26), x, 204, 26, x === 80 ? '#ffd06a' : '#fff', 'left');
@@ -2125,10 +2140,7 @@ function drawWaiting() {
   if (aula.retry) {
     rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
     text(aula.retry, W / 2, 598, 20, '#ffe28a');
-  } else text(waves ? 'Oleadas cooperativas: todos juntos contra oleadas de bots; pierden cuando caen todos. Los sitios libres los juegan bots.'
-    : ffa ? 'Todos contra todos, sin equipos: gana quien tenga más bajas. Los sitios libres los juegan bots.'
-    : room.mode === 'duel' ? 'Duelo por equipos: gana el equipo con más bajas; si caes, responde para volver. Los sitios libres los juegan bots.' // story 024
-    : 'Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
+  } else text(ROOM_RULES[room.mode], W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
   button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
   if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, TOUCH ? 'Volver a la pantalla de entrada' : 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
 }
@@ -2231,10 +2243,10 @@ function drawTitle() {
   // start
   // Story 019: the game mode beside the start button (the options row above is full).
   // Story 024: the button cycles Bomba, Free for All and Duelo por equipos; any mode but Bomba is lit.
-  const alt = session.mode !== 'bomb';
+  const alt = !MODE_INFO[session.mode].bomb, modeName = MODE_INFO[session.mode].name;
   button(820, 612, 196, 60, '', 'mode', lit(alt));
   text('Modo de juego', 918, 630, 14, alt ? '#1b2232' : '#c8d2e6', 'center', 'normal');
-  text(session.mode === 'ffa' ? 'Free for All' : session.mode === 'duel' ? 'Duelo por equipos' : session.mode === 'waves' ? 'Oleadas cooperativas' : 'Bomba', 918, 654, session.mode === 'duel' || session.mode === 'waves' ? 18 : 22, alt ? '#1b2232' : '#fff');
+  text(modeName, 918, 654, modeName.length > 12 ? 18 : 22, alt ? '#1b2232' : '#fff'); // the two long names a size smaller
   button(1026, 612, 214, 60, '', 'start', { fill: '#e07a1c', stroke: '#7a3a08' });
   text('Empezar partida', 1133, TOUCH ? 642 : 634, 24, '#fff');
   if (!TOUCH) text('Enter', 1133, 659, 14, '#ffe2c4', 'center', 'normal');
@@ -2244,10 +2256,7 @@ function drawTitle() {
   let ls = 16; ctx.font = `normal ${ls}px ${FONT}`;
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 694, ls, '#e4e9f4', 'center', 'normal');
-  text(session.mode === 'ffa' ? `Free for All: tú contra 7 bots, todos contra todos y sin bomba. Gana quien tenga más bajas en ${Math.round(tune.ffa_duration / 6) / 10} min; si caes, responde para volver.`
-    : session.mode === 'waves' ? `Oleadas cooperativas: tú y 3 compañeros bot contra oleadas de bots enemigos, cada una mayor y más dura; sin bomba. Si caes, responde para volver en la siguiente; pierden si caéis todos.`
-    : session.mode === 'duel' ? `Duelo por equipos: tú y 3 compañeros bot contra 4 bots rivales, sin bomba. Gana el equipo con más bajas en ${Math.round(tune.duel_duration / 6) / 10} min; si caes, responde para volver.`
-    : `Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 713, 14, '#aab4c8', 'center', 'normal');
+  text(SESSION_RULES[session.mode](), W / 2, 713, 14, '#aab4c8', 'center', 'normal');
 }
 function drawResults() {
   buttons.length = 0;

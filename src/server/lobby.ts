@@ -8,7 +8,7 @@
 // the seat that was held for them. That is accepted; nothing but a name identifies anybody.
 // Names live in memory only and are never logged: the log lines here carry connection ids and counts.
 import { PROTOCOL_VERSION, errorMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type RoomView, type SeatView, type ServerMessage } from '../net/protocol';
-import { SEATS_PER_TEAM, type TeacherStudent } from '../net/protocol';
+import { MODE_INFO, SEATS_PER_TEAM, type TeacherStudent } from '../net/protocol';
 import { takeSeat, leaveSeat, setPresent, type Room } from './room';
 import type { Rooms } from './rooms';
 
@@ -155,8 +155,9 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       const st = [...byKey.values()].find(x => x.id === id), to = deps.rooms.get(roomId);
       if (!st) return 'Ese alumno ya no está conectado.';
       if (!to) return 'Esa sala no existe o ya terminó.';
-      const coop = to.match.opts.mode === 'waves'; // story 025: Oleadas cooperativas: the team is ignored, only seats 0..3
-      const ffa = to.match.opts.mode === 'ffa' || coop; // story 023: Free for All has no teams, so the team asked is ignored and any free seat does
+      const info = MODE_INFO[to.match.opts.mode];
+      const coop = info.coop; // story 025: Oleadas cooperativas: the team is ignored, only seats 0..3
+      const ffa = !info.teams; // story 023: no teams (Free for All, Oleadas), so the team asked is ignored and any free seat does
       if (!ffa && seat !== undefined && Math.floor(seat / SEATS_PER_TEAM) !== team) return 'Ese asiento no es del equipo elegido.';
       const free = to.seats.filter(s => s.kind !== 'human' && ((ffa && (!coop || s.team === 0)) || s.team === team) && (seat === undefined || s.index === seat));
       if (!free.length) return seat === undefined ? (ffa ? 'Esa sala no tiene sitio libre.' : 'Ese equipo no tiene sitio libre.') : 'Ese asiento está ocupado.';
