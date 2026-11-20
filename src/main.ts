@@ -31,6 +31,7 @@ import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
 import { connect, savedName, type Connection } from './net/client';
 import type { ResultsMessage, RoomView, You } from './net/protocol';
+import { tracerSpan } from './fx';
 import { MODE_INFO, nextMode, SEATS_PER_TEAM, type GameModeId } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 import { css, drawHUD, drawTeacherPause } from './hud';
@@ -378,10 +379,11 @@ function playEvents(list: Loose[] = state.events): void {
     if (LOG.has(e.type)) events.push(e);
     switch (e.type) {
       case 'shot':
-        if (e.by === state.human?.id && e.w === 'sniper' && state.human.scoped) { // seen through the scope: the 22° view magnifies the first metres into a white blob, so the tracer starts further out and thinner
-          const dx = e.to[0] - e.from[0], dy = e.to[1] - e.from[1], dz = e.to[2] - e.from[2], len = Math.hypot(dx, dy, dz), k = Math.min(1, tune.fx_scope_tracer_skip / (len || 1));
-          if (k < 1) { tracer(e.w, e.from[0] + dx * k, e.from[1] + dy * k, e.from[2] + dz * k, e.to[0], e.to[1], e.to[2]); tracers[(tracerI - 1) % tracers.length].w = tune.fx_scope_tracer_w; }
-        } else tracer(e.w, e.from[0], e.from[1], e.from[2], e.to[0], e.to[1], e.to[2]);
+        { // seen through the scope, your own sniper shot's tracer starts further out and thinner (the 22° view magnifies the first metres into a white blob); a bar too short to see is not drawn (src/fx.ts tracerSpan, TD-012)
+          const scoped = e.by === state.human?.id && e.w === 'sniper' && state.human.scoped;
+          const start = tracerSpan(e.from, e.to, scoped ? tune.fx_scope_tracer_skip : 0, tune.fx_tracer_min_len);
+          if (start) { tracer(e.w, start[0], start[1], start[2], e.to[0], e.to[1], e.to[2]); if (scoped) tracers[(tracerI - 1) % tracers.length].w = tune.fx_scope_tracer_w; }
+        }
         { // a red burst when the shot ends on a player, else a pale wall/floor/crate spark. A human's shot says it (spark); a bot's shot has no hit flag, so a player standing at its end point is the hit
           let hitP = e.human ? !e.spark : false, hitId = -1;
           for (const q of state.players) { const dx = q.x - e.to[0], dz = q.z - e.to[2]; if (q.alive && q.id !== e.by && dx * dx + dz * dz < 0.36 && e.to[1] - (q.st?.y ?? 0) < 2 && e.to[1] >= (q.st?.y ?? 0) - 0.05) { hitId = q.id; break; } }
