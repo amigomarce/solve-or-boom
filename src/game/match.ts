@@ -10,11 +10,10 @@ import { tune, CONFIG } from './tune';
 import { updateBomb } from './bomb';
 import { botUpdate } from './bots';
 import { humanUpdate, updateCard, grant, tryBuy, answer, idleInput, type PlayerInput } from './player';
-import { afterRound, checkRound, startRound } from './rounds';
-import { startFfa, ffaTick, syncHidden } from './ffa';
-import { startDuel, duelTick } from './teamduel';
-import { startWaves, wavesTick } from './waves';
-import { blankMatch, closeCard, deskOf, isDuel, isFfa, isRoam, isWaves, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
+import { afterRound } from './rounds';
+import { syncHidden } from './ffa';
+import { modeRules } from './modes';
+import { blankMatch, closeCard, deskOf, isRoam, isWaves, mulberry32, nextSpec, say, setMode, sideOf, type Match, type MatchOptions } from './state';
 import * as QUESTIONS from '../questions';
 
 export * from './state';
@@ -45,7 +44,7 @@ export function createMatch(opts: MatchOptions): Match {
   if (match.classroom) match.newDeck = (id: number) => QUESTIONS.deck(opts.subject, topics, opts.level, opts.custom, mulberry32((opts.seed ^ Math.imul(id + 1, 0x9E3779B1)) >>> 0));
   match.subjectLabel = opts.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${opts.customName})`
     : `${QUESTIONS.SUBJECTS[opts.subject].name}: ${topics.map(t => QUESTIONS.SUBJECTS[opts.subject].topics[t]).join(', ')}`;
-  if (isFfa(match)) startFfa(match); else if (isDuel(match)) startDuel(match); else if (isWaves(match)) startWaves(match); else startRound(match);
+  modeRules(match).start(match); // the mode's first round, wave or spawn (src/game/modes.ts)
   match.events.push({ type: 'match', subject: opts.subject });
   return match;
 }
@@ -117,7 +116,7 @@ export function step(match: Match, inputs: Record<number, PlayerInput>, dt: numb
   for (let i = match.pickups.length - 1; i >= 0; i--) if (match.pickups[i].age >= tune.pickup_life) match.pickups.splice(i, 1);
   for (const p of match.players) if (!p.alive) p.deadT += dt;
   updateBomb(match, dt);
-  if (isFfa(match)) ffaTick(match, dt); else if (isDuel(match)) duelTick(match, dt); else if (isWaves(match)) wavesTick(match, dt); else checkRound(match);
+  modeRules(match).tick(match, dt); // the mode's own rules: round end, respawns, waves (src/game/modes.ts)
   // timers
   match.msgT -= dt; match.flashT = Math.max(0, match.flashT - dt); match.hitT = Math.max(0, match.hitT - dt);
   match.killT = Math.max(0, match.killT - dt); match.boomT = Math.max(0, match.boomT - dt);

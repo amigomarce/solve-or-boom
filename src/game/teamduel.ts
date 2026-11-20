@@ -10,7 +10,7 @@ import { tune } from './tune';
 import type { Loose } from './types';
 import { botBuy } from './plans';
 import { botFresh, deskOf, freshStance, isDuel, openCard, tell, type Match } from './state';
-import { place, openMenu, randomSpot, spawnCells, syncHidden } from './ffa';
+import { place, openMenu, randomSpot, ranking, spawnCells, syncHidden } from './ffa';
 
 /** The team names as the screens say them in a classroom and on the teacher page. */
 export const teamName = (squad: number): string => `Equipo ${squad + 1}`;
@@ -66,10 +66,6 @@ export function duelRespawn(match: Match, p: Loose): void {
   else { Object.assign(p, botFresh()); botBuy(match, p); p.wps = [randomSpot(match)]; }
   match.events.push({ type: 'respawn', p: p.id });
 }
-/** The players best first: most kills, then fewer deaths, then the lower seat. */
-export function duelRanking(match: Match): Loose[] {
-  return [...match.players].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
-}
 /** The winning team (0 or 1), or -1 for a tie, from the teams' kills. */
 export function winningTeam(match: Match): number {
   return match.score[0] === match.score[1] ? -1 : match.score[0] > match.score[1] ? 0 : 1;
@@ -94,7 +90,7 @@ export function duelTick(match: Match, dt: number): void {
  */
 export function endDuel(match: Match): void {
   if (match.over || !isDuel(match)) return;
-  const rank = duelRanking(match), win = winningTeam(match), p = match.human, s = match.score;
+  const rank = ranking(match), win = winningTeam(match), p = match.human, s = match.score;
   match.podium = rank.map(q => ({ id: q.id, kills: q.kills, deaths: q.deaths, right: q.human ? q.right : -1, wrong: q.human ? q.wrong : -1 }));
   match.winTeam = win;
   const won = !!p && win === p.squad;
