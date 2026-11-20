@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-20
 
-Total items: 19 (13 closed, 6 open) | Estimated open effort: 6 x S
+Total items: 19 (14 closed, 5 open) | Estimated open effort: 5 x S
 
 | ID | Category | Description | Files | Effort | Impact | Priority | Status | Added | Sprint |
 |----|----------|-------------|-------|--------|--------|----------|--------|-------|--------|
@@ -13,7 +13,7 @@ Total items: 19 (13 closed, 6 open) | Estimated open effort: 6 x S
 | TD-005 | Code Quality | A pickup reached by two players on the same step always goes to the lower seat; deterministic, with no double grant, but it favours seat order — from production/epics/solve-or-boom/story-016-combat-and-economy.md | src/game/player.ts | S | Low | — | Closed 2026-11-14 | 2026-11-13 | Backlog |
 | TD-006 | Code Quality | In a bot's friendly-fire check the minimum distance 0.5 m, the height difference 1.5 m and the 0.42 m radius are literals, and a bot's missed shot never hits a teammate (a design choice, not written down) — from production/epics/solve-or-boom/story-017-match-options.md | src/game/combat.ts | S | Low | — | Closed 2026-11-14 | 2026-11-13 | Backlog |
 | TD-007 | Code Quality | The student's page accepts any positive `buyTime` in `begin` (Infinity or 1e9 included) and the mirror trusts it; the server always sends a clamped value, so it is not reachable today — from production/epics/solve-or-boom/story-017-match-options.md | src/net/protocol.ts | S | Low | — | Closed 2026-11-14 | 2026-11-13 | Backlog |
-| TD-008 | Performance | The minimap redraws in full every frame, both floors and every wall, instead of caching the static map — from production/epics/solve-or-boom/story-012-two-floor-map.md | src/main.ts | S | Low | — | Open | 2026-11-14 | Backlog |
+| TD-008 | Performance | The minimap redraws in full every frame, both floors and every wall, instead of caching the static map — from production/epics/solve-or-boom/story-012-two-floor-map.md **Done 2026-11-20:** `drawMinimapCells()` in src/hud.ts caches the fixed layer in its own canvas, redrawn only when the map, mode, level shown or pixel ratio change; minimap pixel-identical (first floor: at most 1/255 rounding); a drawn frame 0.80 → 0.59 ms (production/qa/evidence/td-008-minimap-cache/). | src/main.ts (now src/hud.ts) | S | Low | — | Closed 2026-11-20 | 2026-11-14 | Backlog |
 | TD-009 | Code Quality | The bots' path following on two floors uses literals (0.5 m waypoint reach, 0.8 s stuck time) instead of `bot_*` values in data/config.json — from production/epics/solve-or-boom/story-012-two-floor-map.md | src/game/bots.ts | S | Low | — | Open | 2026-11-14 | Backlog |
 | TD-010 | Code Quality | The crate height 1.1 m is written twice (the two crate geometries) instead of one shared value — from production/epics/solve-or-boom/story-012-two-floor-map.md | src/main.ts | S | Low | — | Open | 2026-11-14 | Backlog |
 | TD-011 | Code Quality | Phone loose ends: `?touch=1` can show the CSV picker twice, fullscreen is tried only once, `user-scalable=no` blocks zoom for low-vision players, the touch layout repeats `fit()`'s sizing, and the page says `lang="en"` for Spanish text — from production/epics/solve-or-boom/story-014-mobile-play.md | index.html, src/touch.ts, src/main.ts | S | Low | — | Open | 2026-11-14 | Backlog |

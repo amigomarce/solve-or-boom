@@ -4,7 +4,7 @@
 import * as QUESTIONS from './questions';
 import { tune } from './config';
 import { type Level, type Loose } from './game/types';
-import { CELL, MH, MW, SITE, cellOf, grid, grid1, hasHeights, idx, levelOfY, losClear, rampAt, zone, zone1 } from './game/map';
+import { CELL, MAP_ID, MH, MW, SITE, cellOf, grid, grid1, hasHeights, idx, levelOfY, losClear, rampAt, zone, zone1 } from './game/map';
 import { angDiff, fmtTime } from './game/rules';
 import { ROLE_NAME, SHOP, WEAPON, humanSpread, inOwnBase, isDuel, isFfa, isRoam, isWaves, questionLevel, shopBlock, sideOf, uiOpen } from './game/match';
 import { buttons, down, mouse } from './input';
@@ -54,29 +54,52 @@ function drawBombMarker(b: Loose, mySide: string): void {
   text(`${Math.round(d)} m`, x, y + 16, 14, '#fff', 'center', 'normal');
   ctx.globalAlpha = 1;
 }
+/** The minimap's cells as last drawn: the canvas they were drawn on and what they depend on. */
+const cellsCache = { canvas: null as HTMLCanvasElement | null, key: '', ox: 0, oy: 0 };
+/**
+ * The minimap's fixed layer (walls, floors, zones, stairs, the first floor over the ground), which only changes with the
+ * map, the mode (Free for All and Duelo show no zones), the level shown and the screen's pixel ratio. It is drawn into a
+ * canvas of its own, aligned with the screen's pixels and at the same scale, and only copied each frame (TD-008: it was
+ * redrawn cell by cell every frame, both floors).
+ */
+function drawMinimapCells(x0: number, y0: number, k: number, myLv: number): void {
+  const t = ctx.getTransform(), r = t.a, roam = isRoam(state);
+  const key = `${MAP_ID}|${roam ? 1 : 0}|${myLv}|${r}|${t.e}|${t.f}|${x0}|${y0}`;
+  if (cellsCache.key !== key || !cellsCache.canvas) {
+    const ox = Math.floor(t.e + (x0 - 6) * r), oy = Math.floor(t.f + (y0 - 6) * r); // whole device pixels: the cache sits on the screen's grid
+    const cv = cellsCache.canvas ?? document.createElement('canvas');
+    cv.width = Math.ceil((MW * k + 12) * r) + 2; cv.height = Math.ceil((MH * k + 12) * r) + 2;
+    const g = cv.getContext('2d')!;
+    g.setTransform(r, 0, 0, r, t.e - ox, t.f - oy); // the same logical coordinates as the screen, shifted to the cache's corner
+    const px = (c: number): number => Math.floor(c * k); // whole pixels: no seams
+    if (myLv === 1) g.globalAlpha = 0.35; // on the first floor the ground below is dimmed
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const i = idx(x, y);
+      if (!grid[i]) continue;
+      const zi = roam ? 0 : zone[i]; // story 021: no bases or sites on the Free for All minimap (024: nor Duelo por equipos)
+      g.fillStyle = grid[i] === 2 ? '#8a6a44' : zi === 1 ? '#c98a50' : zi === 2 ? '#5ea79e' : zi >= 3 ? '#b49a6c' : '#cbbd9c';
+      if (hasHeights && rampAt(x, y)) g.fillStyle = '#e0b030'; // a stair, either level
+      g.fillRect(x0 + px(x), y0 + px(y), px(x + 1) - px(x), px(y + 1) - px(y));
+    }
+    g.globalAlpha = 1;
+    if (hasHeights) for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const g1 = grid1[idx(x, y)];
+      if (!g1) continue;
+      const X = x0 + px(x), Y = y0 + px(y), w = px(x + 1) - px(x), h = px(y + 1) - px(y);
+      if (myLv === 1) { g.fillStyle = g1 === 2 ? '#8a6a44' : !roam && zone1[idx(x, y)] >= 3 ? '#b49a6c' : '#e8e2d2'; g.fillRect(X, Y, w, h); }
+      else { g.fillStyle = 'rgba(40,50,80,0.35)'; g.fillRect(X, Y, w, h); } // on the ground: the first floor overhead as a shade
+    }
+    Object.assign(cellsCache, { canvas: cv, key, ox, oy });
+  }
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(cellsCache.canvas!, cellsCache.ox, cellsCache.oy); ctx.restore();
+}
 const MINIMAP_W = 180, MINIMAP_H = 120; // the minimap's box in pixels; any map is scaled to fit it
 function drawMinimap(x0: number, y0: number): void {
   const k = Math.min(MINIMAP_W / MW, MINIMAP_H / MH), px = (c: number): number => Math.floor(c * k); // whole pixels: no seams
   rr(x0 - 6, y0 - 6, MW * k + 12, MH * k + 12 + (hasHeights ? 20 : 0), 8, 'rgba(15,20,32,0.72)', null);
   const me = state.human, b = state.bomb, view = me.alive || !state.specP ? me : state.specP;
   const myLv = hasHeights ? levelOfY(view.st?.y ?? 0) : 0; // story 012: the level the screen shows from
-  if (myLv === 1) ctx.globalAlpha = 0.35; // on the first floor the ground below is dimmed
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const i = idx(x, y);
-    if (!grid[i]) continue;
-    const zi = isRoam(state) ? 0 : zone[i]; // story 021: no bases or sites on the Free for All minimap (024: nor Duelo por equipos)
-    ctx.fillStyle = grid[i] === 2 ? '#8a6a44' : zi === 1 ? '#c98a50' : zi === 2 ? '#5ea79e' : zi >= 3 ? '#b49a6c' : '#cbbd9c';
-    if (hasHeights && rampAt(x, y)) ctx.fillStyle = '#e0b030'; // a stair, either level
-    ctx.fillRect(x0 + px(x), y0 + px(y), px(x + 1) - px(x), px(y + 1) - px(y));
-  }
-  ctx.globalAlpha = 1;
-  if (hasHeights) for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const g1 = grid1[idx(x, y)];
-    if (!g1) continue;
-    const X = x0 + px(x), Y = y0 + px(y), w = px(x + 1) - px(x), h = px(y + 1) - px(y);
-    if (myLv === 1) { ctx.fillStyle = g1 === 2 ? '#8a6a44' : !isRoam(state) && zone1[idx(x, y)] >= 3 ? '#b49a6c' : '#e8e2d2'; ctx.fillRect(X, Y, w, h); }
-    else { ctx.fillStyle = 'rgba(40,50,80,0.35)'; ctx.fillRect(X, Y, w, h); } // on the ground: the first floor overhead as a shade
-  }
+  drawMinimapCells(x0, y0, k, myLv); // the walls, floors, zones and stairs: drawn once into a cache, redrawn only when they change (TD-008)
   if (!isRoam(state)) for (const S of ['A', 'B'] as const) { // story 021: no A and B in Free for All (024: nor Duelo por equipos)
     const st = SITE[S], other = hasHeights && st.lv !== myLv;
     if (other) ctx.globalAlpha = 0.5;
