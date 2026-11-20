@@ -102,8 +102,8 @@ export function followPath(match: Match, b: Loose, dt: number, speed: number, lo
   }
   const c = b.path[b.pathI], tx = center(c[0]), tz = center(c[1]);
   const dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
-  if (d < 0.5 && !onLevel(b, c)) { b.path = []; b.pathI = 0; b.repaths = (b.repaths ?? 0) + 1; return true; } // over or under its step: re-plan from where it stands
-  if (d < 0.5 && onLevel(b, c)) {
+  if (d < tune.bot_wp_reach && !onLevel(b, c)) { b.path = []; b.pathI = 0; b.repaths = (b.repaths ?? 0) + 1; return true; } // over or under its step: re-plan from where it stands
+  if (d < tune.bot_wp_reach && onLevel(b, c)) {
     b.pathI++; b.stuckN = 0;
     if (b.pathI >= b.path.length) { b.wps.shift(); b.path = []; b.pathI = 0; }
     return true;
@@ -112,9 +112,9 @@ export function followPath(match: Match, b: Loose, dt: number, speed: number, lo
   const drop = hasHeights && (c[2] ?? 0) === 0 && botLevel(b) === 1 && !rampAt(c[0], c[1]); // this step leaves the first floor off its edge
   botMove(match, b, dx / d * speed * dt, dz / d * speed * dt, drop);
   if (look) turnTo(b, yawTo(dx, dz), 8, dt);
-  if (Math.hypot(b.x - ox, b.z - oz) < speed * dt * 0.2) {
+  if (Math.hypot(b.x - ox, b.z - oz) < speed * dt * tune.bot_stuck_move) { // moved under bot_stuck_move of its stride: not getting anywhere
     b.stuckT += dt;
-    if (b.stuckT > 0.8) {
+    if (b.stuckT > tune.bot_stuck_time) {
       b.stuckT = 0;
       // With heights: stuck bot_stuck_give_up times in a row without reaching a path step, it gives that waypoint up.
       if (hasHeights && (b.stuckN = (b.stuckN ?? 0) + 1) >= tune.bot_stuck_give_up) { b.stuckN = 0; b.wps.shift(); b.path = []; b.pathI = 0; }
