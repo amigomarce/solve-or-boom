@@ -12,7 +12,8 @@ import { TOUCH } from './touch';
 import { bind, keyName } from './keys';
 import { type ButtonOpts, FONT, H, W, button, clear, clip, ctx, rr, text, wrapText } from './screen';
 import { type GameModeId, MODE_INFO, SEATS_PER_TEAM } from './net/protocol';
-import { CLASS_MODE, NAME_MAX, ROOM_STATE, SIDE_CSS, SIDE_HEX, SUBJECT_LIST, _v, aula, camera, lam, makeBomb, makeSoldier, menuSel, net, poseSoldier, project, renderer, session, setSide, state, step, titleT, viewGuns, world } from './main';
+import { CLASS_MODE, NAME_MAX, ROOM_STATE, SUBJECT_LIST, _v, aula, menuSel, net, project, session, state, step, titleT } from './main';
+import { SIDE_CSS, SIDE_HEX, camera, lam, makeBomb, makeSoldier, poseSoldier, renderer, setSide, viewGuns, world } from './scene3d';
 
 /** Each mode's rules in one line under a class room's seats (story 023, 024, 025). */
 const ROOM_RULES: Record<GameModeId, string> = {

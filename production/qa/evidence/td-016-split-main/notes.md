@@ -22,3 +22,23 @@ teacher's pause, 14 results after the teacher ended it. Page errors: 0. Typechec
 Not moved yet: the Three.js world and the guns. Their code runs at load time and calls helpers that stay in main.ts (box,
 lam, makeFlash…), and other sections assign their counters (decalI, puffI, lastPlace), so moving them needs those helpers
 and setters to move first.
+
+## Second part: the 3D world and the guns (2026-11-20)
+
+Change: the block from "Three.js world" to "The roster's figures" (the renderer and camera, the map's meshes and textures,
+the figures, third- and first-person guns, the effect pools, the roster's models) is src/scene3d.ts (789 lines); main.ts is
+849 lines (was 2492 before part 1). One module, not world.ts and guns.ts as TD-016 first proposed: the guns' load-time code
+calls the world's helpers (lam, box…), and two modules importing each other would load in an order that breaks that.
+Before moving: `CHEAP` went into the world section (its load-time code reads it), `let lastPlace` next to placeModels (the
+only user, staying in main.ts), and the puff and bullet-hole counters, assigned from playEvents, are now taken through
+`nextPuff()` / `nextDecal()` beside their pools.
+
+Checks against the code at 66530e9:
+- The 9 frames of part 1 (`*-despues-parte2.png`): 7 identical, 2 differ only around the distant 3D figures (44 and 46 px),
+  the WebGL noise two runs of the old code show.
+- 4 more 3D frames, built from 66530e9 in a separate worktree (`10`/`12`/`13`/`14-*-antes.png` and `-despues.png`): the
+  two-floor map and Free for All. These are not pixel-stable even for the old code against itself (placeModels animates
+  the figures with performance.now, the real clock): old vs old differed by 9820 / 919 / 32 / 36 px, old vs new by 9736 /
+  904 / 16 / 16 px, in the same boxes. Looked at side by side: the same scene. The bots' tracers show in the Free for All
+  frame. Not reached: the player's own fire (holding F did not shoot in this run).
+Page errors 0. Typecheck 0, 42 unit tests, smoke @boot pass.

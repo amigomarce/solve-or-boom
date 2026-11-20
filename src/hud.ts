@@ -12,7 +12,8 @@ import { TOUCH } from './touch';
 import { REWARD_NAME, nextReward } from './game/streak';
 import { bind, keyName } from './keys';
 import { FONT, H, W, button, clip, ctx, rr, text, wrapText } from './screen';
-import { CHEAP, CLASS_MODE, ROOM_STATE, SIDE_CSS, _v, aula, camera, locked, project, scoreRows, state, timer } from './main';
+import { CLASS_MODE, ROOM_STATE, _v, aula, locked, project, scoreRows, state, timer } from './main';
+import { CHEAP, SIDE_CSS, camera } from './scene3d';
 
 // ---- Drawing: the HUD --------------------------------------------------------------------
 function drawCross(x: number, y: number, s: number, c: string): void { ctx.fillStyle = c; ctx.fillRect(x - s * 0.18, y - s / 2, s * 0.36, s); ctx.fillRect(x - s / 2, y - s * 0.18, s, s * 0.36); }
