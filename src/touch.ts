@@ -6,6 +6,7 @@ import { params } from './hook';
 import { tune } from './game/tune';
 import { down, hit } from './input';
 import { bind } from './keys';
+import { fitBox } from './fit-box';
 
 /** True on a phone or tablet (a coarse primary pointer and a touch screen), or with ?touch=1 in the address (a desktop check). */
 export const TOUCH = params.get('touch') === '1' || (matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0);
@@ -207,21 +208,26 @@ if (TOUCH) {
   make('scores', 'Tabla', Math.round(u * 0.8), `left:calc(50% - var(--k) * 640px + var(--k) * 142px);top:calc(var(--bar) + var(--k) * 176px)`, true);
   make('pause', 'Pausa', Math.round(u * 0.8), `left:calc(50% + var(--k) * 240px + 6px);top:calc(var(--bar) + 8px)`);
 
-  /** Where the canvas sits (the same maths as fit() in screen.ts), for the positions that follow it. */
+  /** Where the canvas sits (fitBox, the same box screen.ts fit() uses), for the positions that follow it. */
   const layout = (): void => {
-    const k = Math.min(innerWidth / 1280, innerHeight / 720);
+    const { k, top } = fitBox();
     root.style.setProperty('--k', String(k));
-    root.style.setProperty('--bar', Math.max(0, Math.floor((innerHeight - 720 * k) / 2)) + 'px');
+    root.style.setProperty('--bar', top + 'px');
   };
   layout(); addEventListener('resize', layout);
 
-  // No long-press menu, no pinch or double-tap zoom (Safari's gesture events), and the first tap asks for a full screen
-  // where the browser has one (Android, iPad; not iPhone), landscape-locked where it can be.
+  // No long-press menu, no pinch or double-tap zoom on the game (Safari's gesture events), and a tap asks for a full screen
+  // where the browser has one (Android, iPad; not iPhone), landscape-locked where it can be. A player who leaves it gets
+  // it back on the next tap; once the browser refuses, it is not asked again (TD-011).
   addEventListener('contextmenu', e => e.preventDefault());
   for (const t of ['gesturestart', 'gesturechange'] as const) document.addEventListener(t, e => e.preventDefault());
-  addEventListener('click', () => {
-    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })
-      .then(() => (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
-      .catch(() => { /* the browser said no: the page stays as it is */ });
-  }, { once: true });
+  let fullscreenRefused = false;
+  const askFullscreen = (): void => {
+    if (fullscreenRefused || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(
+      // A refused landscape lock (iPad, a desktop) is not a refused full screen: it is ignored.
+      () => { Promise.resolve((screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape')).catch(() => {}); },
+      () => { fullscreenRefused = true; }); // the browser said no to the full screen: the page stays as it is
+  };
+  addEventListener('click', askFullscreen);
 }

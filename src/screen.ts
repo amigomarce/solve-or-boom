@@ -2,9 +2,10 @@
 import type * as THREE from 'three';
 import { buttons, mouse } from './input';
 import { renderRatio } from './touch';
+import { fitBox, LOGICAL_H, LOGICAL_W } from './fit-box';
 
 /** Logical size: everything is drawn at 1280 x 720 and scaled to the window. */
-export const W = 1280, H = 720;
+export const W = LOGICAL_W, H = LOGICAL_H;
 /** The game's typeface. */
 export const FONT = '"Trebuchet MS", "Segoe UI", Verdana, sans-serif';
 
@@ -22,11 +23,11 @@ export function setRenderer(r: THREE.WebGLRenderer): void { renderer = r; }
 
 /** Fills the window at any size and pixel ratio. */
 export function fit(): void {
-  const k = Math.min(innerWidth / W, innerHeight / H);
+  const { k, top } = fitBox();
   const r = k * renderRatio();
   canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
   wrap.style.width = Math.round(W * k) + 'px'; wrap.style.height = Math.round(H * k) + 'px';
-  wrap.style.top = Math.max(0, Math.floor((innerHeight - H * k) / 2)) + 'px';
+  wrap.style.top = top + 'px';
   ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = true;
   if (renderer) renderer.setSize(Math.round(W * k), Math.round(H * k), false);
 }

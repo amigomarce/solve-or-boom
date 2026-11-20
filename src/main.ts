@@ -242,6 +242,8 @@ function syncButtons(mask: number): void {
     else down.delete(code);
   }
 }
+/** The upload button was pressed with a finger: its file picker opens on the click that follows (TD-011). */
+let uploadByTouch = false;
 canvas.addEventListener('pointerdown', e => {
   startAudio();
   const m = toLogical(e); mouse.x = m.x; mouse.y = m.y;
@@ -249,7 +251,7 @@ canvas.addEventListener('pointerdown', e => {
   if (scene === 'controls' && ctl.capture && e.button === 2) { hit.add('Mouse2'); return; } // the right button is a key being bound, wherever it is pressed
   if (!locked) {
     const b = buttons.find(b => m.x >= b.x && m.x <= b.x + b.w && m.y >= b.y && m.y <= b.y + b.h);
-    if (b) { if (b.act === 'upload') { if (e.pointerType !== 'touch') csvInput.click(); } else clicks.push(b.act); return; }
+    if (b) { if (b.act === 'upload') { uploadByTouch = e.pointerType === 'touch'; if (!uploadByTouch) csvInput.click(); } else clicks.push(b.act); return; }
   }
   if (scene === 'pause') { clicks.push('resume'); requestLock(); return; }
   if (scene === 'play' && state.human && !state.human.alive) { clicks.push('spec'); return; }
@@ -261,7 +263,7 @@ canvas.addEventListener('pointerdown', e => {
 canvas.addEventListener('click', e => {
   if (scene === 'join') nameInput.focus({ preventScroll: true });
   const m = toLogical(e), b = buttons.find(b => m.x >= b.x && m.x <= b.x + b.w && m.y >= b.y && m.y <= b.y + b.h);
-  if (TOUCH && b?.act === 'upload') csvInput.click(); // a tap opens the file picker on its click: the browser allows it there
+  if (uploadByTouch && b?.act === 'upload') { uploadByTouch = false; csvInput.click(); } // a finger's tap opens the file picker on its click (the browser allows it there); a mouse already opened it on pointerdown (TD-011)
 });
 addEventListener('pointerup', e => { down.delete(e.button === 2 ? 'Mouse2' : 'Mouse0'); if (e.pointerType === 'touch') { mouse.x = -1; mouse.y = -1; } }); // a lifted finger leaves no hover
 canvas.addEventListener('contextmenu', e => e.preventDefault());
