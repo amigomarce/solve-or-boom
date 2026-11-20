@@ -180,3 +180,6 @@ dist-server/
 dist-class/
 .vitest/
 /playwright-report/
+
+# === graphify knowledge graph output (rebuilt with /graphify) ===
+/graphify-out/
