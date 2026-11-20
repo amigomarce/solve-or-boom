@@ -76,6 +76,8 @@ export interface Room {
    * sends them to its students ahead of the new match's `begin` (net.ts); then null.
    */
   last: { match: Match; events: Loose[] } | null;
+  /** A teacher room's last finished match (a copy of the room as it ended, for the teacher's "Última partida" line); null before the first. */
+  prev: Room | null;
   play: PlayLimits;
   /** The match in play: each student's counts by name key (src/server/results.ts), for their own end-of-match results. */
   tally: Map<string, Tally>;
@@ -181,7 +183,7 @@ export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimi
   const room: Room = {
     id, spec, seats, managed: !!spec.managed, match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
-    matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null,
+    matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null, prev: null,
     tally: new Map(), report: null, reported: false, results,
   };
   bindCounting(room);

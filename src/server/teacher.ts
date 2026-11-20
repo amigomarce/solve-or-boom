@@ -7,7 +7,10 @@
 //    until the teacher ends it (a new room then takes the new session).
 //  - The match options (story 017: friendly fire, buy time) are part of the session like the map: every room's next match.
 //    The buy time must be whole seconds inside data/config.json's buy_time min..max (not snapped to its step).
-//  - Teacher rooms never rematch: a won match ends the room and its students reach the results screen.
+//  - Teacher rooms stay: a won match, or one the teacher ends ("Terminar"), sends each student their results and the room waits again
+//    with the same students in the same seats; "Iniciar" plays the next match with the session as it is then. A copy of the room as
+//    it ended goes to the finished list, and the card shows that match on its "Última partida" line. "Quitar sala" removes a
+//    waiting room for good: its students go back to the entry screen (when they come back they take a free seat, as on any join).
 //  - "Repartir automáticamente" refuses while any room runs or is paused, replaces the waiting rooms, and makes
 //    ceil(students / 8) rooms with the students spread evenly (so nobody is left out: 10 students make two rooms of 5,
 //    3 v 2 plus bots), teams alternating. The free seats stay bots. In Free for All (story 023) there are no teams: the
@@ -66,6 +69,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   /** Starts a waiting room with the session as it is now. */
   const start = (room: Room): boolean => rebuildMatch(room, matchChoices(), seed()) && deps.rooms.transition(room.id, 'start');
   const refresh = (room: Room | undefined): void => { if (room) deps.lobby.refresh(room); };
+  deps.rooms.onReopened = room => refresh(room); // a teacher room waits again: its students' waiting rooms follow at once
 
   /** The mode changed (story 023): each waiting room is rebuilt with the session (its students keep their seats) and its students get the new seating; other rooms keep their match. */
   const followMode = (): void => {
@@ -134,8 +138,11 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         if (!lead.kills) return left ? `Sin bajas todavía · Quedan ${mmss(r.match.roundT)}` : 'Sin bajas';
         return left ? `Va primero ${name} con ${kills} · Quedan ${mmss(r.match.roundT)}` : `Iba primero ${name} con ${kills}`;
       };
+      /** A finished match in one line: the mode's summary (Bomba: the final score), and why it ended. */
+      const lastOf = (r: Room | null): string => !r ? ''
+        : `${r.match.opts.mode === 'bomb' ? `Marcador final ${r.match.score[0]} – ${r.match.score[1]}` : summaryOf(r)}${r.reason ? ' · ' + r.reason : ''}`;
       const row = (r: Room, live: boolean): TeacherRoom => ({
-        mode: r.match.opts.mode, summary: summaryOf(r),
+        mode: r.match.opts.mode, summary: summaryOf(r), last: live ? lastOf(r.prev) : '',
         id: r.id, status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });
@@ -199,7 +206,9 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         case 'troom': {
           const room = deps.rooms.get(msg.room);
           if (!room) return err('sala', 'Esa sala no existe o ya terminó.');
-          const ok = msg.action === 'end' ? deps.rooms.end(room.id, 'terminada por el profesor')
+          const playing = room.status === 'running' || room.status === 'paused';
+          const ok = msg.action === 'end' ? playing && deps.rooms.end(room.id, 'terminada por el profesor')
+            : msg.action === 'remove' ? room.status === 'waiting' && deps.rooms.close(room.id, 'quitada por el profesor')
             : msg.action === 'start' ? start(room) : deps.rooms.transition(room.id, msg.action);
           if (!ok) return err('estado', `No se puede hacer eso: la sala está ${({ waiting: 'esperando', running: 'en marcha', paused: 'en pausa', ended: 'terminada', failed: 'con error' })[room.status]}.`);
           refresh(room);
@@ -207,7 +216,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         }
         case 'tall': {
           for (const room of deps.rooms.all()) {
-            if (msg.action === 'end') deps.rooms.end(room.id, 'terminada por el profesor');
+            if (msg.action === 'end') { if (room.status === 'running' || room.status === 'paused') deps.rooms.end(room.id, 'terminada por el profesor'); }
             else if (room.status === 'waiting' && start(room)) refresh(room);
           }
           return null;

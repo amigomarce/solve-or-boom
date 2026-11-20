@@ -30,7 +30,11 @@ import { LEVELS, type Level } from '../game/types';
 //     a room view still lists 8 seats but only seats 0..3 take students. Its snapshots carry the wave in `r` (0 before the first), `s` = [enemies left,
 //     players standing], `pt` > 0 while the pause between waves runs (its seconds left) and `rt` = minus the seconds since the wave started; its `round`
 //     event carries side 'waves' and its `matchEnd` event `podium` (squad 0 only), `waves` (the waves survived) and won: false. A teacher room's `summary` says the wave and who stands.
-export const PROTOCOL_VERSION = 16;
+// 17: teacher rooms stay (no protocol shape change for students; the version forces every page to reload): a teacher room's finished match
+//     sends the results and the room goes back to 'waiting' with the same students (a `room` message with state 'waiting'); its next start is
+//     a new `begin` (match + 1). The teacher's `troom` takes action 'remove' ("Quitar sala", a waiting room only), and a teacher room carries
+//     `last`, its last finished match in Spanish ('' before the first).
+export const PROTOCOL_VERSION = 17;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -428,8 +432,8 @@ export interface TAddRoomMessage { v: number; t: 'taddroom' }
 /** Teacher to server: move a student to a room and team; `seat` (0..7, inside that team) picks the seat, else the team's first free one. */
 export interface TMoveMessage { v: number; t: 'tmove'; student: number; room: string; team: 0 | 1; seat?: number }
 /** The things the teacher can do to a room. */
-export type RoomAction = 'start' | 'pause' | 'resume' | 'end';
-/** Teacher to server: start (waiting), pause (running), resume (paused) or end one room. */
+export type RoomAction = 'start' | 'pause' | 'resume' | 'end' | 'remove';
+/** Teacher to server: start (waiting), pause (running), resume (paused), end the match of (running or paused) or remove (waiting) one room. */
 export interface TRoomMessage { v: number; t: 'troom'; room: string; action: RoomAction }
 /** Teacher to server: start every waiting room, or end every room. */
 export interface TAllMessage { v: number; t: 'tall'; action: 'start' | 'end' }
@@ -465,6 +469,8 @@ export interface TeacherRoom {
   mode: GameModeId;
   /** Free for All only (story 023): who leads and the time left, in Spanish ('' in Bomba). */
   summary: string;
+  /** The room's last finished match, in Spanish (protocol 17), e.g. "Marcador final 8 – 5 · partida terminada"; '' before the first. */
+  last: string;
 }
 /** One student on the server. `connected` is false while their seat is held for a rejoin. `room` is '' when unseated. */
 export interface TeacherStudent { id: number; name: string; connected: boolean; room: string; seat: number; team: number }
@@ -541,7 +547,7 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
       if (raw.seat !== undefined && (!isInt(raw.seat) || raw.seat < 0 || raw.seat >= SEATS)) return bad;
       return { ok: true, msg: raw.seat === undefined ? { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team } : { v, t: 'tmove', student: raw.student, room: raw.room, team: raw.team, seat: raw.seat as number } };
     case 'troom':
-      if (!isStr(raw.room) || !ROOM_ID.test(raw.room) || !(raw.action === 'start' || raw.action === 'pause' || raw.action === 'resume' || raw.action === 'end')) return bad;
+      if (!isStr(raw.room) || !ROOM_ID.test(raw.room) || !(raw.action === 'start' || raw.action === 'pause' || raw.action === 'resume' || raw.action === 'end' || raw.action === 'remove')) return bad;
       return { ok: true, msg: { v, t: 'troom', room: raw.room, action: raw.action } };
     case 'tall':
       if (raw.action !== 'start' && raw.action !== 'end') return bad;

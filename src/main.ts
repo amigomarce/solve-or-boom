@@ -157,7 +157,8 @@ function joinClass(): void {
       if (gen !== aula.gen) return;
       aula.room = { roomId: m.roomId, state: m.state, seats: m.seats, mode: m.mode };
       if (net.mirror) setNames(net.mirror, m.seats);
-      if (m.state === 'ended' && (scene === 'play' || scene === 'pause' || (scene === 'controls' && ctl.from === 'pause'))) showClassResults();
+      // The match ended under the student: the room closed ('ended'), or a teacher room waits again for its next start ('waiting').
+      if ((m.state === 'ended' || m.state === 'waiting') && (scene === 'play' || scene === 'pause' || (scene === 'controls' && ctl.from === 'pause'))) showClassResults();
     },
     onBegin: b => {
       if (gen !== aula.gen) return;
@@ -166,7 +167,7 @@ function joinClass(): void {
       useMap(b.map, b.mode !== 'bomb'); // story 024: Duelo por equipos is drawn without zones too
       net.mirror = createMirror(b); Object.assign(net, { matchNo: b.match, dressed: false, cool: 0 });
       models.forEach((m, i) => { m.group.visible = i !== b.seat; });
-      if (!ended) {
+      if (!ended || scene === 'waiting') { // a teacher room started again while its student waited in it: straight to the match
         state = net.mirror.match;
         if (scene !== 'pause' && scene !== 'controls') scene = 'play';
       }
@@ -1351,7 +1352,8 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       const act = clicks.shift();
       if (CLASS_MODE) {
         const next = net.mirror && net.mirror.match !== state ? net.mirror : null; // a rematch already running
-        if (!next) { if (pressed('Enter') || act === 'menu') aula.conn?.leave(); return; }
+        // No next match yet: a room that stays (a teacher room) takes the student back to its waiting room; a closed one to the entry screen.
+        if (!next) { if (pressed('Enter') || act === 'menu') { if (aula.room && aula.room.state !== 'ended') scene = 'waiting'; else aula.conn?.leave(); } return; }
         netStep(idleInput());
         if (pressed('Enter') || act === 'menu' || next.match.phase !== 'buy') { state = next.match; scene = 'play'; }
         return;
@@ -2260,7 +2262,7 @@ function drawResults() {
   text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : isFfa(state) ? `Terminaste con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : waves ? `Tus bajas: ${state.human.kills}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
   if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else if (waves) drawWavesTable(260, 760); else if (duel) drawDuelTable(260, 760, true); else drawSoloTable();
-  const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : 'Volver a la pantalla de entrada') + enter;
+  const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : aula.room && aula.room.state !== 'ended' ? 'Volver a la sala' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
 }
 /** Single player's results table: every player's kills, deaths and right and wrong answers. */

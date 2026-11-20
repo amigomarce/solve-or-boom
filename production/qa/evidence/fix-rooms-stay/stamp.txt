@@ -1,0 +1,6 @@
+Reviewed-Content-Hash: src/server/rooms.ts 0891165f2ac3006552f7e887245e28d43e7c9cc6
+Reviewed-Content-Hash: src/server/room.ts 9cca7385a245b99ae1e0a0e77542fdd9aaf72779
+Reviewed-Content-Hash: src/server/teacher.ts e3e510f81322ed9094c10573d726c8ce03b00cb9
+Reviewed-Content-Hash: src/server/profesor.html ea2a2e7415e4d9b27a291b97155818d92e19ca31
+Reviewed-Content-Hash: src/net/protocol.ts 726058fa5c05a72b43ff8ded89661fce775e3dfe
+Reviewed-Content-Hash: src/main.ts 1baaa24fcc5f946e9c3a4f8daf4f1c7137bc304d

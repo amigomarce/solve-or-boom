@@ -149,7 +149,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 16;
+const V = 17;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -266,10 +266,10 @@ function roomCard(r) {
   const played = r.status !== 'waiting';
   return `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span>`
     + `<span class="hint">Mapa ${esc(mapName(r.map))}</span></div>`
-    + `<div class="meta">${ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + `<div class="meta">${!played && r.last ? `Partidas jugadas: <strong>${r.matches}</strong> · Última: ${esc(r.last)}` : ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
-    + b('end', 'Terminar', true) + '</div></div>';
+    + b('end', 'Terminar', played) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';
 }
 
 /** The percent right as text ("—" with no answers). */
@@ -362,7 +362,8 @@ $('students').addEventListener('change', e => {
 });
 $('rooms').addEventListener('click', e => {
   const b = e.target.closest('button[data-act]'); if (!b || b.disabled) return;
-  if (b.dataset.act === 'end' && !confirm(`¿Terminar la ${roomName(b.dataset.room)}? Sus alumnos verán los resultados.`)) return;
+  if (b.dataset.act === 'end' && !confirm(`¿Terminar la partida de la ${roomName(b.dataset.room)}? Sus alumnos verán los resultados y la sala quedará esperando con los mismos alumnos.`)) return;
+  if (b.dataset.act === 'remove' && !confirm(`¿Quitar la ${roomName(b.dataset.room)}? Sus alumnos volverán a la pantalla de entrada.`)) return;
   send('troom', { room: b.dataset.room, action: b.dataset.act });
 });
 $('all-start').onclick = () => send('tall', { action: 'start' });

@@ -23,8 +23,14 @@ export interface Rooms {
   remove(id: string): boolean;
   /** Every live room (waiting, running or paused). */
   all(): Room[];
-  /** Ends a room now, with a reason; it is removed at once. False when there is no such room. */
+  /**
+   * Ends a room's match now, with a reason. A teacher room (managed) is kept: its students get their results, a copy of it goes
+   * to `finished`, and it waits again with the same students for the teacher's next start. Any other room is removed at once.
+   * False when there is no such room.
+   */
   end(id: string, reason?: string): boolean;
+  /** Removes a room for good (the teacher's "Quitar sala"): its students go back to the entry screen. False when there is no such room. */
+  close(id: string, reason?: string): boolean;
   /** The room with this id, if it is running. */
   get(id: string): Room | undefined;
   /** Every running room, as clients see it. */
@@ -39,6 +45,8 @@ export interface Rooms {
   onStepped: ((room: Room) => void) | null;
   /** Called when a room ends or fails, with its seats still held (net.ts sends the students their results from here); null for none. */
   onRetired: ((room: Room) => void) | null;
+  /** Called when a teacher room's match ended and the room waits again (the teacher pushes its new state to its students); null for none. */
+  onReopened: ((room: Room) => void) | null;
 }
 
 /** The match choices a room gets unless told otherwise. */
@@ -59,10 +67,27 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
     if (finished.length > 50) finished.shift();
     deps.log(`Sala ${room.id} ${room.status === 'failed' ? 'falló' : 'terminada'}: ${room.reason}; ${room.matches} partidas, ${room.stats.steps} pasos`);
   };
+  /**
+   * A teacher room's match ended (won, or ended by the teacher): its students get their results while the seats are still
+   * theirs, a copy of the room as it ended goes to `finished`, and the room waits again with the same seats for the next start.
+   */
+  const reopen = (room: Room): void => {
+    rooms.onRetired?.(room);
+    if (!room.match.over) room.matches++; // a match the teacher ended counts as played too
+    const copy: Room = { ...room, seats: room.seats.map(s => ({ ...s })), prev: null };
+    finished.push(copy);
+    if (finished.length > 50) finished.shift();
+    deps.log(`Sala ${room.id}: partida terminada (${room.reason}); espera con los mismos alumnos`);
+    Object.assign(room, { status: 'waiting', reason: '', prev: copy, owed: 0, lastT: nowS(), report: null, last: null });
+    room.pending.length = 0;
+    room.matchNo++; // the next start is a new match to every student (a new begin)
+    rooms.onReopened?.(room);
+  };
   const rooms: Rooms = {
     finished,
     onStepped: null,
     onRetired: null,
+    onReopened: null,
     create(spec = {}) {
       const id = `sala-${++made}`;
       const full: RoomSpec = {
@@ -75,6 +100,13 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
       return room;
     },
     end(id, reason = 'cerrada') {
+      const room = live.get(id);
+      if (!room) return false;
+      room.status = 'ended'; room.reason = reason;
+      if (room.managed) reopen(room); else retire(room);
+      return true;
+    },
+    close(id, reason = 'quitada') {
       const room = live.get(id);
       if (!room) return false;
       room.status = 'ended'; room.reason = reason;
@@ -122,11 +154,12 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
           room.reason = `error en la simulación: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`;
           if (process.env.AULA_DEPURAR && err instanceof Error) deps.log(err.stack ?? '');
         }
-        if (room.status === 'ended' || room.status === 'failed') retire(room);
+        if (room.status === 'ended' && room.managed) reopen(room);
+        else if (room.status === 'ended' || room.status === 'failed') retire(room);
         else if (!room.managed && room.status === 'running' && room.emptySince >= 0 && t - room.emptySince >= lim.emptyGraceS) { room.status = 'ended'; room.reason = 'sala vacía'; retire(room); }
       }
     },
-    endAll(reason) { for (const id of [...live.keys()]) rooms.end(id, reason); },
+    endAll(reason) { for (const id of [...live.keys()]) rooms.close(id, reason); },
   };
   return rooms;
 }
