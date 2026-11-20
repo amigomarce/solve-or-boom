@@ -216,7 +216,8 @@ export function stepRoom(room: Room, clockMs: () => number): void {
  */
 export function takeSeat(room: Room, owner: number, name: string, index?: number): Seat | null {
   if (room.status !== 'running' && room.status !== 'waiting' && room.status !== 'paused') return null;
-  const free = room.seats.filter(s => s.kind !== 'human' && (index === undefined || s.index === index));
+  const coop = room.match.opts.mode === 'waves'; // story 025: students sit only in seats 0..3, the others are the enemy bots
+  const free = room.seats.filter(s => s.kind !== 'human' && (!coop || s.team === 0) && (index === undefined || s.index === index));
   const humans = (team: number): number => room.seats.filter(s => s.kind === 'human' && s.team === team).length;
   const first = humans(1) < humans(0) ? 1 : 0;
   const seat = free.find(s => s.team === first) ?? free[0];

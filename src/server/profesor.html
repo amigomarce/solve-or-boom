@@ -109,7 +109,7 @@
       <h3>Mapa</h3>
       <div id="maps" class="chips"></div>
       <h3>Partida</h3>
-      <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas. Duelo por equipos: dos equipos de 4, sin bomba; gana el equipo con más bajas. En los dos, al caer se responde para volver)</div>
+      <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas. Duelo por equipos: dos equipos de 4, sin bomba; gana el equipo con más bajas. Oleadas cooperativas: todos los alumnos juntos contra oleadas de bots; pierden cuando caen todos. En los tres, al caer se responde para volver)</div>
       <div id="mode" class="chips"></div>
       <div class="hint" style="margin:8px 0 4px">Tiempo de compra</div>
       <div class="hint" style="margin-bottom:4px">Tiempo de compra</div>
@@ -149,7 +149,7 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 15;
+const V = 16;
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -237,18 +237,18 @@ function render() {
   put('students', !st.students.length ? '<div class="empty">Todavía no hay alumnos. Los alumnos entran escribiendo su nombre en la página del juego.</div>'
     : '<ul class="students">' + st.students.map(x => {
       // Story 023: a Free for All room has no teams, so it is one option (the room); Bomba keeps one per team.
-      const opts = live.flatMap(r => r.mode === 'ffa' ? [`<option value="${esc(r.id)}|0"${x.room === r.id ? ' selected' : ''}>${esc(roomName(r.id))}</option>`]
+      const opts = live.flatMap(r => r.mode === 'ffa' || r.mode === 'waves' ? [`<option value="${esc(r.id)}|0"${x.room === r.id ? ' selected' : ''}>${esc(roomName(r.id))}</option>`]
         : [0, 1].map(t => `<option value="${esc(r.id)}|${t}"${x.room === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(r.id))} · Equipo ${t + 1}</option>`));
       const here = live.some(r => r.id === x.room);
       return `<li><span class="name" title="${esc(x.name)}">${esc(x.name)}${x.connected ? '' : ' <span class="gone">(sin conexión)</span>'}</span>`
-        + `<select data-student="${x.id}" aria-label="Sala${live.some(r => r.id === x.room && r.mode === 'ffa') ? '' : ' y equipo'} de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
+        + `<select data-student="${x.id}" aria-label="Sala${live.some(r => r.id === x.room && (r.mode === 'ffa' || r.mode === 'waves')) ? '' : ' y equipo'} de ${esc(x.name)}">${here ? '' : '<option value="" selected>Sin sala</option>'}${opts.join('')}</select></li>`;
     }).join('') + '</ul>');
 
   put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : live.map(roomCard).join(''));
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
     `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span></div>`
-    + `<div class="meta">${r.mode === 'ffa' || r.mode === 'duel' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
+    + `<div class="meta">${r.mode === 'ffa' || r.mode === 'duel' || r.mode === 'waves' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
@@ -256,7 +256,7 @@ function render() {
 }
 
 function roomCard(r) {
-  const ffa = r.mode === 'ffa'; // story 023: one group of players, no team headings or team score
+  const ffa = r.mode === 'ffa' || r.mode === 'waves'; // story 023 (025: Oleadas cooperativas too): one group of players, no team headings or team score
   const seatDiv = x => x.kind === 'human'
     ? `<div class="seat human"><span class="tag">Alumno</span><span class="who" title="${esc(x.name)}">${esc(x.name)}</span></div>`
     : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`;

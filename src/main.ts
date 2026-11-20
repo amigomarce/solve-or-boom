@@ -19,7 +19,7 @@ import {
 } from './game/map';
 import { lerp, angDiff, fmtTime } from './game/rules';
 import {
-  createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say, isFfa, isDuel, isRoam, type GameMode,
+  createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say, isFfa, isDuel, isWaves, isRoam, type GameMode,
   ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
@@ -91,7 +91,8 @@ function showClassResults(): void {
   const m = net.mirror?.match;
   if (m) {
     state = m;
-    if (!m.over && isFfa(m)) Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Terminaste con ${m.human.kills} bajas y ${m.human.deaths} muertes` }); // story 019: no podium yet
+    if (!m.over && isWaves(m)) Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Llegaste a la oleada ${m.round} con ${m.human.kills} bajas`, survived: Math.max(0, m.round - 1) }); // story 025
+    else if (!m.over && isFfa(m)) Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Terminaste con ${m.human.kills} bajas y ${m.human.deaths} muertes` }); // story 019: no podium yet
     else if (!m.over) {
       const mine = m.human.squad;
       Object.assign(m, { over: true, gained: 'El profesor terminó la partida', answered: `Marcador final: tu equipo ${m.score[mine]} - ${m.score[1 - mine]} rivales` });
@@ -1228,7 +1229,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act && act.startsWith('buyt:')) { const b = CONFIG.buy_time; session.buyTime = Math.min(b.max, Math.max(b.min, session.buyTime + Number(act.slice(5)) * b.step)); }
       if (act === 'ff') session.friendlyFire = !session.friendlyFire;
       if (act === 'streak') session.streakRewards = !session.streakRewards; // story 018
-      if (act === 'mode') { session.mode = session.mode === 'bomb' ? 'ffa' : session.mode === 'ffa' ? 'duel' : 'bomb'; useMap(session.map, session.mode !== 'bomb'); } // story 024: Bomba, Free for All, Duelo por equipos in turn; // story 019; 021: the map behind shows the mode
+      if (act === 'mode') { session.mode = session.mode === 'bomb' ? 'ffa' : session.mode === 'ffa' ? 'duel' : session.mode === 'duel' ? 'waves' : 'bomb'; useMap(session.map, session.mode !== 'bomb'); } // story 024: Bomba, Free for All, Duelo por equipos in turn; // story 019; 021: the map behind shows the mode
       if (act && act.startsWith('bot:')) session.botLevel = act.slice(4) as BotLevel;
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
@@ -1686,6 +1687,18 @@ function drawHUD(paused?: boolean): void {
     text(`${place}º`, W / 2 + 110, 40, 30, place === 1 ? '#ffd06a' : '#fff'); text(`de ${state.players.length}`, W / 2 + 110, 64, 13, '#c8d2e6', 'center', 'normal');
     text(fmtTime(state.roundT), W / 2, 36, 28, state.roundT < 30 ? '#ff9a7a' : '#ffffff');
     text('FREE FOR ALL', W / 2, 62, 14, SIDE_CSS.ffa);
+  } else if (isWaves(state)) { // story 025: the wave, the enemies left and the players standing; the pause's clock
+    const pause = state.phaseT > 0, left = state.score[0], up = state.score[1];
+    rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
+    text(pause ? `Oleada ${state.round + 1} en ${fmtTime(state.phaseT)}` : `Oleada ${state.round}`, W / 2, 34, 26, pause ? '#ffe28a' : '#fff');
+    text(pause ? (state.round > 0 ? `Oleada ${state.round} superada: compra y prepárate` : 'Compra y prepárate') : 'OLEADAS COOPERATIVAS', W / 2, 62, 13, '#c8d2e6');
+    text(`${left}`, W / 2 - 170, 40, 34, pause ? '#8a93a3' : '#ff9a8a'); text('enemigos', W / 2 - 170, 64, 12, '#c8d2e6', 'center', 'normal');
+    text(`${up}`, W / 2 + 170, 40, 34, '#9ff08a'); text('en pie', W / 2 + 170, 64, 12, '#c8d2e6', 'center', 'normal');
+    if (!pause && -state.roundT < tune.waves_notice_time && state.round > 0) { // the wave's notice, fading out
+      ctx.globalAlpha = Math.min(1, (tune.waves_notice_time + state.roundT) / 0.8);
+      text(`OLEADA ${state.round}`, W / 2, 230, 64, '#ffd06a'); text(`${left} enemigos`, W / 2, 282, 22, '#fff');
+      ctx.globalAlpha = 1;
+    }
   } else if (isDuel(state)) { // story 024: the teams' kills, yours on the left, and the clock
     rr(W / 2 - 230, 12, 460, 64, 12, 'rgba(15,20,32,0.78)', null);
     text(`${state.score[p.squad]}`, W / 2 - 90, 44, 38, SIDE_CSS[mySide]);
@@ -1768,7 +1781,8 @@ function drawHUD(paused?: boolean): void {
     const sp = state.specP;
     rr(W / 2 - 280, H - 92, 560, 64, 12, 'rgba(15,20,32,0.78)', null);
     text('Has caído', W / 2, H - 74, 20, '#ff8a7a');
-    if (isRoam(state)) text('Responde bien la pregunta para volver a la partida', W / 2, H - 46, 16, '#fff'); // story 019, 024
+    if (isWaves(state)) text(state.phaseT > 0 ? 'Respondiste bien: vuelves cuando empiece la oleada' : 'Espera a que acabe la oleada: responderás una pregunta para volver', W / 2, H - 46, 16, '#fff'); // story 025
+    else if (isRoam(state)) text('Responde bien la pregunta para volver a la partida', W / 2, H - 46, 16, '#fff'); // story 019, 024
     else text(sp ? `Viendo a ${sp.human ? sp.name : `${sp.name} (${ROLE_NAME[sp.role]})`}. ${TOUCH ? 'Toca la pantalla para ver al siguiente' : 'Clic o Espacio para el siguiente'}` : 'Espera a la siguiente ronda', W / 2, H - 46, 16, '#fff');
   }
   // the one hint that matters now
@@ -1867,13 +1881,15 @@ function drawScores(): void {
   text('MARCADOR', x + 28, y + 36, 28, '#ffd06a', 'left');
   const ffa = isFfa(state); // story 019: one list, best first, numbered
   if (ffa) text(`Free for All  |  ${fmtTime(state.roundT)}`, x + w - 28, y + 36, 18, SIDE_CSS.ffa, 'right');
+  const waves = isWaves(state); // story 025: players only (the team), no team headings; the wave and the enemies left
+  if (waves) text(`Oleada ${state.round}  |  ${state.score[0]} enemigos  |  ${state.score[1]} en pie`, x + w - 28, y + 36, 18, '#fff', 'right');
   const duel = isDuel(state); // story 024: the teams' kills and the clock; each row says its team
   if (duel) text(`Equipo 1  ${state.score[0]} – ${state.score[1]}  Equipo 2  |  ${fmtTime(state.roundT)}`, x + w - 28, y + 36, 18, '#fff', 'right');
   text('Bajas', x + w - 170, y + 74, 17, '#c8d2e6'); text('Muertes', x + w - 70, y + 74, 17, '#c8d2e6');
-  scoreRows.length = 0; for (const q of state.players) scoreRows.push(q);
-  const rows = scoreRows.sort((a, b) => (ffa ? 0 : (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1)) || b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
+  scoreRows.length = 0; for (const q of state.players) if (!waves || q.squad === me.squad) scoreRows.push(q); // story 025: the enemy seats are not players
+  const rows = scoreRows.sort((a, b) => (ffa || waves ? 0 : (a.squad === me.squad ? 0 : 1) - (b.squad === me.squad ? 0 : 1)) || b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
   rows.forEach((q, i) => {
-    const ry = y + 96 + i * 40 + (ffa || q.squad === me.squad ? 0 : 12);
+    const ry = y + 96 + i * 40 + (ffa || waves || q.squad === me.squad ? 0 : 12);
     if (ffa) text(`${i + 1}`, x + 20, ry + 17, 16, i === 0 ? '#ffd06a' : '#aab4c8', 'center');
     if (q === me) rr(x + 16, ry - 2, w - 32, 36, 8, 'rgba(255,208,106,0.16)', null);
     rr(x + 28, ry + 8, 18, 18, 4, SIDE_CSS[sideOf(state, q)], null);
@@ -2071,15 +2087,16 @@ function drawWaiting() {
   // who and where
   rr(40, 146, 1200, 84, 16, 'rgba(14,19,30,0.92)', null);
   const roomNo = room.roomId.replace(/^sala-/, '');
-  const ffa = room.mode === 'ffa'; // story 023: Free for All shows the mode instead of a team, and one list of players
-  const third: [string, string, number] = ffa ? ['Modo', 'Free for All', 900] : ['Tu equipo', `Equipo ${you.team + 1}`, 900];
+  const waves = room.mode === 'waves'; // story 025: one panel of players (seats 0..3), the enemy seats are not shown
+  const ffa = room.mode === 'ffa' || waves; // story 023: Free for All shows the mode instead of a team, and one list of players
+  const third: [string, string, number] = ffa ? ['Modo', waves ? 'Oleadas cooperativas' : 'Free for All', 900] : ['Tu equipo', `Equipo ${you.team + 1}`, 900];
   ([['Tu nombre', you.name, 80], ['Sala', `Sala ${roomNo}`, 560], third] as [string, string, number][]).forEach(([k, v, x]) => {
     text(k, x, 172, 15, '#aab4c8', 'left', 'normal');
     text(clip(v, 420, 26), x, 204, 26, x === 80 ? '#ffd06a' : '#fff', 'left');
   });
   // Bomba: the two teams, 4 seats each. Free for All: one panel "Jugadores", the 8 seats in index order in two columns of 4.
   if (ffa) { rr(40, 246, 1200, 314, 16, 'rgba(14,19,30,0.92)', null); text('Jugadores', 64, 276, 24, '#ffd06a', 'left'); }
-  for (let t = 0; t < 2; t++) {
+  for (let t = 0; t < (waves ? 1 : 2); t++) {
     const px = 40 + t * (ffa ? 600 : 610);
     if (!ffa) {
       rr(px, 246, 590, 314, 16, 'rgba(14,19,30,0.92)', null);
@@ -2106,7 +2123,8 @@ function drawWaiting() {
   if (aula.retry) {
     rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
     text(aula.retry, W / 2, 598, 20, '#ffe28a');
-  } else text(ffa ? 'Todos contra todos, sin equipos: gana quien tenga más bajas. Los sitios libres los juegan bots.'
+  } else text(waves ? 'Oleadas cooperativas: todos juntos contra oleadas de bots; pierden cuando caen todos. Los sitios libres los juegan bots.'
+    : ffa ? 'Todos contra todos, sin equipos: gana quien tenga más bajas. Los sitios libres los juegan bots.'
     : room.mode === 'duel' ? 'Duelo por equipos: gana el equipo con más bajas; si caes, responde para volver. Los sitios libres los juegan bots.' // story 024
     : 'Equipo 1 y Equipo 2 cambian de lado en el descanso. Los sitios libres los juegan bots.', W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
   button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
@@ -2214,7 +2232,7 @@ function drawTitle() {
   const alt = session.mode !== 'bomb';
   button(820, 612, 196, 60, '', 'mode', lit(alt));
   text('Modo de juego', 918, 630, 14, alt ? '#1b2232' : '#c8d2e6', 'center', 'normal');
-  text(session.mode === 'ffa' ? 'Free for All' : session.mode === 'duel' ? 'Duelo por equipos' : 'Bomba', 918, 654, session.mode === 'duel' ? 18 : 22, alt ? '#1b2232' : '#fff');
+  text(session.mode === 'ffa' ? 'Free for All' : session.mode === 'duel' ? 'Duelo por equipos' : session.mode === 'waves' ? 'Oleadas cooperativas' : 'Bomba', 918, 654, session.mode === 'duel' || session.mode === 'waves' ? 18 : 22, alt ? '#1b2232' : '#fff');
   button(1026, 612, 214, 60, '', 'start', { fill: '#e07a1c', stroke: '#7a3a08' });
   text('Empezar partida', 1133, TOUCH ? 642 : 634, 24, '#fff');
   if (!TOUCH) text('Enter', 1133, 659, 14, '#ffe2c4', 'center', 'normal');
@@ -2225,6 +2243,7 @@ function drawTitle() {
   while (ctx.measureText(line).width > W - 40 && ls > 14) { ls--; ctx.font = `normal ${ls}px ${FONT}`; }
   text(clip(line, W - 40, ls, 'normal'), W / 2, 694, ls, '#e4e9f4', 'center', 'normal');
   text(session.mode === 'ffa' ? `Free for All: tú contra 7 bots, todos contra todos y sin bomba. Gana quien tenga más bajas en ${Math.round(tune.ffa_duration / 6) / 10} min; si caes, responde para volver.`
+    : session.mode === 'waves' ? `Oleadas cooperativas: tú y 3 compañeros bot contra oleadas de bots enemigos, cada una mayor y más dura; sin bomba. Si caes, responde para volver en la siguiente; pierden si caéis todos.`
     : session.mode === 'duel' ? `Duelo por equipos: tú y 3 compañeros bot contra 4 bots rivales, sin bomba. Gana el equipo con más bajas en ${Math.round(tune.duel_duration / 6) / 10} min; si caes, responde para volver.`
     : `Tú y 3 compañeros bot contra 4 bots rivales. Gana quien llegue a ${tune.rounds_to_win} rondas; en el descanso se cambia de lado.`, W / 2, 713, 14, '#aab4c8', 'center', 'normal');
 }
@@ -2234,12 +2253,13 @@ function drawResults() {
   ctx.fillStyle = 'rgba(12,16,28,0.75)'; ctx.fillRect(0, 0, W, H);
   const mine = state.human.squad, ffa = isFfa(state) && Array.isArray(state.podium);
   const duel = isDuel(state), tie = duel && state.score[0] === state.score[1]; // story 024: a tie is neither won nor lost
-  const won = ffa ? state.podium[0].id === state.human.id : state.score[mine] > state.score[1 - mine];
+  const waves = isWaves(state); // story 025: the team fell: the waves survived are the headline
+  const won = waves ? false : ffa ? state.podium[0].id === state.human.id : state.score[mine] > state.score[1 - mine];
   text(state.gained, W / 2, 80, 48, tie ? '#ffd06a' : won ? '#9ff08a' : '#ff9a8a');
   const place = ffa ? 1 + state.podium.findIndex((r: { id: number }) => r.id === state.human.id) : 0; // story 019
-  text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : isFfa(state) ? `Terminaste con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
+  text(state.answered || (ffa ? `Terminaste en el puesto ${place}º con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : isFfa(state) ? `Terminaste con ${state.human.kills} ${state.human.kills === 1 ? 'baja' : 'bajas'}` : waves ? `Tus bajas: ${state.human.kills}` : CLASS_MODE ? `Marcador final: tu equipo ${state.score[mine]} - ${state.score[1 - mine]} rivales` : ''), W / 2, 132, 22, '#fff');
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
-  if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else if (duel) drawDuelTable(260, 760, true); else drawSoloTable();
+  if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else if (waves) drawWavesTable(260, 760); else if (duel) drawDuelTable(260, 760, true); else drawSoloTable();
   const enter = TOUCH ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
 }
@@ -2255,6 +2275,25 @@ function drawSoloTable() {
     if (you) rr(276, y - 16, 728, 32, 8, 'rgba(255,208,106,0.18)', null);
     const vals = [`${p.name}${p.human ? '' : ' (' + ROLE_NAME[p.role] + ')'}`, squadName(p.squad === mine ? 0 : 1), p.kills, p.deaths, p.right, p.wrong];
     vals.forEach((v, k) => text(String(v), cols[k][1], y, 18, k === 4 ? '#9ff08a' : k === 5 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
+  });
+}
+/**
+ * Oleadas cooperativas' end (story 025): the waves the team survived and each player (the team only), best first: kills, deaths and, for
+ * people, their right and wrong answers (from the server's podium; a teammate bot shows a dash). `x`, `w`: the panel's place.
+ */
+function drawWavesTable(x: number, w: number): void {
+  const rows: { id: number; kills: number; deaths: number; right: number; wrong: number }[] = Array.isArray(state.podium) ? state.podium
+    : state.players.filter(p => p.squad === state.human.squad).map(p => ({ id: p.id, kills: p.kills, deaths: p.deaths, right: p.human ? p.right : -1, wrong: p.human ? p.wrong : -1 }));
+  const n = state.survived ?? Math.max(0, state.round - 1);
+  rr(x, 196, w, 380, 14, 'rgba(14,19,30,0.92)', null);
+  text(`Oleadas superadas: ${n}`, x + w / 2, 228, 28, '#ffd06a'); text(`Cayeron en la oleada ${state.round}`, x + w / 2, 258, 16, '#c8d2e6', 'center', 'normal');
+  const cols: [string, number, CanvasTextAlign][] = [['Jugador', x + 28, 'left'], ['Bajas', x + w - 250, 'center'], ['Muertes', x + w - 175, 'center'], ['Bien', x + w - 100, 'center'], ['Mal', x + w - 40, 'center']];
+  cols.forEach(([nm, cx, al]) => text(nm, cx, 292, 16, '#ffd06a', al));
+  rows.forEach((r, i) => {
+    const y = 326 + i * 40, p = state.players[r.id], you = p === state.human;
+    if (you) rr(x + 14, y - 16, w - 28, 34, 8, 'rgba(255,208,106,0.18)', null);
+    const vals = [clip(p.human ? p.name : `${p.name} (${ROLE_NAME[p.role]})`, cols[1][1] - cols[0][1] - 50, 17, you ? 'bold' : 'normal'), r.kills, r.deaths, r.right >= 0 ? r.right : '—', r.wrong >= 0 ? r.wrong : '—'];
+    vals.forEach((v, k) => text(String(v), cols[k][1], y, 17, k === 3 ? '#9ff08a' : k === 4 ? '#ff9a8a' : '#fff', cols[k][2], k === 0 && you ? 'bold' : 'normal'));
   });
 }
 /**
@@ -2335,6 +2374,7 @@ function drawClassResults() {
     });
     if (shown < r.topics.length) text(`y ${r.topics.length - shown} temas más`, 84, 352 + shown * 26, 16, '#aab4c8', 'left', 'normal');
   }
+  if (isWaves(state)) { drawWavesTable(660, 560); return; } // story 025
   if (isFfa(state) && Array.isArray(state.podium)) { drawPodium(660, 560); return; }
   if (isDuel(state)) { drawDuelTable(660, 560, false); return; } // story 024: the teams' kills and the winner, also when the teacher ended it
   if (isFfa(state)) { // story 019: the teacher ended it before the clock, so there is no podium from the server: the standing by kills, then fewer deaths

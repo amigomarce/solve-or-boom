@@ -8,7 +8,7 @@ import type { Loose } from './types';
 import { botShoot, finishReload, siteAlert, makeNoise } from './combat';
 import { defuseBomb, plantBomb } from './bomb';
 import { anchorTo, routeTo } from './plans';
-import { isDuel, isRoam, level, sideOf, type Match } from './state';
+import { isDuel, isRoam, isWaves, level, sideOf, type Match } from './state';
 import { randomSpot } from './ffa';
 
 export function botSpeed(b: Loose): number { return tune['bot_speed_' + b.role] * (b.cur === 'sniper' ? tune.sniper_speed_mult : 1); }
@@ -159,7 +159,7 @@ const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export function botUpdate(match: Match, b: Loose, dt: number): void {
   b.cool = Math.max(0, b.cool - dt); b.alertT = Math.max(0, b.alertT - dt); b.flashT = Math.max(0, b.flashT - dt);
   if (b.reloadT > 0) { b.reloadT -= dt; if (b.reloadT <= 0) finishReload(b); }
-  const side = isDuel(match) ? 'duel' : sideOf(match, b), live = match.phase === 'live', bomb = match.bomb;
+  const side = isDuel(match) || isWaves(match) ? 'duel' : sideOf(match, b), live = match.phase === 'live', bomb = match.bomb;
   b.moving = false;
   // Look for enemies a few times a second.
   b.scanT -= dt;
@@ -172,7 +172,7 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       if (d < bestD) { best = e; bestD = d; }
     }
     if (best) {
-      if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level(match)) * tune[`bot_${match.opts.botLevel}_react_mult`] * (0.8 + match.rng() * 0.4); }
+      if (best !== b.target) { b.reactT = lerp(tune.bot_react_start, tune.bot_react_end, level(match, b)) * tune[`bot_${match.opts.botLevel}_react_mult`] * (0.8 + match.rng() * 0.4); }
       b.target = best; b.lastX = best.x; b.lastZ = best.z; b.lastY = best.st.y; b.lastSeenT = match.t;
       best.spotT = match.t;
       siteAlert(match, b, best.x, best.z);

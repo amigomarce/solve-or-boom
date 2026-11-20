@@ -4,7 +4,7 @@ import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } f
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeDesk, feed, isDuel, isFfa, isRoam, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
+import { closeDesk, feed, isDuel, isFfa, isRoam, isWaves, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive || t.hidden) return; // story 021: a Free for All player buying at the start or a respawn cannot be hurt
@@ -29,7 +29,7 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const team = friendly(from, t);
   match.count?.kill(from && from !== t && !team ? from : null, t);
   if (from && from !== t && !team) {
-    from.kills++; from.money = Math.min(tune.max_money, from.money + (isFfa(match) ? tune.ffa_kill_money : isDuel(match) ? tune.duel_kill_money : tune.kill_money)); // story 019: Free for All pays its own amount, with no first-kill bonus; 024: so does Duelo por equipos
+    from.kills++; from.money = Math.min(tune.max_money, from.money + (isFfa(match) ? tune.ffa_kill_money : isDuel(match) ? tune.duel_kill_money : isWaves(match) ? tune.waves_kill_money : tune.kill_money)); // story 019: Free for All pays its own amount, with no first-kill bonus; 024: so does Duelo por equipos
     if (isDuel(match)) match.score[from.squad]++; // story 024: the team's kills are the match score
     if (!match.firstKill && !isRoam(match)) { // the round's first kill pays a bonus (story 016)
       match.firstKill = true; from.money = Math.min(tune.max_money, from.money + tune.first_kill_bonus);
@@ -149,7 +149,7 @@ export function makeNoise(match: Match, x: number, z: number, r: number, squad: 
 /** A defender bot that saw or heard an enemy at (x, z) within bot_site_alert metres of a site calls that site:
  *  the squad's other defenders (not the sniper) rotate there together. */
 export function siteAlert(match: Match, b: Loose, x: number, z: number): void {
-  if (isDuel(match) || sideOf(match, b) !== 'def') return; // no sites in Duelo por equipos
+  if (isDuel(match) || isWaves(match) || sideOf(match, b) !== 'def') return; // no sites in Duelo por equipos
   const toA = Math.hypot(x - center(SITE.A.cx), z - center(SITE.A.cy)), toB = Math.hypot(x - center(SITE.B.cx), z - center(SITE.B.cy));
   if (Math.min(toA, toB) < tune.bot_site_alert) match.alert = { squad: b.squad, site: toA < toB ? 'A' : 'B', t: match.t };
 }
@@ -164,7 +164,7 @@ export function botShoot(match: Match, b: Loose, t: Loose): void {
   const d = Math.hypot(t.x - b.x, t.z - b.z);
   const stanceHit = !t.human ? 1 : t.st.stance === 'prone' ? tune.prone_hit_mult : t.st.stance === 'crouch' ? tune.crouch_hit_mult : 1;
   const am = tune[`bot_${match.opts.botLevel}_acc_mult`]; // the bot level (story 017); Normal is 1
-  const chance = hitChance(level(match), tune.bot_acc_start * am, tune.bot_acc_end * am, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
+  const chance = hitChance(level(match, b), tune.bot_acc_start * am, tune.bot_acc_end * am, WEAPON[w].botAcc, d, WEAPON[w].range, t.moving) * stanceHit;
   const hitIt = match.rng() < chance;
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   const gx = b.x + fx * 0.8 + fz * 0.14, gz = b.z + fz * 0.8 - fx * 0.14;

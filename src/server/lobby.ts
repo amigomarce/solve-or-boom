@@ -155,9 +155,10 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       const st = [...byKey.values()].find(x => x.id === id), to = deps.rooms.get(roomId);
       if (!st) return 'Ese alumno ya no está conectado.';
       if (!to) return 'Esa sala no existe o ya terminó.';
-      const ffa = to.match.opts.mode === 'ffa'; // story 023: Free for All has no teams, so the team asked is ignored and any free seat does
+      const coop = to.match.opts.mode === 'waves'; // story 025: Oleadas cooperativas: the team is ignored, only seats 0..3
+      const ffa = to.match.opts.mode === 'ffa' || coop; // story 023: Free for All has no teams, so the team asked is ignored and any free seat does
       if (!ffa && seat !== undefined && Math.floor(seat / SEATS_PER_TEAM) !== team) return 'Ese asiento no es del equipo elegido.';
-      const free = to.seats.filter(s => s.kind !== 'human' && (ffa || s.team === team) && (seat === undefined || s.index === seat));
+      const free = to.seats.filter(s => s.kind !== 'human' && ((ffa && (!coop || s.team === 0)) || s.team === team) && (seat === undefined || s.index === seat));
       if (!free.length) return seat === undefined ? (ffa ? 'Esa sala no tiene sitio libre.' : 'Ese equipo no tiene sitio libre.') : 'Ese asiento está ocupado.';
       const from = st.room, owner = from.seats[st.seat].owner!;
       leaveSeat(from, owner, nowS());

@@ -15,6 +15,7 @@
 //  - Changing the game mode rebuilds the waiting rooms at once (their students stay seated; nothing was played) and pushes
 //    each room's seating, so the students' waiting rooms follow on their next message; running and paused rooms are not touched.
 //  - Duelo por equipos (story 024) keeps Bomba's teams and seat spread (alternating); its rooms show a `summary` with the teams' kills and the time left.
+//  - Oleadas cooperativas (story 025): a room holds up to 4 students (seats 0..3, the enemy bots take the other four); "Repartir" makes ceil(students / 4) rooms; the teacher page shows the wave and who stands.
 //  - Free for All rooms show a `summary` instead of the team score: who leads and the time left (a finished room: who won or led).
 import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
@@ -75,14 +76,15 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
     if (deps.rooms.all().some(r => r.status === 'running' || r.status === 'paused')) return err('salas_en_marcha', 'Hay salas en marcha o en pausa: termínalas antes de repartir.');
     const students = deps.lobby.list().filter(s => s.connected);
     if (!students.length) return err('sin_alumnos', 'No hay alumnos conectados.');
-    const count = Math.ceil(students.length / SEATS), old = deps.rooms.all().filter(r => r.managed && r.status === 'waiting');
+    const coop = session.mode === 'waves', cap = coop ? SEATS_PER_TEAM : SEATS; // story 025: only seats 0..3 take students
+    const count = Math.ceil(students.length / cap), old = deps.rooms.all().filter(r => r.managed && r.status === 'waiting');
     if (deps.rooms.all().length - old.length + count > lim.maxRooms) return err('demasiadas_salas', `Harían falta ${count} salas y el máximo es ${lim.maxRooms}.`);
     const fresh = Array.from({ length: count }, () => make()!);
     let next = 0;
     fresh.forEach((room, k) => {
       const size = Math.floor(students.length / count) + (k < students.length % count ? 1 : 0);
       for (let j = 0; j < size; j++) {
-        const ffa = session.mode === 'ffa', team = ffa ? 0 : j % 2, seat = ffa ? j : team * SEATS_PER_TEAM + Math.floor(j / 2);
+        const ffa = session.mode === 'ffa' || coop, team = ffa ? 0 : j % 2, seat = ffa ? j : team * SEATS_PER_TEAM + Math.floor(j / 2);
         deps.lobby.move(students[next++].id, room.id, ffa ? Math.floor(seat / SEATS_PER_TEAM) : team, seat);
       }
     });
@@ -97,11 +99,12 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
-      modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }, { id: 'duel', name: 'Duelo por equipos' }],
+      modes: [{ id: 'bomb', name: 'Bomba' }, { id: 'ffa', name: 'Free for All' }, { id: 'duel', name: 'Duelo por equipos' }, { id: 'waves', name: 'Oleadas cooperativas' }],
     }),
     state() {
       const students = deps.lobby.list();
-      const seatsOf = (r: Room): TeacherRoom['seats'] => r.seats.map(s => ({
+      /** The seats the page shows; in Oleadas cooperativas (story 025) the enemy seats are left out. */
+      const seatsOf = (r: Room): TeacherRoom['seats'] => r.seats.filter(s => r.match.opts.mode !== 'waves' || s.team === 0).map(s => ({
         index: s.index, team: s.team, kind: s.kind === 'human' ? 'human' : 'bot',
         name: s.kind === 'human' ? s.name ?? '' : `Bot ${s.index + 1}`,
         student: s.kind === 'human' ? students.find(x => x.room === r.id && x.seat === s.index)?.id ?? null : null,
@@ -114,6 +117,13 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const [a, b] = r.match.score, tally = `Equipo 1 ${a} – ${b} Equipo 2`, left = r.status === 'running' || r.status === 'paused';
           if (r.match.over) return a === b ? `Empate · ${tally}` : `Ganó el Equipo ${a > b ? 1 : 2} · ${tally}`;
           return left ? `${tally} · Quedan ${mmss(r.match.roundT)}` : tally;
+        }
+        if (r.match.opts.mode === 'waves') { // story 025: the wave, who stands and the enemies left; when over, the waves survived
+          if (r.status === 'waiting') return 'Todavía no ha empezado';
+          const [left, up] = r.match.score, humans = r.seats.filter(s => s.kind === 'human').length;
+          if (r.match.over) return `Cayeron en la oleada ${r.match.round} · sobrevivieron ${r.match.survived ?? 0}`;
+          const wave = r.match.round > 0 ? `Oleada ${r.match.round}` : 'Antes de la oleada 1', pause = r.match.phaseT > 0 ? ' (pausa)' : ` · ${left} enemigos`;
+          return `${wave}${pause} · En pie ${up} de ${SEATS_PER_TEAM}${humans ? '' : ' (solo bots)'}`;
         }
         if (r.match.opts.mode !== 'ffa') return '';
         if (r.status === 'waiting') return 'Todavía no ha empezado';

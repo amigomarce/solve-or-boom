@@ -10,7 +10,8 @@ import { routeTo } from './plans';
 import { streakRight, streakWrong, useAbility, hunterTick, hunterSpeed } from './streak';
 import { respawn, openShop, syncHidden } from './ffa';
 import { duelRespawn } from './teamduel';
-import { closeCard, deskOf, feed, isDuel, isRoam, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
+import { markReady } from './waves';
+import { closeCard, deskOf, feed, isDuel, isRoam, isWaves, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
 
 /**
  * One human player's inputs for one step: actions, not keys. "Held" fields are true while the control is
@@ -116,7 +117,7 @@ export function updateCard(match: Match, p: Loose, dt: number, inp: PlayerInput)
     c.okT -= dt;
     if (c.okT <= 0) {
       if (c.kind === 'buy') { grant(match, p, c.item); d.card = null; }
-      else if (c.kind === 'respawn') { d.card = null; (isDuel(match) ? duelRespawn : respawn)(match, p); } // story 019: the right answer brings the player back
+      else if (c.kind === 'respawn') { d.card = null; if (isWaves(match)) markReady(match, p); else (isDuel(match) ? duelRespawn : respawn)(match, p); } // story 019: the right answer brings the player back
       else {
         c.got++;
         if (c.got >= tune.defuse_answers) { d.card = null; defuseBomb(match, p); }

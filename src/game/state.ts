@@ -47,11 +47,11 @@ export interface MatchOptions {
   botLevel?: BotLevel;
   /** Streak rewards (story 018): right answers in a row earn the Escudo, the Cazador and the Rifle dorado. Default true (absent = on). Read in src/game/streak.ts. */
   streakRewards?: boolean;
-  /** The game mode (story 019): 'bomb' (default, absent = bomb) 'ffa' (Free for All: everybody against everybody, no bomb, teams or rounds, one timed match) or 'duel' (story 024, Duelo por equipos: two teams of 4, no bomb or rounds, one timed match, the team with more kills wins). Read in src/game/ffa.ts, src/game/teamduel.ts and wherever a team or the bomb matters. */
+  /** The game mode (story 019): 'bomb' (default, absent = bomb) 'ffa' (Free for All: everybody against everybody, no bomb, teams or rounds, one timed match) 'waves' (story 025, Oleadas cooperativas: players and teammate bots against waves of enemy bots) or 'duel' (story 024, Duelo por equipos: two teams of 4, no bomb or rounds, one timed match, the team with more kills wins). Read in src/game/ffa.ts, src/game/teamduel.ts and wherever a team or the bomb matters. */
   mode?: GameMode;
 }
 /** The game modes of a match (story 019). */
-export type GameMode = 'bomb' | 'ffa' | 'duel';
+export type GameMode = 'bomb' | 'ffa' | 'duel' | 'waves';
 /** A bot level: multipliers on the bots' reaction and accuracy ramps, in data/config.json (bot_<level>_react_mult, bot_<level>_acc_mult). */
 export type BotLevel = 'facil' | 'normal' | 'dificil';
 
@@ -206,6 +206,7 @@ export function blankMatch(seed: number, humans: number[] = [0]): Match {
   Object.defineProperties(match, {
     pickups: { value: [], enumerable: false, writable: true }, nextPickupId: { value: 1, enumerable: false, writable: true },
     firstKill: { value: false, enumerable: false, writable: true },
+    waves: { value: null, enumerable: false, writable: true }, // story 025: Oleadas cooperativas' own state (src/game/waves.ts), null in the other modes
     menuT: { value: 0, enumerable: false, writable: true }, // story 019: the seconds the viewer's buy menu stays open after a respawn
   });
   match.players.forEach(resetGuns);
@@ -220,14 +221,19 @@ export function setMode(match: Match, mode: GameMode): void { Object.definePrope
 export const isFfa = (match: Match): boolean => match.opts.mode === 'ffa';
 /** True in Duelo por equipos (story 024): two squads of 4 (the roster's), a timed match with respawns, no bomb, sites, gates or halftime. */
 export const isDuel = (match: Match): boolean => match.opts.mode === 'duel';
-/** True in the modes that are one timed match with respawns and no bomb (Free for All and Duelo por equipos). */
-export const isRoam = (match: Match): boolean => match.opts.mode === 'ffa' || match.opts.mode === 'duel';
+/** True in the modes with respawns and no bomb (Free for All, Duelo por equipos and Oleadas cooperativas). */
+export const isRoam = (match: Match): boolean => match.opts.mode === 'ffa' || match.opts.mode === 'duel' || match.opts.mode === 'waves';
+/** True in Oleadas cooperativas (story 025): squad 0 (people and teammate bots, seats 0..3) against waves of enemy bots (squad 1, seats 4..7); no bomb, sites, bases or friendly fire. Counted among the roaming modes (isRoam). */
+export const isWaves = (match: Match): boolean => match.opts.mode === 'waves';
 /** A squad as the screens name it. */
 export const squadName = (s: number): string => (s === 0 ? 'Tu equipo' : 'Rivales');
 /** True while `d` has the buy menu or a question card open: a match (its viewer's) or a deskOf(). */
 export const uiOpen = (d: Loose): boolean => !!(d.menu || d.card);
 /** How far the bots' skill has ramped, 0 to 1. */
-export const level = (match: Match): number => (isFfa(match) ? tune.ffa_bot_skill : isDuel(match) ? tune.duel_bot_skill : levelFor(match.round, tune.ramp_rounds));
+export const level = (match: Match, b?: Loose): number => (isFfa(match) ? tune.ffa_bot_skill : isDuel(match) ? tune.duel_bot_skill
+  : isWaves(match) ? (b && b.squad === 0 ? tune.waves_mate_skill : waveSkill(match.round)) : levelFor(match.round, tune.ramp_rounds));
+/** The enemy bots' skill (0..1) in wave `n` (story 025): waves_skill_start plus waves_skill_step per wave after the first, at most waves_skill_max. */
+export const waveSkill = (n: number): number => Math.min(tune.waves_skill_max, tune.waves_skill_start + tune.waves_skill_step * Math.max(0, n - 1));
 /** Shows a HUD message for t seconds (match.msg, match.msgT). */
 export function say(match: Match, m: string, t = 3.5): void { match.msg = m; match.msgT = t; }
 /** Adds a line to the kill feed (the newest first, at most 5). `team` (story 024, Duelo por equipos only): the killer's squad, shown as Equipo 1/2; absent elsewhere, so other modes' lines are as before. */

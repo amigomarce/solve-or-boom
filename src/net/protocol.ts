@@ -26,7 +26,11 @@ import { LEVELS, type Level } from '../game/types';
 // 15: Duelo por equipos (story 024): the mode id 'duel' joins GAME_MODES (everywhere a mode travels: begin, tsession, tstate, room views); its
 //     `round` event carries side 'duel' and its `matchEnd` event carries `podium` (as Free for All's), `win` (0 or 1, the winning team; -1 a tie)
 //     and `score` (the teams' kills); its `kill` event carries `bt`, the killer's team (none for a self-kill). The snapshot's `s` is the teams' kills in that mode; a teacher room's `summary` says the teams' kills.
-export const PROTOCOL_VERSION = 15;
+// 16: Oleadas cooperativas (story 025): the mode id 'waves' joins GAME_MODES. Its seats 0..3 are the players (squad 0) and 4..7 the enemy bots, so
+//     a room view still lists 8 seats but only seats 0..3 take students. Its snapshots carry the wave in `r` (0 before the first), `s` = [enemies left,
+//     players standing], `pt` > 0 while the pause between waves runs (its seconds left) and `rt` = minus the seconds since the wave started; its `round`
+//     event carries side 'waves' and its `matchEnd` event `podium` (squad 0 only), `waves` (the waves survived) and won: false. A teacher room's `summary` says the wave and who stands.
+export const PROTOCOL_VERSION = 16;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -126,7 +130,7 @@ export interface BeginMessage {
   mode: GameModeId;
 }
 /** The game modes as the wire names them (protocol 12). */
-export const GAME_MODES = ['bomb', 'ffa', 'duel'] as const;
+export const GAME_MODES = ['bomb', 'ffa', 'duel', 'waves'] as const;
 export type GameModeId = typeof GAME_MODES[number];
 const isMode = (v: unknown): v is GameModeId => (GAME_MODES as readonly unknown[]).includes(v);
 /** The wire codes of the guns (index in this list), as snapshots carry them. */

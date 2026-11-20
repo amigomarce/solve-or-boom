@@ -11,7 +11,7 @@
 // player.ts); every snapshot says which input the server played last (`a`), and the client restarts from the
 // server's position and replays the inputs it sent after that. A small difference is blended out
 // (net_correct_blend per snapshot); one over net_snap_m metres is taken at once.
-import { blankMatch, feed, isDuel, isFfa, say, setMode, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
+import { blankMatch, feed, isDuel, isFfa, isWaves, say, setMode, sideOf, uiOpen, SHOP, STEP, type Match } from '../game/state';
 import { hasHeights, loadMap, MAP_ID, mapState, moveBody } from '../game/map';
 import { stanceStep, moveStep, type PlayerInput } from '../game/player';
 import { angDiff, lerp } from '../game/rules';
@@ -53,6 +53,7 @@ export function createMirror(begin: BeginMessage): Mirror {
   match.opts.streakRewards = begin.streakRewards; // story 018
   setMode(match, begin.mode); // story 019
   if (begin.mode === 'ffa') { for (const p of match.players) p.squad = p.id; match.bomb.state = 'none'; } // everybody their own side, as the server has it
+  if (begin.mode === 'waves') match.bomb.state = 'none'; // story 025: squad 0 (seats 0..3) against the enemy bots (4..7)
   if (begin.mode === 'duel') match.bomb.state = 'none'; // story 024: the roster's two squads, no bomb
   begin.names.forEach((n, i) => { match.players[i].name = n; });
   match.players[begin.seat].name = 'Tú';
@@ -120,7 +121,7 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   while (m.snaps.length > 2 && m.snaps[1].k * STEP * 1000 < nowMs - m.base - tune.net_interp_ms - 1000) m.snaps.shift();
   if (m.snaps.length > 30) m.snaps.shift();
   const wasDead = !me.alive;
-  const newRound0 = snap.r !== match.round;
+  const newRound0 = snap.r !== match.round && !isWaves(match); // story 025: a new wave moves nobody
   match.phase = snap.ph; match.phaseT = snap.pt / T; match.roundT = snap.rt / T; match.round = snap.r;
   match.score = snap.s; match.attSquad = snap.as; match.gatesClosed = snap.g === 1; match.plantT = snap.pl / T;
   match.t = Math.max(match.t, snap.k * STEP);
@@ -210,6 +211,7 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
     case 'round':
       match.banner = null; match.gateT = 0;
       if (e.side === 'ffa') { say(match, 'Free for All: gana quien tenga más bajas. Si caes, responde para volver', 5); break; }
+      if (e.side === 'waves') { if (Number(e.round) === 0) say(match, 'Oleadas cooperativas: todos contra las oleadas de bots. Si caes, responde para volver cuando empiece la siguiente', 5); break; } // story 025: the wave's notice is drawn from the state (HUD)
       if (e.side === 'duel') { say(match, 'Duelo por equipos: gana el equipo con más bajas. Si caes, responde para volver', 5); break; } // story 024
       say(match, e.side === 'att' ? `Ronda ${match.round}: ATAQUE. Planta la bomba en A o B` : `Ronda ${match.round}: DEFENSA. Evita que planten`, 5);
       break;
@@ -223,6 +225,12 @@ function hudFor(m: Mirror, e: Record<string, unknown>): void {
         match.podium = e.podium;
         const w = (e.podium as { id: number; kills: number }[])[0], won = w.id === m.seat;
         match.gained = `${won ? '¡Ganaste!' : match.players[w.id].name + ' gana'} con ${w.kills} ${w.kills === 1 ? 'baja' : 'bajas'}`;
+        match.answered = ''; match.over = true;
+        break;
+      }
+      if (isWaves(match) && Array.isArray(e.podium)) { // story 025: the team's table (squad 0, best first) and the waves survived
+        match.podium = e.podium; match.survived = Number(e.waves) || 0;
+        match.gained = `Cayó el equipo en la oleada ${match.round}: sobrevivieron ${match.survived} ${match.survived === 1 ? 'oleada' : 'oleadas'}`;
         match.answered = ''; match.over = true;
         break;
       }

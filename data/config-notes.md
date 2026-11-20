@@ -241,3 +241,17 @@ holds no comments. The values themselves are in `data/config.json`.
 - `duel_mate_dist` 12: metres from the nearest living teammate within which a respawn point is looked for (with no living teammate any point of the map may be drawn)
 - `duel_mate_gap` 2: metres a respawn point keeps from every living teammate, so nobody lands on top of another
 - `duel_bot_skill` 0.5: the bots' skill ramp (0 = bot_acc_start/bot_react_start, 1 = the _end values) in Duelo por equipos; the bot level's multipliers apply on top
+
+## Story 025: Oleadas cooperativas (option "Modo de juego", mode id `waves`)
+- `waves_start_count` 3: enemy bots in wave 1; every wave adds `waves_growth` more (wave n has start + growth x (n - 1)), up to `waves_max_count`. Only the roster's four enemy seats exist, so at most 4 enemies are on the map at once; the rest of the wave comes in as the first ones fall
+- `waves_growth` 2: enemy bots each wave adds over the one before
+- `waves_max_count` 16: the cap on the bots in one wave (the waves go on at this size, with the skill still rising up to `waves_skill_max`)
+- `waves_skill_start` 0.2, `waves_skill_step` 0.1, `waves_skill_max` 1: the enemy bots' level in wave n is start + step x (n - 1), at most max (the same 0..1 ramp as `ffa_bot_skill`: 0 = bot_acc_start/bot_react_start, 1 = the _end values; the bot level's multiplier applies on top)
+- `waves_mate_skill` 0.5: the skill ramp of the teammate bots (players' side), fixed so they do not grow stronger with the waves
+- `waves_smg_from` 3, `waves_rifle_from` 6: the first wave in which enemy bots carry a Subfusil, and a Rifle (before that the pistol; the rifle wins from its wave on)
+- `waves_pause` 20: seconds of pause before wave 1 and after each wave is cleared, with the shop open (a dead player answers the respawn question in it and comes back when the next wave starts)
+- `waves_spawn_gap` 2: seconds between one enemy coming in and the next while a seat is free
+- `waves_enemy_spawn_dist` 25: metres an enemy's spawn point should be from every living player (one is drawn at random among those that far; when none is, the farthest); the points are the same cells as Free for All's
+- `waves_hunt_interval` 4: seconds between the orders that send an enemy bot with nothing in sight toward the nearest player standing, and a teammate bot toward the nearest enemy
+- `waves_notice_time` 3: seconds the big "Oleada N" notice stays on screen when a wave starts
+- `waves_kill_money` 300: money per kill in Oleadas cooperativas; there is no round pay, wave pay or first-kill bonus. The wrong-answer wait of the respawn question is `ffa_wrong_wait`
