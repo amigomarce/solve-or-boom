@@ -18,7 +18,7 @@ import {
   MAP, MAP_ID, MAPS, MAP_IDS, loadMap, type Cell, type MapData,
   hasHeights, grid1, zone1, rampAt, rampHeight, levelHeight, levelOfY, canStepXY,
 } from './game/map';
-import { lerp, angDiff, fmtTime } from './game/rules';
+import { lerp, angDiff, fmtTime, aimTurnScale } from './game/rules';
 import {
   createMatch, blankMatch, type BotLevel, step as stepMatch, humanSpread, idleInput, shopBlock, inOwnBase, sideOf, squadName, uiOpen, questionLevel, say, isFfa, isDuel, isWaves, isRoam, type GameMode,
   ROSTER, ROLE_NAME, WEAPON, SHOP, STEP, type Match, type PlayerInput,
@@ -275,7 +275,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 addEventListener('mousemove', e => { // the aim answers the hand at once: no smoothing
   if (!locked || scene !== 'play' || !state.human || !state.human.alive || uiOpen(state)) return;
-  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / tune.view_fov : 1); // the turn scales with the zoom
+  const k = 0.0022 * tune.mouse_sens * (state.human.scoped ? aimTurnScale(tune[state.human.cur + '_aim_fov'], tune.view_fov) : 1); // the turn scales with the zoom (half-angle tangents, TD-013)
   lookYaw -= e.movementX * k; lookPitch -= e.movementY * k; // the next step turns the aim
 });
 
@@ -357,7 +357,7 @@ function readInput(act: string | undefined): PlayerInput {
   inp.fire = down.has('Mouse0') || held('shoot'); inp.firePress = pressed('Mouse0') || press('shoot'); inp.scope = held('aim');
   inp.lookLeft = down.has('ArrowLeft'); inp.lookRight = down.has('ArrowRight'); inp.lookUp = down.has('ArrowUp'); inp.lookDown = down.has('ArrowDown');
   if (touch.dx || touch.dy) { // the drag on the right half: the same turn per pixel as the mouse's, with its own sensitivity
-    const k = tune.touch_turn * tune.touch_sens * (state.human.scoped ? tune[state.human.cur + '_aim_fov'] / tune.view_fov : 1);
+    const k = tune.touch_turn * tune.touch_sens * (state.human.scoped ? aimTurnScale(tune[state.human.cur + '_aim_fov'], tune.view_fov) : 1);
     lookYaw -= touch.dx * k; lookPitch -= touch.dy * k; touch.dx = 0; touch.dy = 0;
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;

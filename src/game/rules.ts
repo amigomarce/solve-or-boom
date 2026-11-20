@@ -34,3 +34,15 @@ export function armourHit(dmg: number, armor: number, absorb: number): { dmg: nu
 
 /** Seconds as m:ss, rounded up, never below 0:00. */
 export function fmtTime(s: number): string { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+/**
+ * How much of the normal turn per mouse or finger pixel is left while aiming with a narrower view: the ratio of the
+ * half-angle tangents, so the crosshair moves across the screen at the same speed zoomed or not (TD-013; it was the
+ * plain FOV ratio, a little fast when zoomed). Both FOVs in degrees, vertical, as the camera takes them.
+ * @example aimTurnScale(22, 72); // 0.268: the sniper's scope turns at about a quarter of the normal speed
+ */
+export function aimTurnScale(aimFov: number, viewFov: number): number {
+  if (aimFov === viewFov) return 1;
+  const half = (deg: number): number => Math.tan(deg * Math.PI / 360);
+  return half(aimFov) / half(viewFov);
+}

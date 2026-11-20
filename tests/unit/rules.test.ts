@@ -1,7 +1,7 @@
 // Vitest: the rules in src/game/, run in Node with no browser. Values come from data/config.json.
 import { describe, expect, it } from 'vitest';
 import config from '../../data/config.json';
-import { angDiff, armourHit, hitChance, levelFor, roundPay } from '../../src/game/rules';
+import { aimTurnScale, angDiff, armourHit, hitChance, levelFor, roundPay } from '../../src/game/rules';
 import { bfs, losClear, center, mapState, SITE } from '../../src/game/map';
 
 const v = (k: keyof typeof config): number => (config[k] as { value: number }).value;
@@ -59,5 +59,18 @@ describe('the map', () => {
   });
   it('wraps angle differences into (-PI, PI]', () => {
     expect(angDiff(3 * Math.PI / 2, 0)).toBeCloseTo(-Math.PI / 2, 9);
+  });
+});
+
+describe('aimTurnScale: the turn per mouse or finger pixel while aiming (TD-013)', () => {
+  it('keeps the full turn when the view is not zoomed', () => {
+    expect(aimTurnScale(v('view_fov'), v('view_fov'))).toBe(1);
+  });
+  it('scales by the ratio of the half-angle tangents, so the crosshair moves at the same on-screen speed', () => {
+    const aim = v('sniper_aim_fov'), view = v('view_fov'), rad = (d: number): number => d * Math.PI / 360;
+    expect(aimTurnScale(aim, view)).toBeCloseTo(Math.tan(rad(aim)) / Math.tan(rad(view)), 12);
+  });
+  it('turns slower than the linear FOV ratio when zoomed', () => {
+    expect(aimTurnScale(v('sniper_aim_fov'), v('view_fov'))).toBeLessThan(v('sniper_aim_fov') / v('view_fov'));
   });
 });
