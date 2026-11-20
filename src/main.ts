@@ -7,7 +7,7 @@ import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeom
 import { CONFIG, tune } from './config';
 import AULA from '../data/aula.json';
 import * as QUESTIONS from './questions';
-import { parseCSV, decodeCSV, type ParsedQuestion } from './game/csv';
+import { loadQuestionFile, type ParsedQuestion } from './game/csv';
 import { LEVELS, type Level } from './game/types';
 import type { Loose } from './game/types';
 import { params, manual, clock, seedFrom, install } from './hook';
@@ -279,12 +279,11 @@ function loadCSV(file: File | undefined): void {
   if (!file) return;
   const fr = new FileReader();
   fr.onload = () => {
-    const res = parseCSV(decodeCSV(fr.result as ArrayBuffer));
+    // The same load step and limits as the teacher's upload (src/game/csv.ts loadQuestionFile, data/aula.json; TD-014).
+    const res = loadQuestionFile(fr.result as ArrayBuffer, file.name, { maxBytes: AULA.csv_max_bytes.value, maxQuestions: AULA.csv_max_questions.value });
     session.skipped = res.skipped;
-    if (res.questions.length >= 1) {
-      session.custom = res.questions; session.customName = file.name; session.subject = QUESTIONS.CUSTOM;
-      session.status = `${res.questions.length === 1 ? 'Cargada 1 pregunta' : `Cargadas ${res.questions.length} preguntas`} de ${file.name}`;
-    } else session.status = `No hay preguntas válidas en ${file.name}`;
+    if (res.ok) { session.custom = res.questions; session.customName = file.name; session.subject = QUESTIONS.CUSTOM; }
+    session.status = res.text;
   };
   fr.readAsArrayBuffer(file);
 }

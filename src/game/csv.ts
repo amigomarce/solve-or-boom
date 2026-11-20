@@ -115,3 +115,27 @@ export function parseCSV(text: string): { questions: ParsedQuestion[]; skipped: 
   skipped += bad.size;
   return { questions: out.filter(o => !bad.has(o)), skipped };
 }
+
+/** The limits on an uploaded question file (data/aula.json: csv_max_bytes, csv_max_questions). */
+export interface CsvLimits { maxBytes: number; maxQuestions: number }
+/** What loading a question file gave: its questions when ok (empty otherwise), the counts, and the Spanish line the screen shows. */
+export interface CsvLoad { ok: boolean; questions: ParsedQuestion[]; count: number; skipped: number; text: string }
+
+/**
+ * Loads an uploaded question file: the size and row limits first (before parsing), then parseCSV, then at least 1
+ * and at most lim.maxQuestions questions. The one load step for the host's own upload (src/main.ts) and the
+ * teacher's (src/server/teacher.ts), so both keep the same limits and say the same thing (TD-014).
+ * @example const res = loadQuestionFile(bytes, 'mias.csv', { maxBytes: 262144, maxQuestions: 500 }); // res.text: "Cargadas 12 preguntas de mias.csv"
+ */
+export function loadQuestionFile(bytes: ArrayBuffer, name: string, lim: CsvLimits): CsvLoad {
+  const no = (text: string, count = 0, skipped = 0): CsvLoad => ({ ok: false, questions: [], count, skipped, text });
+  if (bytes.byteLength > lim.maxBytes) return no(`El archivo es demasiado grande (máximo ${Math.floor(lim.maxBytes / 1024)} KB).`);
+  // Refused before parsing when the lines are far more than the questions allowed (a header and blank lines fit; 2x leaves room for quoted line breaks).
+  let lines = 1;
+  for (const b of new Uint8Array(bytes)) if (b === 10) lines++;
+  if (lines > lim.maxQuestions * 2 + 1) return no(`Demasiadas filas (${lines}); el máximo es ${lim.maxQuestions} preguntas.`);
+  const res = parseCSV(decodeCSV(bytes)), count = res.questions.length;
+  if (count < 1) return no(`No hay preguntas válidas en ${name}`, 0, res.skipped);
+  if (count > lim.maxQuestions) return no(`Demasiadas preguntas (${count}); el máximo es ${lim.maxQuestions}.`, count, res.skipped);
+  return { ok: true, questions: res.questions, count, skipped: res.skipped, text: `${count === 1 ? 'Cargada 1 pregunta' : `Cargadas ${count} preguntas`} de ${name}` };
+}

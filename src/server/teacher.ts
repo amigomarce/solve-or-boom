@@ -22,7 +22,7 @@
 //  - Free for All rooms show a `summary` instead of the team score: who leads and the time left (a finished room: who won or led).
 import { MAP_IDS, MAP_LIST } from '../game/map';
 import { LEVELS, type Level } from '../game/types';
-import { parseCSV, decodeCSV, type ParsedQuestion } from '../game/csv';
+import { loadQuestionFile, type ParsedQuestion } from '../game/csv';
 import * as QUESTIONS from '../questions';
 import { CONFIG, tune } from '../game/tune';
 import { GAME_MODES, MODE_INFO, PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type GameModeId, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
@@ -194,17 +194,10 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         case 'tcsv': {
           if (msg.data.length > Math.ceil(lim.csvMaxBytes / 3) * 4) return { v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: 0, text: `El archivo es demasiado grande (máximo ${Math.floor(lim.csvMaxBytes / 1024)} KB).` };
           const bytes = Buffer.from(msg.data, 'base64');
-          if (bytes.length > lim.csvMaxBytes) return { v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: 0, text: `El archivo es demasiado grande (máximo ${Math.floor(lim.csvMaxBytes / 1024)} KB).` };
-          // Rejected before parsing when the lines are far more than the questions allowed (a header and blank lines fit; 2x leaves room for quoted line breaks).
-          let lines = 1;
-          for (const b of bytes) if (b === 10) lines++;
-          if (lines > lim.csvMaxQuestions * 2 + 1) return { v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: 0, text: `Demasiadas filas (${lines}); el máximo es ${lim.csvMaxQuestions} preguntas.` };
-          const res = parseCSV(decodeCSV(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer));
-          if (res.questions.length < 1) return { v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: res.skipped, text: `No hay preguntas válidas en ${msg.name}` };
-          if (res.questions.length > lim.csvMaxQuestions) return { v, t: 'tcsvok', ok: false, name: msg.name, count: res.questions.length, skipped: res.skipped, text: `Demasiadas preguntas (${res.questions.length}); el máximo es ${lim.csvMaxQuestions}.` };
+          const res = loadQuestionFile(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer, msg.name, { maxBytes: lim.csvMaxBytes, maxQuestions: lim.csvMaxQuestions });
+          if (!res.ok) return { v, t: 'tcsvok', ok: false, name: msg.name, count: res.count, skipped: res.skipped, text: res.text };
           Object.assign(session, { custom: res.questions, customName: msg.name, skipped: res.skipped, subject: QUESTIONS.CUSTOM, topics: [] });
-          return { v, t: 'tcsvok', ok: true, name: msg.name, count: res.questions.length, skipped: res.skipped,
-            text: `${res.questions.length === 1 ? 'Cargada 1 pregunta' : `Cargadas ${res.questions.length} preguntas`} de ${msg.name}` };
+          return { v, t: 'tcsvok', ok: true, name: msg.name, count: res.count, skipped: res.skipped, text: res.text };
         }
         case 'texport': { const text = deps.results.csv(labelOf); return { v, t: 'texported', name: 'resultados.csv', text, rows: text.split('\r\n').length - 2 }; }
         case 'tclear': deps.results.clear(); deps.log('Resultados borrados por el profesor'); return null;
