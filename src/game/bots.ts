@@ -264,8 +264,38 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
   if (b.alertT > 0) turnTo(b, b.alertYaw, 6, dt);
   if (!live) return;
   if (b.coverT > 0) { turnTo(b, yawTo(b.threatX - b.x, b.threatZ - b.z), 5, dt); coverStep(match, b, dt, speed, false); return; }
-  // No enemy in sight: follow the plan (Free for All, story 019: roam from spot to spot, there is no bomb or site to go to).
-  if (isRoam(match) && !b.wps.length && b.pathI >= b.path.length) { b.wps = [randomSpot(match)]; b.arrived = false; }
+  // No enemy in sight: follow the mode's plan, then the noises, corner checks and the route that every mode shares.
+  if (isRoam(match)) roamPlan(match, b); else if (bombPlan(match, b, dt, side)) return;
+  // A noise heard with nothing better to do (holding its spot, not the sniper, the carrier or a guard): go and look, then come back.
+  if (b.noiseNew) {
+    b.noiseNew = false;
+    if (b.arrived && !b.wps.length && !b.after.length && !b.looks.length && !b.investigating && !b.rotating && !b.guarding
+      && b.role !== 'sniper' && bomb.carrier !== b) {
+      b.investigating = true; b.wps = [cellAt(b.noiseX, b.noiseZ, b.noiseY ?? 0), cellAt(b.x, b.z, b.st.y)]; b.path = []; b.arrived = false;
+    }
+  }
+  if (!isRoam(match)) bombCornerCheck(b, side, bomb);
+  if (b.looks.length) {
+    turnTo(b, b.looks[0], 6, dt); b.lookT += dt;
+    if (b.lookT >= tune.bot_corner_look) { b.looks.shift(); b.lookT = 0; }
+    return;
+  }
+  if (followPath(match, b, dt, speed)) b.moving = true;
+  else { b.chasing = false; b.investigating = false; turnTo(b, b.holdYaw, 3, dt); }
+  if (b.arrived && b.fetching) b.fetching = false;
+}
+/** Free for All, Duelo and Oleadas (story 019, 024, 025): no bomb or site to go to, so an idle bot roams from spot to spot. */
+function roamPlan(match: Match, b: Loose): void {
+  if (!b.wps.length && b.pathI >= b.path.length) { b.wps = [randomSpot(match)]; b.arrived = false; }
+}
+/**
+ * Bomba's plan for a bot with no enemy in sight: an attacker fetches a dropped bomb, guards a planted one, waits at
+ * its staging point for the group, plants at a site or holds its spot; a defender defuses a planted bomb (answering
+ * at its own pace) or rotates to the site a teammate saw an enemy near; rotating defenders move as a pack.
+ * Returns true when the bot's step ends here.
+ */
+function bombPlan(match: Match, b: Loose, dt: number, side: string): boolean {
+  const bomb = match.bomb;
   if (side === 'att') {
     if (bomb.state === 'dropped' && !b.fetching && !match.players.some(p => p.fetching && p.alive && sideOf(match, p) === 'att')) {
       b.fetching = true; b.wps = [cellAt(bomb.x, bomb.z, bomb.y ?? 0)]; b.path = []; b.arrived = false; b.after = [];
@@ -282,21 +312,21 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       if (b.waitT >= tune.bot_group_wait || mates.every(ready)) {
         for (const q of mates) if (ready(q)) { q.wps = q.after; q.after = []; q.arrived = false; q.path = []; q.waitT = 0; }
       }
-      return;
+      return true;
     }
     if (bomb.carrier === b && b.arrived) {
       const z = zoneAt(cellOf(b.x), cellOf(b.z), b.st.y);
       if (z === 3 || z === 4) {
         b.plantT += dt;
         if (b.plantT >= tune.plant_time) plantBomb(match, b);
-        return;
+        return true;
       }
       routeTo(match, b, 'site');
     }
     if (b.routeKind === 'hold' && b.arrived) {
       b.holdT -= dt; turnTo(b, b.holdYaw, 4, dt);
       if (b.holdT <= 0) routeTo(match, b, match.rng() < 0.5 ? 'mid' : 'lane');
-      return;
+      return true;
     }
   } else {
     if (bomb.state === 'planted') {
@@ -307,10 +337,10 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
         b.thinkT -= dt;
         if (b.thinkT <= 0) {
           if (match.rng() < tune.bot_defuse_right) { b.right++; b.defuseRight++; } else { b.wrong++; bomb.panicT = 1.0; }
-          if (b.defuseRight >= tune.defuse_answers) { defuseBomb(match, b); return; }
+          if (b.defuseRight >= tune.defuse_answers) { defuseBomb(match, b); return true; }
           b.thinkT = lerp(tune.bot_think_min, tune.bot_think_max, match.rng());
         }
-        return;
+        return true;
       }
     } else if (match.alert && match.alert.squad === b.squad && !b.rotated && b.role !== 'sniper' && b.anchor !== match.alert.site
       && match.t - match.alert.t < 8) {
@@ -325,20 +355,17 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       const gx = center(SITE[b.anchor].cx), gz = center(SITE[b.anchor].cy), mine = Math.hypot(gx - b.x, gz - b.z);
       if (b.rotT < tune.bot_group_wait && match.players.some(q => q !== b && q.alive && q.rotating && q.squad === b.squad
         && Math.hypot(gx - q.x, gz - q.z) - mine > tune.bot_group_gap)) {
-        b.rotT += dt; turnTo(b, yawTo(gx - b.x, gz - b.z), 4, dt); return;
+        b.rotT += dt; turnTo(b, yawTo(gx - b.x, gz - b.z), 4, dt); return true;
       }
     }
   }
-  // A noise heard with nothing better to do (holding its spot, not the sniper, the carrier or a guard): go and look, then come back.
-  if (b.noiseNew) {
-    b.noiseNew = false;
-    if (b.arrived && !b.wps.length && !b.after.length && !b.looks.length && !b.investigating && !b.rotating && !b.guarding
-      && b.role !== 'sniper' && bomb.carrier !== b) {
-      b.investigating = true; b.wps = [cellAt(b.noiseX, b.noiseZ, b.noiseY ?? 0), cellAt(b.x, b.z, b.st.y)]; b.path = []; b.arrived = false;
-    }
-  }
-  // Corner check: an attacker that arrives in a site (not the carrier) looks at each way into it, bot_corner_look s
-  // apiece (entries closer than bot_corner_merge_deg count as one), before it settles.
+  return false;
+}
+/**
+ * Bomba's corner check: an attacker that arrives in a site (not the carrier) looks at each way into it, bot_corner_look s
+ * apiece (entries closer than bot_corner_merge_deg count as one), before it settles.
+ */
+function bombCornerCheck(b: Loose, side: string, bomb: Loose): void {
   const here = hasHeights ? zoneAt(cellOf(b.x), cellOf(b.z), b.st.y) : zone[idx(cellOf(b.x), cellOf(b.z))];
   if (side === 'att' && b.arrived && !b.cleared && bomb.carrier !== b && (here === 3 || here === 4)) {
     b.cleared = true; b.lookT = 0; b.looks = [];
@@ -348,14 +375,6 @@ export function botUpdate(match: Match, b: Loose, dt: number): void {
       if (b.looks.every((l: number) => Math.abs(angDiff(l, yw)) > tune.bot_corner_merge_deg * Math.PI / 180)) b.looks.push(yw);
     }
   }
-  if (b.looks.length) {
-    turnTo(b, b.looks[0], 6, dt); b.lookT += dt;
-    if (b.lookT >= tune.bot_corner_look) { b.looks.shift(); b.lookT = 0; }
-    return;
-  }
-  if (followPath(match, b, dt, speed)) b.moving = true;
-  else { b.chasing = false; b.investigating = false; turnTo(b, b.holdYaw, 3, dt); }
-  if (b.arrived && b.fetching) b.fetching = false;
 }
 /** A random walkable cell within r cells of (x, z) (with heights: on the level of feet height y), else the cell of (x, z). */
 export function nearCell(match: Match, x: number, z: number, r: number, y = 0): number[] {
