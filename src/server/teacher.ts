@@ -110,7 +110,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
         { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
       csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
       address,
-      modes: GAME_MODES.map(id => ({ id, name: MODE_INFO[id].name })),
+      modes: GAME_MODES.map(id => ({ id, ...MODE_INFO[id] })),
     }),
     state() {
       const students = deps.lobby.list();
@@ -242,4 +242,16 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       }
     },
   };
+}
+
+/** The marker in profesor.html that the served page's protocol version replaces. */
+const VERSION_MARK = '__PROTOCOL_VERSION__';
+/**
+ * The teacher page as served: its protocol version filled in from PROTOCOL_VERSION, so it can never fall behind the
+ * server's (TD-019). Throws when the page has no marker, so a page that would answer "bad_version" never starts.
+ * @example const body = fillTeacherPage(profesorHtml);
+ */
+export function fillTeacherPage(html: string): string {
+  if (!html.includes(VERSION_MARK)) throw new Error(`profesor.html has no ${VERSION_MARK} to fill in`);
+  return html.split(VERSION_MARK).join(String(PROTOCOL_VERSION));
 }

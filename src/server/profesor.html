@@ -199,7 +199,9 @@
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
-const V = 18;
+const V = __PROTOCOL_VERSION__; // the server fills in PROTOCOL_VERSION when it serves the page (fillTeacherPage, src/server/teacher.ts; TD-019)
+/** A mode's traits from tinfo (MODE_INFO, src/net/protocol.ts): bomb, teams, coop, solo. Before tinfo arrives, Bomba's. */
+const modeOf = id => ((info && info.modes) || []).find(m => m.id === id) || { bomb: true, teams: true, coop: false, solo: false };
 const STATE_NAME = { waiting: 'Esperando', running: 'En marcha', paused: 'En pausa', ended: 'Terminada', failed: 'Error' };
 /** The map's name from tinfo ({ id, name }); an unknown id shows as it is. */
 const mapName = id => { const m = info && info.maps.find(x => x.id === id); return m ? m.name : id; };
@@ -302,7 +304,7 @@ function render() {
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
     `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span><span class="hint">Partidas jugadas: ${r.matches}</span></div>`
-    + `<div class="meta">${r.mode === 'ffa' || r.mode === 'duel' || r.mode === 'waves' ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
+    + `<div class="meta">${!modeOf(r.mode).bomb ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   renderBar(live, on);
   noticeChanges();
@@ -357,10 +359,10 @@ function initFolds() {
 initFolds();
 
 function roomCard(r) {
-  const ffa = r.mode === 'ffa' || r.mode === 'waves'; // story 023 (025: Oleadas cooperativas too): one group of players, no team headings or team score
+  const ffa = !modeOf(r.mode).teams; // story 023 (025: Oleadas cooperativas too): one group of players, no team headings or team score
   const targets = st.rooms.filter(q => q.seats.length && (q.status === 'waiting' || q.status === 'running' || q.status === 'paused'));
   /** The menu that moves a student (tmove): Bomba and Duelo offer room and team, Free for All and Oleadas only the room. */
-  const moveMenu = x => `<select data-student="${x.student}" aria-label="Sala${ffa ? '' : ' y equipo'} de ${esc(x.name)}">` + targets.flatMap(q => q.mode === 'ffa' || q.mode === 'waves'
+  const moveMenu = x => `<select data-student="${x.student}" aria-label="Sala${ffa ? '' : ' y equipo'} de ${esc(x.name)}">` + targets.flatMap(q => !modeOf(q.mode).teams
     ? [`<option value="${esc(q.id)}|0"${q.id === r.id ? ' selected' : ''}>${esc(roomName(q.id))}</option>`]
     : [0, 1].map(t => `<option value="${esc(q.id)}|${t}"${q.id === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(q.id))} · Equipo ${t + 1}</option>`)).join('') + '</select>';
   const seatDiv = x => x.kind === 'human' && x.student !== null
@@ -376,7 +378,7 @@ function roomCard(r) {
     : `<b>${esc(roomName(r.id))}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(roomName(r.id))}">Renombrar</button>`;
   return `<div class="room s-${r.status}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
     + `<span class="hint">Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
-    + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : ffa || r.mode === 'duel' ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : !modeOf(r.mode).bomb ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
     + b('end', 'Terminar', played) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';

@@ -36,7 +36,9 @@ import { LEVELS, type Level } from '../game/types';
 //     `last`, its last finished match in Spanish ('' before the first).
 // 18: the teacher page (story 027): `tinfo` carries `address`, the URL the students type ('' when unknown); a teacher room carries `name` (the teacher's
 //     name for it, '' for none); the teacher's new `trename` {room, name} names a room (trimmed; blank clears; over aula.json's teacher_room_name_max is refused).
-export const PROTOCOL_VERSION = 18;
+// 19: each `tinfo` mode carries its traits (bomb, teams, coop, solo; MODE_INFO), so the teacher page asks for a trait, not the mode's id
+//     (TD-017). The teacher page's own version is filled in from PROTOCOL_VERSION when the server serves it (TD-019).
+export const PROTOCOL_VERSION = 19;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -481,8 +483,8 @@ export interface TeacherInfoMessage {
   csvMaxBytes: number; csvMaxQuestions: number;
   /** The buy time's range and step in seconds (data/config.json buy_time), for the page's selector (story 017). */
   buyTime: { min: number; max: number; step: number };
-  /** The game modes and their names, for the page's "Modo de juego" choice (story 019, protocol 12). */
-  modes: { id: GameModeId; name: string }[];
+  /** The game modes, their names and traits (MODE_INFO), for the page's "Modo de juego" choice and its rooms (story 019, protocol 12; traits protocol 19). */
+  modes: ({ id: GameModeId } & ModeInfo)[];
   /** The address the students type (the one `npm run aula` prints), e.g. "http://192.168.1.20:8080"; '' when the PC has no network address (protocol 18). */
   address: string;
 }

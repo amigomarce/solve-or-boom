@@ -24,6 +24,7 @@ import { createResults } from './results';
 import { startNet, type Net } from './net';
 import profesorHtml from './profesor.html?raw';
 import { TEACHER_PATH } from '../net/protocol';
+import { fillTeacherPage } from './teacher';
 
 const args = process.argv.slice(2);
 /** The number after a flag, or undefined. Exits saying so when it is not a whole number >= 0. */
@@ -92,7 +93,7 @@ if (args.includes('--carga')) {
       maxChars: aula.max_message_bytes, maxName: aula.max_name_length, maxLook: aula.max_look_per_message,
       maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
       maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s, snapshotHz: aula.snapshot_hz, eventRangeM: aula.event_range_m,
-    }, { rooms, results, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(profesorHtml) }]]), clockMs, log, warn,
+    }, { rooms, results, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(fillTeacherPage(profesorHtml)) }]]), clockMs, log, warn,
       teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, maxRooms: aula.max_rooms, roomNameMax: aula.teacher_room_name_max, finishedShown: aula.finished_rooms_shown, weakBelowPct: aula.weak_below_pct, weakMinAnswers: aula.weak_min_answers,
         updateMs: aula.teacher_update_ms, heartbeatS: aula.teacher_heartbeat_s, maxChars: aula.teacher_max_message_bytes } });
   } catch (e) {
