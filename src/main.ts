@@ -364,6 +364,16 @@ function startMatch(): void {
   });
   playEvents();
 }
+/**
+ * The Start checks, then the match: an empty or missing CSV, or a choice with no questions, leaves `session.status` with the reason and the player on the
+ * session screen (scene 'title', where the session screen's Start already is); otherwise the match is built from `session` and played. The session screen's
+ * Start, the results screen's Continuar and the results countdown reaching 0 all call it (story 031).
+ */
+export function startChecked(): void {
+  if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = TOUCH ? 'Primero sube un CSV o elige una asignatura' : 'Primero sube un CSV (tecla U) o elige una asignatura'; scene = 'title'; return; }
+  if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; scene = 'title'; return; }
+  startMatch(); scene = 'play';
+}
 /** The human's input snapshot for this step, from the held and pressed keys (src/keys.ts bindings), the mouse and a clicked button. */
 function readInput(act: string | undefined): PlayerInput {
   const inp = idleInput(), held = (a: string): boolean => down.has(bind[a]), press = (a: string): boolean => pressed(bind[a]);
@@ -487,9 +497,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act === 'controls') { Object.assign(ctl, { from: 'title', sel: 0, capture: false, note: '' }); scene = 'controls'; return; }
       if (act === 'mainmenu' || pressed('Escape')) { scene = 'menu'; return; }
       if (pressed('Enter') || pressed('Space') || act === 'start') {
-        if (session.subject === QUESTIONS.CUSTOM && !session.custom.length) { session.status = TOUCH ? 'Primero sube un CSV o elige una asignatura' : 'Primero sube un CSV (tecla U) o elige una asignatura'; return; }
-        if (session.available === 0) { session.status = 'Todavía no hay preguntas para esta elección'; return; }
-        startMatch(); scene = 'play';
+        startChecked();
       }
     },
     draw() { drawTitle(); },
@@ -509,6 +517,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (CLASS_MODE) netStep(idleInput()); // the match goes on on the server: stand still, keep the seat
       if (pressed(bind.pause) || pressed('Escape') || act === 'resume') scene = 'play';
       if (act === 'controls') { Object.assign(ctl, { from: 'pause', sel: 0, capture: false, note: '' }); scene = 'controls'; }
+      if (!CLASS_MODE && (act === 'psubj' || pressed('KeyC'))) { Object.assign(psubj, { sel: Math.max(0, pickable().indexOf(session.subject)), note: '' }); scene = 'pausesubj'; return; }
       const sens = CONFIG[TOUCH ? 'touch_sens' : 'mouse_sens']; // the finger's own setting on a touch device
       if (pressed('BracketLeft') || act === 'sens:-') sens.value = Math.max(sens.min, +(sens.value - 0.1).toFixed(2));
       if (pressed('BracketRight') || act === 'sens:+') sens.value = Math.min(sens.max, +(sens.value + 0.1).toFixed(2));
@@ -522,10 +531,50 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       button(W / 2 - 275, 270, 60, 44, '-', 'sens:-', { size: 30 });
       button(W / 2 + 215, 270, 60, 44, '+', 'sens:+', { size: 30 });
       if (!TOUCH) text('También con [ y ]', W / 2, 336, 18, '#c8d2e6', 'center', 'normal');
-      button(W / 2 - 160, 380, 320, 52, TOUCH ? 'Continuar' : `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
-      button(W / 2 - 160, 444, 320, 52, 'Controles', 'controls', { size: 22 });
-      button(W / 2 - 160, 508, 320, 52, CLASS_MODE ? 'Salir de la sala' : 'Salir a la pantalla de sesión', 'quit', { size: 20 });
-      text(`Asignatura: ${state.subjectLabel || ''}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
+      // Single player gets a fourth button (Cambiar asignatura), so its rows sit 14 higher and 4 closer than the class menu's.
+      const y0 = CLASS_MODE ? 380 : 366, dy = CLASS_MODE ? 64 : 60;
+      button(W / 2 - 160, y0, 320, 52, TOUCH ? 'Continuar' : `Continuar (${keyName(bind.pause)} o clic)`, 'resume', { size: 22 });
+      button(W / 2 - 160, y0 + dy, 320, 52, 'Controles', 'controls', { size: 22 });
+      if (!CLASS_MODE) button(W / 2 - 160, y0 + 2 * dy, 320, 52, TOUCH ? 'Cambiar asignatura' : 'Cambiar asignatura (C)', 'psubj', { size: 22 });
+      button(W / 2 - 160, y0 + (CLASS_MODE ? 2 : 3) * dy, 320, 52, CLASS_MODE ? 'Salir de la sala' : 'Salir a la pantalla de sesión', 'quit', { size: 20 });
+      // The next match is built from the session: the label createMatch (src/game/match.ts) would give it, to compare with the running match's.
+      const next = session.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${session.customName})`
+        : `${QUESTIONS.SUBJECTS[session.subject].name}: ${session.topics[session.subject].map(t => QUESTIONS.SUBJECTS[session.subject].topics[t]).join(', ')}`;
+      const now = state.subjectLabel || '';
+      if (CLASS_MODE) text(`Asignatura: ${now}`, W / 2, 620, 18, '#c8d2e6', 'center', 'normal');
+      else if (next === now) text(clip(`Asignatura: ${now}`, W - 80, 18, 'normal'), W / 2, 628, 18, '#c8d2e6', 'center', 'normal');
+      else { // two lines, each fitted to the screen (the labels list every topic)
+        text(clip(`Asignatura: ${now}`, W - 80, 18, 'normal'), W / 2, 622, 18, '#c8d2e6', 'center', 'normal');
+        text(clip(`Próxima partida: ${next}`, W - 80, 18, 'normal'), W / 2, 648, 18, '#ffd06a', 'center', 'normal');
+      }
+    },
+  },
+  pausesubj: {
+    update() {
+      const act = clicks.shift(), list = pickable();
+      if (act === 'psback' || pressed('Escape') || pressed(bind.pause)) { scene = 'pause'; return; }
+      if (pressed('ArrowDown')) psubj.sel = (psubj.sel + 1) % list.length;
+      if (pressed('ArrowUp')) psubj.sel = (psubj.sel + list.length - 1) % list.length;
+      const pick = act && act.startsWith('psubj:') ? act.slice(6) : pressed('Enter') ? list[psubj.sel] : undefined;
+      if (!pick) return;
+      psubj.sel = Math.max(0, list.indexOf(pick));
+      if (pick !== QUESTIONS.CUSTOM && !session.topics[pick].length) { psubj.note = `${QUESTIONS.SUBJECTS[pick].name} no tiene contenidos elegidos: márcalos en la pantalla de sesión`; return; }
+      session.subject = pick; scene = 'pause'; // applies to the next match; the running one keeps its deck
+    },
+    draw() {
+      drawWorld(); drawHUD(true);
+      buttons.length = 0;
+      ctx.fillStyle = 'rgba(10,14,24,0.72)'; ctx.fillRect(0, 0, W, H);
+      text('Cambiar asignatura', W / 2, 150, 48, '#fff');
+      text('Vale para la próxima partida; la de ahora sigue igual', W / 2, 200, 18, '#c8d2e6', 'center', 'normal');
+      pickable().forEach((s, i) => {
+        const on = session.subject === s, cur = psubj.sel === i;
+        button(W / 2 - 160, 230 + i * 60, 320, 52, s === QUESTIONS.CUSTOM ? QUESTIONS.CUSTOM_NAME + ' (CSV)' : QUESTIONS.SUBJECTS[s].name, 'psubj:' + s,
+          { size: 22, fill: on ? '#ffd06a' : undefined, color: on ? '#1b2232' : '#fff', stroke: cur ? '#fff3c4' : undefined });
+      });
+      if (psubj.note) text(psubj.note, W / 2, 556, 18, '#ffb366');
+      button(W / 2 - 160, 580, 320, 52, TOUCH ? 'Volver' : 'Volver (Esc)', 'psback', { size: 22 });
+      if (!TOUCH) text('Arriba / Abajo e Intro para elegir', W / 2, 660, 16, '#aab4c8', 'center', 'normal');
     },
   },
   controls: {
@@ -616,7 +665,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       if (act === 'menu') { scene = 'title'; return; }
       if (act === 'rmode') { session.mode = nextMode(session.mode); useMap(session.map, !MODE_INFO[session.mode].bomb); }
       if (act === 'rmap') pickMap(MAP_IDS[(MAP_IDS.indexOf(session.map) + 1) % MAP_IDS.length]);
-      if (pressed('Enter') || act === 'go' || --resultsCountdown.steps <= 0) { startMatch(); scene = 'play'; }
+      if (pressed('Enter') || act === 'go' || --resultsCountdown.steps <= 0) startChecked();
     },
     draw() { drawWorld(); drawResults(); },
   },
@@ -663,6 +712,10 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
 };
 /** The Controles screen: the selected row, whether it waits for a key, the last change, and the scene to go back to. */
 const ctl = { sel: 0, capture: false, note: '', from: 'title' };
+/** The pause menu's subject chooser (story 031): the highlighted row and the last refusal. */
+const psubj = { sel: 0, note: '' };
+/** The subjects the chooser lists, in the session screen's order: the CSV one only when a CSV is loaded. */
+const pickable = (): string[] => SUBJECT_LIST.filter(s => s !== QUESTIONS.CUSTOM || session.custom.length > 0);
 /** Picks the session's map and shows it behind the session screen. */
 function pickMap(id: string): void {
   session.map = id; useMap(id, !MODE_INFO[session.mode].bomb);

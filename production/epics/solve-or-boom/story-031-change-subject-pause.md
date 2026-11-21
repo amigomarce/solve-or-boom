@@ -1,13 +1,13 @@
 # Story 031: Change subject from the pause menu (single player)
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: UI
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-20
 
 ## Context
 
@@ -59,9 +59,8 @@
 
 ## Files
 
-- `src/main.ts`
-- `src/session-screen.ts`
-- `production/qa/evidence/story-031-change-subject-pause/`
+- `src/main.ts` — `startChecked()` (the Start checks shared by the session screen's Start, the results screen's Continuar and the results countdown); the single-player pause menu's "Cambiar asignatura" button and its two subject lines; the chooser scene `pausesubj` (`psubj`, `pickable()`)
+- `production/qa/evidence/story-031-change-subject-pause/` — 7 screenshots, `stamp.txt`
 
 ---
 
@@ -87,3 +86,17 @@
 
 - Depends on: `production/epics/solve-or-boom/story-028-results-countdown.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-20
+**Criteria**: 6/8 passing (deferred, requires playtest session: AC-4 the refusal of a subject with no contents; AC-5 the Start checks failing from Continuar or the countdown; AC-6 the four modes, mouse and phone — only Free for All with the keyboard was run)
+**Deviations**: None. `src/session-screen.ts`, listed in the plan, needed no change.
+**Test Evidence**: waived at qa.level minimal; retained screenshots in `production/qa/evidence/story-031-change-subject-pause/`
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- The C key also opens the chooser from the single-player pause menu (C is crouch in play; read only while paused); the button reads "Cambiar asignatura (C)", without the letter on touch; single-player pause rows at y 366/426/486/546, class menu unchanged; the chooser lists the CSV only when one is loaded (`src/main.ts`) · kept 2026-11-20
+- "Próxima partida" compares subject and contents (`createMatch`'s label); two lines, the next in yellow; chooser: arrows wrap, choosing returns to the pause menu, Backspace does nothing, texts "Vale para la próxima partida; la de ahora sigue igual" and "Arriba / Abajo e Intro para elegir" (`src/main.ts`) · kept 2026-11-20
