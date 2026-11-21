@@ -38,7 +38,11 @@ import { LEVELS, type Level } from '../game/types';
 //     name for it, '' for none); the teacher's new `trename` {room, name} names a room (trimmed; blank clears; over aula.json's teacher_room_name_max is refused).
 // 19: each `tinfo` mode carries its traits (bomb, teams, coop, solo; MODE_INFO), so the teacher page asks for a trait, not the mode's id
 //     (TD-017). The teacher page's own version is filled in from PROTOCOL_VERSION when the server serves it (TD-019).
-export const PROTOCOL_VERSION = 19;
+// 20: the results countdown and room votes (story 029): the student's new `vote` {mode?, map?, ready?} (an explicit vote for the next mode and/or map, or the
+//     Continuar mark `ready: true`; refused with 'bad_vote' when the room is not in its vote window or the mode or map does not fit); the server's new `vote`
+//     {vote: VoteView | null} (the countdown left on the SERVER's clock in ms, the tally, who is ready, the student's own choices; null = no vote open), sent after every
+//     `joined` and whenever the vote changes; the teacher's new `tauto` {on} ("Reinicio automático"), `tstate` session carries `autoRestart` and a teacher room carries `vote`.
+export const PROTOCOL_VERSION = 20;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -76,8 +80,13 @@ export interface InputMessage {
 }
 /** Client to server: a line check; the server answers pong. */
 export interface PingMessage { v: number; t: 'ping' }
+/**
+ * Client to server (protocol 20, story 029): a vote in the room's results window. `mode` and `map` are explicit votes for the next match (the server
+ * checks them against the room); `ready: true` is the Continuar mark, not a vote. At least one of the three.
+ */
+export interface VoteCastMessage { v: number; t: 'vote'; mode?: GameModeId; map?: string; ready?: true }
 /** Every message a client may send. */
-export type ClientMessage = HelloMessage | InputMessage | PingMessage | LeaveMessage;
+export type ClientMessage = HelloMessage | InputMessage | PingMessage | LeaveMessage | VoteCastMessage;
 
 /** A seat's state: a bot plays it, a student plays it, or it waits for a student. */
 export type SeatKind = 'bot' | 'human' | 'open';
@@ -160,6 +169,8 @@ export const MODE_INFO: Record<GameModeId, ModeInfo> = {
   duel: { name: 'Duelo por equipos', bomb: false, teams: true, coop: false, solo: false },
   waves: { name: 'Oleadas cooperativas', bomb: false, teams: false, coop: true, solo: false },
 };
+/** The most students a room can seat in this mode: Oleadas cooperativas takes SEATS_PER_TEAM, the others every seat (story 029: a mode cannot be voted when the room has more students). */
+export const studentSeats = (id: GameModeId): number => (MODE_INFO[id].coop ? SEATS_PER_TEAM : SEATS);
 /** The mode after `id` in GAME_MODES (the session screen's mode button cycles them). */
 export const nextMode = (id: GameModeId): GameModeId => GAME_MODES[(GAME_MODES.indexOf(id) + 1) % GAME_MODES.length];
 const isMode = (v: unknown): v is GameModeId => (GAME_MODES as readonly unknown[]).includes(v);
@@ -261,12 +272,27 @@ export interface ResultsMessage {
 }
 /** The most topic rows one `results` message holds. */
 export const RESULT_TOPICS_MAX = 64;
-export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongMessage | ErrorMessage | BeginMessage | SnapMessage | ResultsMessage;
+/**
+ * A teacher room's vote window as one student sees it (protocol 20, story 029). `left` is the time left in ms on the SERVER's clock when it was
+ * sent: the page counts down from it with its own clock and starts again from the next message. `mode` and `map` are what the room just played
+ * (kept on a tie or no votes); `modes` and `maps` count the explicit votes of the connected students (a mode not in `fits` is never counted);
+ * `next` is what would start now; `ready` of `students` connected students pressed Continuar.
+ */
+export interface VoteView {
+  left: number; mode: GameModeId; map: string; fits: GameModeId[];
+  modes: Record<string, number>; maps: Record<string, number>;
+  next: { mode: GameModeId; map: string }; ready: number; students: number;
+  /** This student's own explicit votes ('' for none) and whether they pressed Continuar. */
+  mine: { mode: GameModeId | ''; map: string; ready: boolean };
+}
+/** Server to student: the vote window of the student's room (null: none open). Sent after every `joined` and when the vote changes or closes. */
+export interface VoteMessage { v: number; t: 'vote'; vote: VoteView | null }
+export type ServerMessage = WelcomeMessage | JoinedMessage | RoomMessage | PongMessage | ErrorMessage | BeginMessage | SnapMessage | ResultsMessage | VoteMessage;
 
 /** Why a message was refused. */
 export type ErrorCode = 'too_big' | 'not_text' | 'not_json' | 'bad_shape' | 'bad_version' | 'bad_type' | 'bad_field' | 'bad_name'
   | 'rate_limited' | 'need_hello' | 'server_full'
-  | 'name_empty' | 'sin_cupo' | 'not_teacher';
+  | 'name_empty' | 'sin_cupo' | 'not_teacher' | 'bad_vote';
 /** The sentence a page shows for each error, in Spanish. */
 export const ERROR_TEXT: Record<ErrorCode, string> = {
   too_big: 'Mensaje demasiado grande.',
@@ -282,6 +308,7 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   server_full: 'El servidor está lleno.',
   name_empty: 'Escribe tu nombre para entrar.',
   not_teacher: 'Ese mensaje es solo del profesor.',
+  bad_vote: 'Ese voto no se puede hacer ahora.',
   sin_cupo: 'No queda ningún sitio libre en las salas. Avisa al profesor.',
 };
 
@@ -307,7 +334,7 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   closeShop: isBool, closeCard: isBool, spectate: isBool, spectateKey: isBool,
 };
 /** The keys each message type may carry; any other key refuses the message. */
-const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin', 'token'], input: ['v', 't', 'seq', 'input'], ping: ['v', 't'], leave: ['v', 't'] };
+const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin', 'token'], input: ['v', 't', 'seq', 'input'], ping: ['v', 't'], leave: ['v', 't'], vote: ['v', 't', 'mode', 'map', 'ready'] };
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]*$/u;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -325,10 +352,18 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
   if (raw.v !== PROTOCOL_VERSION) return { ok: false, code: 'bad_version' };
   const t = raw.t;
   if (typeof t === 'string' && (TEACHER_TYPES as readonly string[]).includes(t)) return { ok: false, code: 'not_teacher' };
-  if (t !== 'hello' && t !== 'input' && t !== 'ping' && t !== 'leave') return { ok: false, code: 'bad_type' };
+  if (t !== 'hello' && t !== 'input' && t !== 'ping' && t !== 'leave' && t !== 'vote') return { ok: false, code: 'bad_type' };
   if (Object.keys(raw).some(k => !KEYS[t].includes(k))) return { ok: false, code: 'bad_shape' };
   if (t === 'ping') return { ok: true, msg: { v: PROTOCOL_VERSION, t } };
   if (t === 'leave') return { ok: true, msg: { v: PROTOCOL_VERSION, t } };
+  if (t === 'vote') {
+    const msg: VoteCastMessage = { v: PROTOCOL_VERSION, t };
+    if (raw.mode !== undefined) { if (!isMode(raw.mode)) return { ok: false, code: 'bad_field' }; msg.mode = raw.mode; }
+    if (raw.map !== undefined) { if (typeof raw.map !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(raw.map)) return { ok: false, code: 'bad_field' }; msg.map = raw.map; }
+    if (raw.ready !== undefined) { if (raw.ready !== true) return { ok: false, code: 'bad_field' }; msg.ready = true; }
+    if (msg.mode === undefined && msg.map === undefined && !msg.ready) return { ok: false, code: 'bad_field' };
+    return { ok: true, msg };
+  }
   if (t === 'hello') {
     // Trimmed, and runs of spaces become one, so "Ana  M" and "Ana M" are the same name.
     const name = typeof raw.name === 'string' ? raw.name.trim().replace(/ {2,}/g, ' ') : '';
@@ -427,6 +462,15 @@ export function parseServerMessage(text: string): ServerMessage | null {
         kills: raw.kills as number, deaths: raw.deaths as number,
         topics: (raw.topics as Record<string, unknown>[]).map(r => ({ tp: r.tp as string, lv: r.lv as string, right: r.right as number, wrong: r.wrong as number })) };
     }
+    case 'vote': {
+      if (raw.vote === null) return { v, t: 'vote', vote: null };
+      const x = raw.vote, counts = (o: unknown): o is Record<string, number> => isObject(o) && Object.values(o).every(n => isInt(n) && n >= 0);
+      const pick = (o: unknown): o is { mode: GameModeId; map: string } => isObject(o) && isMode(o.mode) && isStr(o.map);
+      if (!isObject(x) || !isInt(x.left) || x.left < 0 || !isMode(x.mode) || !isStr(x.map) || !Array.isArray(x.fits) || !x.fits.every(isMode) || !counts(x.modes) || !counts(x.maps)
+        || !pick(x.next) || !isInt(x.ready) || !isInt(x.students) || !isObject(x.mine) || !(x.mine.mode === '' || isMode(x.mine.mode)) || !isStr(x.mine.map) || typeof x.mine.ready !== 'boolean') return null;
+      return { v, t: 'vote', vote: { left: x.left, mode: x.mode, map: x.map, fits: [...x.fits] as GameModeId[], modes: { ...x.modes }, maps: { ...x.maps },
+        next: { mode: x.next.mode, map: x.next.map }, ready: x.ready, students: x.students, mine: { mode: x.mine.mode as GameModeId | '', map: x.mine.map, ready: x.mine.ready } } };
+    }
     case 'welcome': return Array.isArray(raw.rooms) && raw.rooms.every(isRoomInfo) ? { v, t: 'welcome', rooms: raw.rooms.map(r => ({ ...r })) } : null;
     default: return null;
   }
@@ -442,7 +486,7 @@ export const TEACHER_PATH = '/profesor';
 /** The teacher's WebSocket path (accepted only from loopback). */
 export const TEACHER_WS_PATH = '/ws-profesor';
 /** Every message type only the teacher may send. */
-export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear', 'trename'] as const;
+export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear', 'trename', 'tauto'] as const;
 
 /**
  * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
@@ -463,6 +507,8 @@ export type RoomAction = 'start' | 'pause' | 'resume' | 'end' | 'remove';
 export interface TRoomMessage { v: number; t: 'troom'; room: string; action: RoomAction }
 /** Teacher to server: name a room ("3.º A"); the server trims it, a blank name clears it, one over the limit is refused (protocol 18). */
 export interface TRenameMessage { v: number; t: 'trename'; room: string; name: string }
+/** Teacher to server: the "Reinicio automático" switch (protocol 20, story 029): on, a teacher room whose match ends by itself votes and restarts; off, it waits for Iniciar and a vote in progress is cancelled. */
+export interface TAutoMessage { v: number; t: 'tauto'; on: boolean }
 /** Teacher to server: start every waiting room, or end every room. */
 export interface TAllMessage { v: number; t: 'tall'; action: 'start' | 'end' }
 /** Teacher to server: "Exportar CSV": asks for the results as CSV text (answered with `texported`). */
@@ -470,7 +516,7 @@ export interface TExportMessage { v: number; t: 'texport' }
 /** Teacher to server: "Borrar resultados": forgets every student's results (a student mid-match counts from zero afterwards). */
 export interface TClearMessage { v: number; t: 'tclear' }
 /** Every message the teacher may send ('ping' is also accepted and answered with 'pong'). */
-export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRenameMessage | TRoomMessage | TAllMessage | TExportMessage | TClearMessage | PingMessage;
+export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRenameMessage | TRoomMessage | TAllMessage | TAutoMessage | TExportMessage | TClearMessage | PingMessage;
 
 /** The catalogue the form is built from, sent once on connect. */
 export interface TeacherInfoMessage {
@@ -501,7 +547,11 @@ export interface TeacherRoom {
   summary: string;
   /** The room's last finished match, in Spanish (protocol 17), e.g. "Marcador final 8 – 5 · partida terminada"; '' before the first. */
   last: string;
+  /** The room's vote window (protocol 20, story 029); null when none is open. */
+  vote: TeacherVote | null;
 }
+/** A room's vote as the teacher sees it: the whole seconds left, the connected students and how many pressed Continuar, the tally, and what would start now. */
+export interface TeacherVote { left: number; ready: number; students: number; modes: Record<string, number>; maps: Record<string, number>; next: { mode: GameModeId; map: string } }
 /** One student on the server. `connected` is false while their seat is held for a rejoin. `room` is '' when unseated. */
 export interface TeacherStudent { id: number; name: string; connected: boolean; room: string; seat: number; team: number }
 /** The session as set (applied to every room's next match). */
@@ -511,6 +561,8 @@ export interface TeacherSession {
   friendlyFire: boolean; buyTime: number; streakRewards: boolean;
   /** The game mode (story 019). */
   mode: GameModeId;
+  /** "Reinicio automático" (protocol 20, story 029): teacher rooms vote and restart by themselves when a match ends by itself. */
+  autoRestart: boolean;
   /** The CSV loaded (null for none): kept when another subject is chosen. */
   csv: { name: string; count: number; skipped: number } | null;
   /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
@@ -541,7 +593,7 @@ export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; cod
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
   tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards', 'mode'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
-  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], trename: ['v', 't', 'room', 'name'], ping: ['v', 't'],
+  tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], trename: ['v', 't', 'room', 'name'], tauto: ['v', 't', 'on'], ping: ['v', 't'],
 };
 /**
  * Checks one text frame from the teacher's connection: size, JSON, version, type, exact keys and each field's
@@ -564,6 +616,7 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'taddroom': return { ok: true, msg: { v, t: 'taddroom' } };
     case 'texport': return { ok: true, msg: { v, t: 'texport' } };
     case 'tclear': return { ok: true, msg: { v, t: 'tclear' } };
+    case 'tauto': return typeof raw.on === 'boolean' ? { ok: true, msg: { v, t: 'tauto', on: raw.on } } : bad;
     case 'tsession':
       if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
       if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;

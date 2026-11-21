@@ -9,7 +9,7 @@
 // again with the name the server gave, so the student gets the same seat back. A page reload does the same
 // from the join screen: savedName() prefills the name and connect() with it returns the held seat.
 // Nothing is stored but the typed name, in localStorage, wrapped in try/catch (it may be blocked).
-import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type ResultsMessage, type RoomMessage, type SnapMessage } from './protocol';
+import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type ResultsMessage, type RoomMessage, type SnapMessage, type VoteCastMessage, type VoteMessage } from './protocol';
 import { idleInput, type PlayerInput } from '../game/player';
 
 /** Why the connection ended for good. */
@@ -48,6 +48,8 @@ export interface ConnectOptions {
   onEvents?: (events: SnapMessage['e']) => void;
   /** The student's OWN results for the match that ended (once a match: after its matchEnd snapshot, or when the teacher ends the room). */
   onResults?: (m: ResultsMessage) => void;
+  /** The vote window of the student's room opened, changed or closed (story 029): `vote` null means none is open. Sent after every join and rejoin too. */
+  onVote?: (m: VoteMessage) => void;
   /**
    * Testing only: milliseconds every message waits, each way, before it is sent or read (so 100 gives a 200 ms
    * round trip). By default the page address's ?retraso=<ms> (0 to 1000), else 0.
@@ -64,6 +66,8 @@ export interface Connection {
   name(): string;
   /** Sends one step's controls with its seq (from predict()); only the fields that are not idle travel. Dropped while not connected. */
   sendInput(seq: number, input: PlayerInput): void;
+  /** Sends a vote for the next mode and/or map, or the Continuar mark (story 029); the server answers with the new `vote`, or refuses it. Dropped while not connected. */
+  sendVote(vote: Pick<VoteCastMessage, 'mode' | 'map' | 'ready'>): void;
 }
 
 /** The ?retraso=<ms> of the page address, 0 to 1000 (0 outside a browser). */
@@ -140,6 +144,7 @@ export function connect(opts: ConnectOptions): Connection {
       else if (m.t === 'begin') opts.onBegin?.(m);
       else if (m.t === 'snap') { opts.onSnapshot?.(m); if (m.e.length) opts.onEvents?.(m.e); }
       else if (m.t === 'results') opts.onResults?.(m);
+      else if (m.t === 'vote') opts.onVote?.(m);
       else if (m.t === 'error') {
         opts.onError?.({ code: m.code, text: m.text });
         if (FATAL.includes(m.code)) finish('refused');
@@ -165,6 +170,7 @@ export function connect(opts: ConnectOptions): Connection {
     },
     close: () => finish('closed'),
     name: () => name,
+    sendVote(vote) { if (ws && seated) sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'vote', ...vote })); },
     sendInput(seq, input) { if (ws && seated) sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'input', seq, input: compact(input) })); },
   };
 }

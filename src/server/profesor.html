@@ -20,6 +20,8 @@
   #statusbar .stat b { color: var(--text); }
   #statusbar .addr { color: var(--soft); min-width: 0; overflow-wrap: anywhere; }
   #statusbar .addr b { color: var(--gold); }
+  #statusbar .auto { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text); }
+  .room .vote { margin: 4px 0; padding: 6px 10px; border-radius: 8px; background: #3d2a12; color: var(--warn); border: 1px solid #a8913f; font-size: 14px; }
   #statusbar .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
   #statusbar button { padding: 4px 10px; font-size: 14px; }
   /* Notices (story 026): a student left or came back; each goes away by itself. */
@@ -129,6 +131,7 @@
   <span class="stat" id="st-rooms">Salas: —</span>
   <span class="stat" id="st-game">Modo: — · Mapa: —</span>
   <span class="addr" id="st-addr"></span>
+  <label class="auto"><input type="checkbox" id="auto" checked> Reinicio automático</label>
   <div class="btns">
     <button id="all-start" type="button" class="main">Iniciar todas</button>
     <button id="all-end" type="button">Terminar todas</button>
@@ -307,6 +310,7 @@ function render() {
     + `<div class="meta">${!modeOf(r.mode).bomb ? esc(r.summary) : `Marcador final <strong>${r.score[0]} – ${r.score[1]}</strong>`}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('') + '</div>' : '');
 
   renderBar(live, on);
+  $('auto').checked = st.session.autoRestart;
   noticeChanges();
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
@@ -358,6 +362,13 @@ function initFolds() {
 }
 initFolds();
 
+/** A room's vote as one line (story 029): the tally by mode and by map, and what starts if it ended now. */
+function voteText(v) {
+  const modes = ((info && info.modes) || []).filter(m => v.modes[m.id]).map(m => `${esc(m.name)} ${v.modes[m.id]}`);
+  const maps = Object.keys(v.maps).filter(id => v.maps[id]).map(id => `${esc(mapName(id))} ${v.maps[id]}`);
+  const votes = modes.concat(maps);
+  return `${votes.length ? 'Votos: ' + votes.join(' · ') : 'Sin votos'} · Siguiente: <strong>${esc(modeOf(v.next.mode).name)}</strong> en <strong>${esc(mapName(v.next.map))}</strong>`;
+}
 function roomCard(r) {
   const ffa = !modeOf(r.mode).teams; // story 023 (025: Oleadas cooperativas too): one group of players, no team headings or team score
   const targets = st.rooms.filter(q => q.seats.length && (q.status === 'waiting' || q.status === 'running' || q.status === 'paused'));
@@ -377,11 +388,12 @@ function roomCard(r) {
   const title = renaming === r.id ? `<input class="rn" data-rename="${esc(r.id)}" value="${esc(r.name)}" placeholder="${esc(roomNumber(r.id))}" aria-label="Nombre de la sala (Intro guarda, Esc cancela)">`
     : `<b>${esc(roomName(r.id))}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(roomName(r.id))}">Renombrar</button>`;
   return `<div class="room s-${r.status}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
-    + `<span class="hint">Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
+    + `<span class="hint">Modo ${esc(modeOf(r.mode).name || r.mode)} · Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
     + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : !modeOf(r.mode).bomb ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    + (r.vote ? `<div class="vote" role="status">Votación: quedan <strong>${r.vote.left} s</strong> · Listos ${r.vote.ready} de ${r.vote.students} · ${voteText(r.vote)}</div>` : '')
     + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
-    + b('end', 'Terminar', played) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';
+    + b('end', 'Terminar', played || !!r.vote) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';
 }
 
 /** The percent right as text ("—" with no answers). */
@@ -562,6 +574,7 @@ $('rooms').addEventListener('click', e => {
 });
 $('all-start').onclick = () => send('tall', { action: 'start' });
 $('all-end').onclick = () => { if (confirm('¿Terminar todas las salas?')) send('tall', { action: 'end' }); };
+$('auto').onchange = () => send('tauto', { on: $('auto').checked });
 $('split').onclick = () => send('tsplit');
 $('add').onclick = () => send('taddroom');
 connect();

@@ -1,0 +1,13 @@
+Reviewed-Content-Hash: src/net/protocol.ts 2f72555593742ad5d1a4fd85c5c414bae3d66191
+Reviewed-Content-Hash: src/net/client.ts 4a433b32985d34d1f8172e05338c70873109a00d
+Reviewed-Content-Hash: src/server/room.ts 20507bd7978db35a3eb6f1c57faf198f491f22db
+Reviewed-Content-Hash: src/server/rooms.ts 7a9217b3959472ae7233b237bf0c7ed4ec886511
+Reviewed-Content-Hash: src/server/lobby.ts efd7f96d29c229e93e780cc2640b66fafcb6043c
+Reviewed-Content-Hash: src/server/net.ts 3dcfed78567dd3f2d68640916f22b1b3e24448b9
+Reviewed-Content-Hash: src/server/teacher.ts fd40cf7e26823739b258011dd72f808b1c226b6b
+Reviewed-Content-Hash: src/server/profesor.html 207ab882db856b1e33770cb4a13815ec5c5bab5f
+Reviewed-Content-Hash: src/server/aula.ts 9e7834f07f978a6ae9721408e9ee14f8eb917455
+Reviewed-Content-Hash: src/session-screen.ts 67f13fda7417524ccad62e5a6e9e426051964f04
+Reviewed-Content-Hash: src/main.ts 65d2a018270518388156b6d279e12b7ea89cb503
+Reviewed-Content-Hash: data/aula.json ea00b6d75a0b15bef26668469a36ab9dcf2ef43c
+Reviewed-Content-Hash: data/config-notes.md 7ab67b25ab045cf0a1cf62b9e013b3c026ad57b2

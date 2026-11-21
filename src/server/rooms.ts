@@ -4,12 +4,12 @@
 // room cannot starve the others. An exception in a room fails that room only.
 import { STEP } from '../game/match';
 import { MAP_IDS } from '../game/map';
-import { newRoom, stepRoom, roomInfo, type Room, type RoomSpec, type PlayLimits } from './room';
-import type { RoomInfo } from '../net/protocol';
+import { newRoom, stepRoom, roomInfo, voteView, votersOf, type Room, type RoomSpec, type PlayLimits } from './room';
+import type { GameModeId, RoomInfo, VoteView } from '../net/protocol';
 import type { Results } from './results';
 
 /** The limits the manager runs with (data/aula.json). */
-export interface RoomLimits { tickBudgetMs: number; maxCatchupSteps: number; maxBacklogSteps: number; emptyGraceS: number; play: PlayLimits }
+export interface RoomLimits { tickBudgetMs: number; maxCatchupSteps: number; maxBacklogSteps: number; emptyGraceS: number; /** Seconds a teacher room's vote window lasts (rematch_vote_s). */ voteS: number; play: PlayLimits }
 /** What the manager needs from outside: a clock in ms and two logs (plain and rate-limited). */
 export interface RoomDeps { clockMs: () => number; log: (line: string) => void; warn: (kind: string, line: string) => void; /** Where students' counts go (memory only); omit for rooms that count nothing. */ results?: Results }
 
@@ -47,6 +47,15 @@ export interface Rooms {
   onRetired: ((room: Room) => void) | null;
   /** Called when a teacher room's match ended and the room waits again (the teacher pushes its new state to its students); null for none. */
   onReopened: ((room: Room) => void) | null;
+  /** Story 029: "Reinicio automático". On (the start), a teacher room whose match ends by itself opens a vote window; off, it waits for the teacher's start. */
+  autoRestart: boolean;
+  /** The room's vote window as the student in seat `seat` (-1: nobody) sees it, with the time left on this manager's clock; null when none is open. */
+  voteView(room: Room, seat?: number): VoteView | null;
+  /**
+   * Called when a vote window closes with students to play (the countdown reached 0, or every connected student pressed Continuar), with the mode and map
+   * that won; the room is 'waiting' and `room.vote` is already null. The teacher starts the next match from it; null for none (the room just waits).
+   */
+  onVoteDone: ((room: Room, next: { mode: GameModeId; map: string }) => void) | null;
 }
 
 /** The match choices a room gets unless told otherwise. */
@@ -71,7 +80,7 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
    * A teacher room's match ended (won, or ended by the teacher): its students get their results while the seats are still
    * theirs, a copy of the room as it ended goes to `finished`, and the room waits again with the same seats for the next start.
    */
-  const reopen = (room: Room): void => {
+  const reopen = (room: Room, byItself: boolean): void => {
     rooms.onRetired?.(room);
     if (!room.match.over) room.matches++; // a match the teacher ended counts as played too
     const copy: Room = { ...room, seats: room.seats.map(s => ({ ...s })), prev: null };
@@ -81,13 +90,31 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
     Object.assign(room, { status: 'waiting', reason: '', prev: copy, owed: 0, lastT: nowS(), report: null, last: null });
     room.pending.length = 0;
     room.matchNo++; // the next start is a new match to every student (a new begin)
+    // Story 029: a match that ended by itself (not the teacher's "Terminar") with someone to vote opens the vote window; the room stays 'waiting' meanwhile.
+    if (byItself && rooms.autoRestart && votersOf(room).length) room.vote = { endsAtS: nowS() + lim.voteS, votes: new Map() };
     rooms.onReopened?.(room);
+  };
+  /**
+   * Closes a room's vote window when its countdown ran out or every connected student pressed Continuar. With students to play and a teacher to
+   * start the match, `onVoteDone` gets the winners; otherwise the room just waits again.
+   */
+  const settleVote = (room: Room, t: number): void => {
+    const voters = votersOf(room), vote = room.vote!;
+    const allReady = voters.length > 0 && voters.every(s => vote.votes.get(s.index)?.ready);
+    if (!allReady && t < vote.endsAtS) return;
+    const next = voteView(room, -1, t)!.next;
+    room.vote = null;
+    deps.log(`Sala ${room.id}: votación cerrada (${allReady ? 'todos listos' : 'se acabó el tiempo'}, ${voters.length} alumnos); ${voters.length && rooms.onVoteDone ? `empieza ${next.mode} en ${next.map}` : 'espera al profesor'}`);
+    if (voters.length) rooms.onVoteDone?.(room, next);
   };
   const rooms: Rooms = {
     finished,
     onStepped: null,
     onRetired: null,
     onReopened: null,
+    autoRestart: true,
+    onVoteDone: null,
+    voteView: (room, seat = -1) => voteView(room, seat, nowS()),
     create(spec = {}) {
       const id = `sala-${++made}`;
       const full: RoomSpec = {
@@ -103,13 +130,13 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
       const room = live.get(id);
       if (!room) return false;
       room.status = 'ended'; room.reason = reason;
-      if (room.managed) reopen(room); else retire(room);
+      if (room.managed) reopen(room, false); else retire(room);
       return true;
     },
     close(id, reason = 'quitada') {
       const room = live.get(id);
       if (!room) return false;
-      room.status = 'ended'; room.reason = reason;
+      room.status = 'ended'; room.reason = reason; room.vote = null;
       retire(room);
       return true;
     },
@@ -130,6 +157,7 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
       const all = [...live.values()];
       if (!all.length) return;
       const start = deps.clockMs(), t = start / 1000;
+      for (const room of all) if (room.vote) settleVote(room, t);
       for (const room of all) {
         if (room.status === 'waiting' || room.status === 'paused') { room.owed = 0; room.lastT = t; continue; }
         room.owed += t - room.lastT; room.lastT = t;
@@ -154,7 +182,7 @@ export function createRooms(lim: RoomLimits, deps: RoomDeps): Rooms {
           room.reason = `error en la simulación: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`;
           if (process.env.AULA_DEPURAR && err instanceof Error) deps.log(err.stack ?? '');
         }
-        if (room.status === 'ended' && room.managed) reopen(room);
+        if (room.status === 'ended' && room.managed) reopen(room, true);
         else if (room.status === 'ended' || room.status === 'failed') retire(room);
         else if (!room.managed && room.status === 'running' && room.emptySince >= 0 && t - room.emptySince >= lim.emptyGraceS) { room.status = 'ended'; room.reason = 'sala vacía'; retire(room); }
       }

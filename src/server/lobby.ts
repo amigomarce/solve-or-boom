@@ -7,9 +7,9 @@
 // when the first is connected ("Ana", "Ana (2)"), but if the first one's connection dropped the second takes
 // the seat that was held for them. That is accepted; nothing but a name identifies anybody.
 // Names live in memory only and are never logged: the log lines here carry connection ids and counts.
-import { PROTOCOL_VERSION, errorMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type RoomView, type SeatView, type ServerMessage } from '../net/protocol';
+import { PROTOCOL_VERSION, errorMessage, type ErrorCode, type JoinedMessage, type RoomMessage, type RoomView, type SeatView, type ServerMessage, type VoteMessage } from '../net/protocol';
 import { MODE_INFO, SEATS_PER_TEAM, type TeacherStudent } from '../net/protocol';
-import { takeSeat, leaveSeat, setPresent, type Room } from './room';
+import { takeSeat, leaveSeat, setPresent, rebuildMatch, type Room, type RoomSpec } from './room';
 import type { Rooms } from './rooms';
 
 /** The lobby's settings (data/aula.json). */
@@ -54,6 +54,12 @@ export interface Lobby {
   move(id: number, roomId: string, team: number, seat?: number): string;
   /** Pushes a room's seating and state to its connected students (call after the room's status changed). */
   refresh(room: Room): void;
+  /**
+   * Story 029: seats every student of `room` again for `choices.mode` (teams alternating in Bomba and Duelo, in order from seat 0 in Free for All and
+   * Oleadas), in the order of their old seats, and rebuilds the room's match with `choices` and `seed`. Only for a waiting room whose students all fit the
+   * mode. Held students (connection dropped) are seated too, played by a bot until they return. Each connected student gets a new `joined`.
+   */
+  reseat(room: Room, choices: RoomSpec['match'], seed: number): void;
 }
 
 /** A student: the unique name, the seat, and the connection (null while the seat is held). */
@@ -75,14 +81,21 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       ? { index: s.index, team: s.team, kind: 'human', name: s.name } : { index: s.index, team: s.team, kind: 'bot', name: `Bot ${s.index + 1}` })),
   });
   /** Pushes the room's seating to its connected students, except `skip`. */
+  const voteOf = (st: Student): VoteMessage => ({ v: PROTOCOL_VERSION, t: 'vote', vote: deps.rooms.voteView(st.room, st.seat) });
+  /** The rooms whose students were told a vote is open (story 029): when it closes they are told once. */
+  const voting = new Set<Room>();
+  /** Pushes the room's seating to its connected students, except `skip`, and with it their own view of the room's vote window (story 029). */
   const push = (room: Room, skip = -1): void => {
     const msg: RoomMessage = { v: PROTOCOL_VERSION, t: 'room', ...view(room) };
-    for (const st of byConn.values()) if (st.room === room && st.connId !== skip) deps.send(st.connId!, msg);
+    const tell = room.vote || voting.has(room);
+    if (room.vote) voting.add(room); else voting.delete(room);
+    for (const st of byConn.values()) if (st.room === room && st.connId !== skip) { deps.send(st.connId!, msg); if (tell) deps.send(st.connId!, voteOf(st)); }
   };
   const joined = (st: Student): void => {
     const seat = st.room.seats[st.seat];
     const msg: JoinedMessage = { v: PROTOCOL_VERSION, t: 'joined', you: { name: st.name, room: st.room.id, seat: st.seat, team: seat.team }, room: view(st.room) };
     deps.send(st.connId!, msg);
+    deps.send(st.connId!, voteOf(st)); // a student who reloads during a vote comes back to it, with its time left and tally
   };
   /** Forgets a student and frees their seat (the seat is a bot again). */
   const release = (st: Student): void => {
@@ -144,11 +157,26 @@ export function createLobby(lim: LobbyLimits, deps: LobbyDeps): Lobby {
       if (!st) return;
       byConn.delete(connId); st.connId = null;
       setPresent(st.room, st.seat, false); // a bot plays the seat until they come back
+      if (st.room.vote) push(st.room); // the others' count of connected students and of Continuar changes
       st.holdUntilS = nowS() + lim.rejoinGraceS; // the seat stays the student's (and shown as theirs) until tick() runs out the grace
     },
     has: connId => byConn.has(connId),
     idOf: connId => byConn.get(connId)?.id,
     refresh: room => push(room),
+    reseat(room, choices, seed) {
+      const here = [...byKey.values()].filter(st => st.room === room).sort((a, b) => a.seat - b.seat);
+      const owners = here.map(st => room.seats[st.seat].owner!);
+      for (const owner of owners) leaveSeat(room, owner, nowS());
+      rebuildMatch(room, choices, seed); // the new mode first: takeSeat reads its seat rule from the room's match
+      const teams = MODE_INFO[room.match.opts.mode].teams; // the rebuilt match carries the new mode
+      here.forEach((st, j) => {
+        const taken = takeSeat(room, owners[j], st.name, teams ? (j % 2) * SEATS_PER_TEAM + Math.floor(j / 2) : j)!;
+        st.seat = taken.index;
+        if (st.connId === null) setPresent(room, taken.index, false); // held: a bot plays until they come back
+        else joined(st);
+      });
+      push(room);
+    },
     list: () => [...byKey.values()].sort((a, b) => a.id - b.id).map((st): TeacherStudent => ({
       id: st.id, name: st.name, connected: st.connId !== null, room: st.room.id, seat: st.seat, team: st.room.seats[st.seat].team })),
     move(id, roomId, team, seat) {

@@ -13,7 +13,7 @@ import type { Rooms } from './rooms';
 import type { Room } from './room';
 import { STEP } from '../game/match';
 import { createLobby } from './lobby';
-import { queueInput, ackOf } from './room';
+import { queueInput, ackOf, castVote } from './room';
 import { buildSnapshot } from '../net/snapshot';
 import { nameKey, newTally, type Results } from './results';
 
@@ -265,6 +265,10 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
       if (msg.t === 'leave') { accepted++; lobby.leave(c.id); return; }
       const at = lobby.where(c.id);
       if (!at) { if (msg.t === 'input' && c.named) return; refuse(ws, c, 'need_hello'); return; } // inputs still on the way when the student's room ended: dropped quietly, no error on the student's page
+      if (msg.t === 'vote') { // story 029: only a student seated in a room in its vote window, with a mode that fits and a map that exists
+        if (!castVote(at.room, at.seat, msg)) { refuse(ws, c, 'bad_vote'); return; }
+        accepted++; lobby.refresh(at.room); return;
+      }
       accepted++;
       if (at.room.status === 'running') queueInput(at.room, at.seat, msg.seq, msg.input);
     });

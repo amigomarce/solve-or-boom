@@ -11,7 +11,7 @@ import { buttons } from './input';
 import { TOUCH } from './touch';
 import { bind, keyName } from './keys';
 import { type ButtonOpts, FONT, H, W, button, clear, clip, ctx, rr, text, wrapText } from './screen';
-import { type GameModeId, MODE_INFO, SEATS_PER_TEAM } from './net/protocol';
+import { GAME_MODES, type GameModeId, MODE_INFO, SEATS_PER_TEAM, studentSeats } from './net/protocol';
 import { CLASS_MODE, NAME_MAX, ROOM_STATE, SUBJECT_LIST, _v, aula, menuSel, net, project, resultsCountdown, session, state, step, titleT } from './main';
 import { SIDE_CSS, SIDE_HEX, camera, lam, makeBomb, makeSoldier, poseSoldier, renderer, setSide, viewGuns, world } from './scene3d';
 
@@ -159,11 +159,14 @@ export function drawWaiting() {
       if (me) text('Tú', px + 552, iy, 18, '#ffd06a', 'right');
     });
   }
-  if (aula.retry) {
-    rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
-    text(aula.retry, W / 2, 598, 20, '#ffe28a');
-  } else text(ROOM_RULES[room.mode], W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
-  button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
+  if (aula.vote) { drawVoteStrip(40, 568, 1200, false); button(1040, 28, 200, 50, 'Salir', 'leave', { size: 22 }); } // story 029: a student who reloaded in the vote window
+  else {
+    if (aula.retry) {
+      rr(340, 574, 600, 48, 12, '#4a3210', '#ffb366', 2);
+      text(aula.retry, W / 2, 598, 20, '#ffe28a');
+    } else text(ROOM_RULES[room.mode], W / 2, 598, 16, '#c8d2e6', 'center', 'normal');
+    button(40, 642, 200, 56, 'Salir', 'leave', { size: 22 });
+  }
   if (room.state === 'ended') button(W / 2 - 230, 642, 460, 56, TOUCH ? 'Volver a la pantalla de entrada' : 'Volver a la pantalla de entrada (Enter)', 'again', { size: 22, fill: '#e07a1c', stroke: '#7a3a08' });
 }
 export function drawTitle() {
@@ -294,8 +297,44 @@ export function drawResults() {
   text(state.subjectLabel || '', W / 2, 164, 17, '#c8d2e6', 'center', 'normal');
   if (CLASS_MODE) drawClassResults(); else if (ffa) drawPodium(260, 760); else if (waves) drawWavesTable(260, 760); else if (duel) drawDuelTable(260, 760, true); else drawSoloTable();
   if (!CLASS_MODE) drawResultsChoices();
+  if (CLASS_MODE && aula.vote) { drawVoteStrip(60, 582, 1160, true); return; } // story 029: the vote replaces the "Volver a la sala" button
   const enter = TOUCH || !CLASS_MODE ? '' : ' (Enter)', label = (!CLASS_MODE ? 'Volver a la pantalla de sesión' : net.mirror && net.mirror.match !== state ? 'Jugar la siguiente partida' : aula.room && aula.room.state !== 'ended' ? 'Volver a la sala' : 'Volver a la pantalla de entrada') + enter;
   button(W / 2 - 220, 600, 440, 62, label, 'menu', { size: 22 });
+}
+/**
+ * A teacher room's vote window (story 029), a strip 128 high at (x, y) and `w` wide: the countdown from the server's clock, one button per mode (a
+ * mode the room's students do not fit is greyed with its reason), one per map, the tally, Continuar and who is ready. The student's own votes are lit.
+ * `results` is true on the results screen (Enter is Continuar there). Buttons press 'vmode:<id>', 'vmap:<id>' and 'vready'.
+ */
+export function drawVoteStrip(x: number, y: number, w: number, results: boolean): void {
+  const v = aula.vote;
+  if (!v) return;
+  rr(x, y, w, 128, 14, 'rgba(14,19,30,0.92)', null);
+  const left = Math.max(0, Math.ceil((v.left - (performance.now() - v.at)) / 1000));
+  text('Siguiente partida en', x + 100, y + 22, 15, '#ffd06a');
+  text(`${left} s`, x + 100, y + 68, 44, '#fff');
+  text(`Listos: ${v.ready} de ${v.students}`, x + 100, y + 104, 14, '#c8d2e6', 'center', 'normal');
+  const win = `${MODE_INFO[v.next.mode].name} en ${MAPS[v.next.map]?.name ?? v.next.map}`;
+  const mx = x + 210, mw = w - 210 - 240;
+  text(clip(`Va ganando: ${win}. Gana el más votado; si hay empate o nadie vota, se repite.`, mw, 14, 'normal'), mx + mw / 2, y + 14, 14, '#c8d2e6', 'center', 'normal');
+  const row = (n: number, k: number, gap: number): [number, number] => { const bw = (mw - gap * (n - 1)) / n; return [mx + k * (bw + gap), bw]; };
+  GAME_MODES.forEach((m, k) => {
+    const [bx, bw] = row(GAME_MODES.length, k, 8), ok = v.fits.includes(m), mine = v.mine.mode === m, n = v.modes[m] ?? 0, name = MODE_INFO[m].name;
+    if (!ok) {
+      button(bx, y + 28, bw, 36, '', null, { fill: '#1a2030', stroke: '#2a3348' });
+      text(clip(name, bw - 12, 14, 'normal'), bx + bw / 2, y + 40, 14, '#6f7a8e', 'center', 'normal');
+      text(clip(`solo caben ${studentSeats(m)} alumnos`, bw - 12, 12, 'normal'), bx + bw / 2, y + 55, 12, '#ff9a8a', 'center', 'normal');
+    } else button(bx, y + 28, bw, 36, clip(n ? `${name} · ${n}` : name, bw - 12, 15), `vmode:${m}`, { size: 15, fill: mine ? '#ffd06a' : undefined, color: mine ? '#1b2232' : '#fff', stroke: mine ? '#fff3c4' : undefined });
+  });
+  const maps = Object.keys(v.maps);
+  maps.forEach((id, k) => {
+    const [bx, bw] = row(maps.length, k, 8), mine = v.mine.map === id, n = v.maps[id], name = MAPS[id]?.name ?? id;
+    button(bx, y + 70, bw, 34, clip(n ? `${name} · ${n}` : name, bw - 12, 15), `vmap:${id}`, { size: 15, fill: mine ? '#ffd06a' : undefined, color: mine ? '#1b2232' : '#fff', stroke: mine ? '#fff3c4' : undefined });
+  });
+  const tally = [...GAME_MODES.filter(m => v.modes[m]).map(m => `${MODE_INFO[m].name} ${v.modes[m]}`), ...maps.filter(id => v.maps[id]).map(id => `${MAPS[id]?.name ?? id} ${v.maps[id]}`)];
+  text(clip(tally.length ? `Votos: ${tally.join(' · ')}` : `Sin votos todavía: se repite ${MODE_INFO[v.mode].name} en ${MAPS[v.map]?.name ?? v.map}`, mw, 14, 'normal'), mx + mw / 2, y + 118, 14, '#c8d2e6', 'center', 'normal');
+  if (v.mine.ready) text('Listo: esperando a los demás', x + w - 120, y + 40, 17, '#9ff08a');
+  else button(x + w - 224, y + 12, 208, 56, TOUCH || !results ? 'Continuar' : 'Continuar (Enter)', 'vready', { size: 20, fill: '#e07a1c', stroke: '#7a3a08' });
 }
 /**
  * The mode choice button (story 028): "Modo: <name>", lit when the mode is not Bomba like the session screen's. Its press is `act`.

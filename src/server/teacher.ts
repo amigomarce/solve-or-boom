@@ -1,6 +1,11 @@
 // The teacher screen's brain (story 006): the session choices, the rooms the teacher manages, and what the teacher
 // sees. It has no network code: net.ts hands it each parsed TeacherMessage and sends what it returns.
 //
+// Story 029 (class votes): a teacher room whose match ends by itself opens a vote window (it is 'waiting' meanwhile, with `room.vote`); when it closes
+// the server does the teacher's "Iniciar" with the winning mode and map and the session's other options as they are then, seating the students
+// again when the mode changes. "Reinicio automático" (on by default) off: nothing is voted and a vote in progress is cancelled. "Terminar" (or
+// "Terminar todas") on a room in its vote window cancels the vote (the room waits for Iniciar); "Iniciar" closes it too.
+//
 // Rules chosen here (the story did not say):
 //  - The session (subject, level, topics, map, CSV, match options) applies to every room built or STARTED after it is set.
 //    A waiting room is rebuilt from the session at the moment it starts; a running or paused room keeps its match
@@ -72,13 +77,24 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   const make = (): Room | null => (deps.rooms.all().length >= lim.maxRooms ? null
     : deps.rooms.create({ managed: true, waiting: true, rematch: false, match: matchChoices(), seed: seed() }));
   /** Starts a waiting room with the session as it is now. */
-  const start = (room: Room): boolean => rebuildMatch(room, matchChoices(), seed()) && deps.rooms.transition(room.id, 'start');
+  const start = (room: Room): boolean => { room.vote = null; return rebuildMatch(room, matchChoices(), seed()) && deps.rooms.transition(room.id, 'start'); };
   const refresh = (room: Room | undefined): void => { if (room) deps.lobby.refresh(room); };
   deps.rooms.onReopened = room => refresh(room); // a teacher room waits again: its students' waiting rooms follow at once
+  /** Closes a room's vote window without a restart: the room waits for the teacher's start; its students are told. */
+  const cancelVote = (room: Room): void => { room.vote = null; refresh(room); };
+  // A vote window closed with students to play: the teacher's start, done by the server, with the winners and the session's other options. A changed
+  // mode seats the students again first; the match is then rebuilt so the seated students enter it as a start does (Free for All's shop).
+  deps.rooms.onVoteDone = (room, next) => {
+    const choices = { ...matchChoices(), mode: next.mode, map: next.map };
+    if (next.mode !== room.match.opts.mode) deps.lobby.reseat(room, choices, seed());
+    rebuildMatch(room, choices, seed());
+    deps.rooms.transition(room.id, 'start');
+    refresh(room);
+  };
 
   /** The mode changed (story 023): each waiting room is rebuilt with the session (its students keep their seats) and its students get the new seating; other rooms keep their match. */
   const followMode = (): void => {
-    for (const room of deps.rooms.all()) if (room.managed && room.status === 'waiting' && rebuildMatch(room, matchChoices(), seed())) refresh(room);
+    for (const room of deps.rooms.all()) if (room.managed && room.status === 'waiting' && !room.vote && rebuildMatch(room, matchChoices(), seed())) refresh(room);
   };
 
   const split = (): TeacherReply | null => {
@@ -151,14 +167,19 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       /** A finished match in one line: the mode's summary (Bomba: the final score), and why it ended. */
       const lastOf = (r: Room | null): string => !r ? ''
         : `${MODE_INFO[r.match.opts.mode].bomb ? `Marcador final ${r.match.score[0]} – ${r.match.score[1]}` : summaryOf(r)}${r.reason ? ' · ' + r.reason : ''}`;
+      const voteOf = (r: Room): TeacherRoom['vote'] => {
+        const w = r.vote && deps.rooms.voteView(r);
+        return w ? { left: Math.ceil(w.left / 1000), ready: w.ready, students: w.students, modes: w.modes, maps: w.maps, next: w.next } : null;
+      };
       const row = (r: Room, live: boolean): TeacherRoom => ({
         mode: r.match.opts.mode, summary: summaryOf(r), last: live ? lastOf(r.prev) : '',
+        vote: live ? voteOf(r) : null,
         id: r.id, name: deps.rooms.get(r.id)?.name ?? '', status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
-        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards, mode: session.mode,
+        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards, mode: session.mode, autoRestart: deps.rooms.autoRestart,
           csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
           available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
         results: deps.results.view(),
@@ -218,6 +239,7 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           const room = deps.rooms.get(msg.room);
           if (!room) return err('sala', 'Esa sala no existe o ya terminó.');
           const playing = room.status === 'running' || room.status === 'paused';
+          if (msg.action === 'end' && room.vote) { cancelVote(room); return null; }
           const ok = msg.action === 'end' ? playing && deps.rooms.end(room.id, 'terminada por el profesor')
             : msg.action === 'remove' ? room.status === 'waiting' && deps.rooms.close(room.id, 'quitada por el profesor')
             : msg.action === 'start' ? start(room) : deps.rooms.transition(room.id, msg.action);
@@ -225,9 +247,15 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
           refresh(room);
           return null;
         }
+        case 'tauto': {
+          deps.rooms.autoRestart = msg.on;
+          if (!msg.on) for (const room of deps.rooms.all()) if (room.vote) cancelVote(room);
+          deps.log(`Reinicio automático: ${msg.on ? 'activado' : 'desactivado'}`);
+          return null;
+        }
         case 'tall': {
           for (const room of deps.rooms.all()) {
-            if (msg.action === 'end') { if (room.status === 'running' || room.status === 'paused') deps.rooms.end(room.id, 'terminada por el profesor'); }
+            if (msg.action === 'end') { if (room.vote) cancelVote(room); else if (room.status === 'running' || room.status === 'paused') deps.rooms.end(room.id, 'terminada por el profesor'); }
             else if (room.status === 'waiting' && start(room)) refresh(room);
           }
           return null;

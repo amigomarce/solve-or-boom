@@ -135,6 +135,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `max_backlog_steps`: a room more than this many steps behind drops the rest (counted and logged), instead of racing to catch up
 - `empty_grace_s`: seconds a room that had human players keeps running after the last one leaves, before it is closed
 - `rejoin_grace_s`: seconds a student's seat is held after their connection drops (a reload or a Wi-Fi drop); when it runs out the seat is a bot again (--gracia N overrides; 0 = at once)
+- `rematch_vote_s`: seconds a teacher room's students see the results with the vote (next mode and map, Continuar) before the room starts the next match by itself; the server's clock counts it (story 029)
 - `lobby_tick_ms`: ms between the lobby's checks (grace expiry, closed rooms); the grace is accurate to about this
 - `max_connections`: connections beyond this are refused
 - `max_message_bytes`: a message longer than this is dropped

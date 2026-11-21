@@ -1,13 +1,13 @@
 # Story 029: Results countdown and room votes (class)
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: L
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-20
 
 ## Context
 
@@ -62,20 +62,20 @@
 
 ## Files
 
-- `src/net/protocol.ts`
-- `src/net/client.ts`
-- `src/server/room.ts`
-- `src/server/rooms.ts`
-- `src/server/lobby.ts`
-- `src/server/net.ts`
-- `src/server/teacher.ts`
-- `src/server/profesor.html`
-- `src/session-screen.ts`
-- `src/main.ts`
-- `data/aula.json`
-- `data/config-notes.md`
-- `tests/unit/votes.test.ts` (planned for the pure tally, although tests are waived at this tier)
-- `production/qa/evidence/story-029-class-results-votes/`
+- `src/net/protocol.ts` — PROTOCOL_VERSION 20 and its history entry; student `vote` {mode?, map?, ready?}, server `vote` {vote: VoteView | null}, error `bad_vote`, `studentSeats(mode)`, teacher `tauto {on}`, `TeacherSession.autoRestart`, `TeacherRoom.vote`
+- `src/net/client.ts` — `onVote` and `sendVote()`
+- `src/server/room.ts` — `Room.vote`; pure `tallyVotes` (the tie rule), `votableModes`, `castVote`, `votersOf`, `voteView`; a seat's vote cleared when it is left or taken
+- `src/server/rooms.ts` — `voteS`, `autoRestart`, `reopen(room, byItself)` opens the window only for a match that ended by itself, `settleVote` on each tick, `onVoteDone`
+- `src/server/lobby.ts` — each student's `vote` view on push and join, `reseat(room, choices, seed)`
+- `src/server/net.ts` — handles `vote`; a refused one is `bad_vote` and a strike
+- `src/server/teacher.ts` — the server-side start on `onVoteDone`, `tauto`, `cancelVote`, vote state in `tstate`
+- `src/server/profesor.html` — mode and map on each card, the vote line, the "Reinicio automático" switch
+- `src/server/aula.ts` — passes `voteS` to `createRooms` (one line; not in the planned list)
+- `src/main.ts` — `aula.vote`, `voteAct`, the vote handlers and the results/waiting scenes sending votes
+- `src/session-screen.ts` — `drawVoteStrip` on the class results and waiting screens
+- `data/aula.json` — `rematch_vote_s` (30, 5..300)
+- `data/config-notes.md` — its note
+- `production/qa/evidence/story-029-class-results-votes/` — 11 screenshots and `stamp.txt`
 
 ---
 
@@ -101,3 +101,24 @@
 
 - Depends on: `production/epics/solve-or-boom/story-028-results-countdown.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-20
+**Criteria**: 8/8 passing (deferred to a playtest: the server refusing invalid votes with `bad_vote` and a strike; a tie between votes; "Repartir automáticamente" going back to the session's mode and map; the session's other options kept on restart; a vote cast before a reload coming back; "Quitar sala" during a vote)
+**Deviations**: Advisory, accepted by the person: students who lost their connection but still hold their seat are seated again in the new match (a bot plays until they return), where the criterion said "not seated". The misleading capture `04-…` (the entry screen of a first reload attempt) was deleted.
+**Test Evidence**: `production/qa/evidence/story-029-class-results-votes/` (11 screenshots, `run-log.md`, stamp unchanged); tests waived at qa.level minimal
+**Reviewed by**: self, no independent review (QL-TEST-COVERAGE skipped — Solo mode; LP-CODE-REVIEW skipped — Solo mode)
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- Counting rules: "connected" = the seat's student has an open connection; votes are kept by seat (a dropped student's vote is kept but not counted, a student who leaves loses it); any tie, and any mode that stops fitting the room, keeps the mode and map just played (`src/server/room.ts` tallyVotes, votersOf) · kept 2026-11-20
+- With no student connected when the countdown reaches 0 there is no restart and the room waits for Iniciar (`src/server/rooms.ts`) · kept 2026-11-20
+- The restart takes the session's other options at that moment; after a mode change the students keep their order (Bomba and Duelo alternate teams, Free for All and Oleadas take seats 0, 1, 2…) (`src/server/lobby.ts` reseat) · kept 2026-11-20
+- If the teacher presses Iniciar by hand after a vote (after Terminar or with the switch off), the room plays the session's mode and map, not the voted ones · kept 2026-11-20
+- The "Reinicio automático" switch is in the status bar; switching it off cancels the votes already open and it is not saved; Terminar, Terminar todas, Iniciar and Quitar sala close a vote, Repartir drops it (`src/server/teacher.ts`, `src/server/rooms.ts`, `src/server/profesor.html`) · kept 2026-11-20
+- The room card says "Modo X · Mapa Y" and, during a vote, an amber line "Votación: quedan N s · Listos a de b · Votos: … · Siguiente: X en Y" (`src/server/profesor.html`) · kept 2026-11-20
+- The student's vote strip sits at the bottom of the results (y 582–710) instead of "Volver a la sala" while a vote is open; own votes lit gold; Enter is Continuar; a refused vote reads "Ese voto no se puede hacer ahora." (`src/session-screen.ts`, `src/main.ts`, `src/net/protocol.ts`) · kept 2026-11-20
+- A student who reloads during the vote comes back to the waiting screen with the same strip and "Salir" at the top right, not to the results table, which is lost on reload (`src/session-screen.ts`, `src/main.ts`) · kept 2026-11-20
+- Students who lost their connection but hold their seat are seated again in the new match, a bot playing for them until they return (`src/server/lobby.ts` reseat) · kept 2026-11-20

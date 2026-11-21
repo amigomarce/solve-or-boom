@@ -30,7 +30,7 @@ import { nextReward, REWARD_NAME } from './game/streak';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
 import { connect, savedName, type Connection } from './net/client';
-import type { ResultsMessage, RoomView, You } from './net/protocol';
+import type { ResultsMessage, RoomView, VoteView, You } from './net/protocol';
 import { tracerSpan } from './fx';
 import { MODE_INFO, nextMode, SEATS_PER_TEAM, type GameModeId } from './net/protocol';
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
@@ -60,7 +60,16 @@ const NAME_CHAR = /^[\p{L}\p{N} ._()-]$/u;
  * being opened, the live connection, who the server says the student is, the room's seating and the
  * reconnecting line. `gen` tells a current connection's callbacks from an old one's.
  */
-export const aula = { name: '', error: '', busy: false, conn: null as Connection | null, you: null as You | null, room: null as RoomView | null, retry: '', gen: 0 };
+export const aula = { name: '', error: '', busy: false, conn: null as Connection | null, you: null as You | null, room: null as RoomView | null, retry: '', gen: 0,
+  /** Story 029: the room's vote window (null: none open) with `at`, the page clock (ms) when the server's `left` was read: the countdown is left - (now - at). */
+  vote: null as (VoteView & { at: number }) | null };
+/** Story 029: sends the student's vote or Continuar for a results-screen button `act` ('vmode:<id>', 'vmap:<id>', 'vready'); anything else is ignored. */
+function voteAct(act: string | undefined): void {
+  if (!act || !aula.vote) return;
+  if (act === 'vready') aula.conn?.sendVote({ ready: true });
+  else if (act.startsWith('vmode:')) aula.conn?.sendVote({ mode: act.slice(6) as GameModeId });
+  else if (act.startsWith('vmap:')) aula.conn?.sendVote({ map: act.slice(5) });
+}
 /**
  * The join screen's name field: an invisible text input that holds the typed name while the canvas draws
  * it, so accents typed with dead keys, an IME, a paste and a tablet's on-screen keyboard all work.
@@ -161,6 +170,7 @@ function joinClass(): void {
     onRoom: m => {
       if (gen !== aula.gen) return;
       aula.room = { roomId: m.roomId, state: m.state, seats: m.seats, mode: m.mode };
+      if (m.state !== 'waiting') aula.vote = null; // a vote window only lives in a waiting room
       if (net.mirror) setNames(net.mirror, m.seats);
       // The match ended under the student: the room closed ('ended'), or a teacher room waits again for its next start ('waiting').
       if ((m.state === 'ended' || m.state === 'waiting') && (scene === 'play' || scene === 'pause' || (scene === 'controls' && ctl.from === 'pause'))) showClassResults();
@@ -172,7 +182,9 @@ function joinClass(): void {
       useMap(b.map, !MODE_INFO[b.mode].bomb); // story 024: every mode but Bomba is drawn without zones
       net.mirror = createMirror(b); Object.assign(net, { matchNo: b.match, dressed: false, cool: 0 });
       models.forEach((m, i) => { m.group.visible = i !== b.seat; });
-      if (!ended || scene === 'waiting') { // a teacher room started again while its student waited in it: straight to the match
+      const voted = aula.vote !== null; // the room started by itself from its vote: straight to the match
+      aula.vote = null;
+      if (!ended || scene === 'waiting' || voted) { // a teacher room started again while its student waited in it: straight to the match
         state = net.mirror.match;
         if (scene !== 'pause' && scene !== 'controls') scene = 'play';
       }
@@ -195,11 +207,12 @@ function joinClass(): void {
       // It names the match the mirror still holds (a rematch's begin comes after it): tie it to that copy, which the results screen draws.
       net.results = r; net.resultsFor = net.mirror && r.match === net.matchNo ? net.mirror.match : null;
     },
+    onVote: m => { if (gen === aula.gen) aula.vote = m.vote ? { ...m.vote, at: performance.now() } : null; },
     onError: e => { if (gen === aula.gen) aula.error = e.text; },
     onReconnecting: (a, max) => { if (gen === aula.gen) aula.retry = `Reconectando… (intento ${a} de ${max})`; },
     onClosed: c => {
       if (gen !== aula.gen) return;
-      Object.assign(aula, { busy: false, conn: null, you: null, room: null, retry: '' });
+      Object.assign(aula, { busy: false, conn: null, you: null, room: null, retry: '', vote: null });
       net.mirror = null; if (locked) document.exitPointerLock();
       if (c.reason === 'unreachable') aula.error = 'No se pudo conectar con el servidor del aula.';
       if (c.reason === 'gave_up') aula.error = 'Se perdió la conexión con el servidor del aula. Pulsa Entrar para volver.';
@@ -590,6 +603,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
     update() {
       const act = clicks.shift();
       if (CLASS_MODE) {
+        if (aula.vote) { if (pressed('Enter')) voteAct('vready'); else voteAct(act); return; } // story 029: Enter is Continuar while a vote is open
         const next = net.mirror && net.mirror.match !== state ? net.mirror : null; // a rematch already running
         // No next match yet: a room that stays (a teacher room) takes the student back to its waiting room; a closed one to the entry screen.
         if (!next) { if (pressed('Enter') || act === 'menu') { if (aula.room && aula.room.state !== 'ended') scene = 'waiting'; else aula.conn?.leave(); } return; }
@@ -641,6 +655,7 @@ const scenes: Record<string, { update(dt: number): void; draw(): void }> = {
       titleT += dt;
       const act = clicks.shift();
       if (!aula.conn) { scene = 'join'; return; }
+      voteAct(act);
       if (act === 'leave' || (aula.room?.state === 'ended' && (act === 'again' || pressed('Enter')))) aula.conn.leave();
     },
     draw() { drawWaiting(); },
