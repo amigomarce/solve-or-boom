@@ -42,7 +42,11 @@ import { LEVELS, type Level } from '../game/types';
 //     Continuar mark `ready: true`; refused with 'bad_vote' when the room is not in its vote window or the mode or map does not fit); the server's new `vote`
 //     {vote: VoteView | null} (the countdown left on the SERVER's clock in ms, the tally, who is ready, the student's own choices; null = no vote open), sent after every
 //     `joined` and whenever the vote changes; the teacher's new `tauto` {on} ("Reinicio automático"), `tstate` session carries `autoRestart` and a teacher room carries `vote`.
-export const PROTOCOL_VERSION = 20;
+// 21: rotating subjects in class (story 030): the teacher's `tsession` carries `subjects` [{id, topics}] (every marked entry; an id is a built-in subject's or a CSV entry's
+//     'csv-N') instead of one `subject` and its `topics`; the new `tcsvdel` {id} removes a CSV entry; `tinfo` drops the 'custom' subject and carries `csvMaxFiles`;
+//     `tstate` session carries `marked`, `csvs` (the loaded files) and `available` by entry, and a teacher room `current` and `next` (the subject labels);
+//     the student's room view (`joined`, `room`) carries `nextSubject` ("" when unknown). The results CSV gains the "Materia" column (server side only).
+export const PROTOCOL_VERSION = 21;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -105,6 +109,8 @@ export interface RoomView {
   roomId: string; state: RoomState; seats: SeatView[];
   /** The room's game mode (story 023, protocol 14): in 'ffa' the waiting room shows no teams. A waiting room follows the teacher's session. */
   mode: GameModeId;
+  /** The subject the room's next match takes, as a label (protocol 21, story 030); '' when the room is not a teacher room. */
+  nextSubject: string;
 }
 /** Who the student is on the server: the name they got (made unique), their room, seat and team. */
 export interface You { name: string; room: string; seat: number; team: number }
@@ -398,7 +404,7 @@ const isSeatView = (s: unknown): s is SeatView =>
   isObject(s) && isInt(s.index) && isInt(s.team) && (s.kind === 'human' || s.kind === 'bot') && isStr(s.name);
 const isRoomView = (r: unknown): r is RoomView =>
   isObject(r) && isStr(r.roomId) && (r.state === 'waiting' || r.state === 'running' || r.state === 'paused' || r.state === 'ended')
-  && isMode(r.mode) && Array.isArray(r.seats) && r.seats.length === SEATS && r.seats.every(isSeatView);
+  && isMode(r.mode) && isStr(r.nextSubject) && Array.isArray(r.seats) && r.seats.length === SEATS && r.seats.every(isSeatView);
 const isNums = (v: unknown, n?: number): v is number[] =>
   Array.isArray(v) && (n === undefined || v.length === n) && v.every(x => typeof x === 'number' && Number.isFinite(x));
 const isCard = (c: unknown): c is CardView =>
@@ -425,13 +431,13 @@ export function parseServerMessage(text: string): ServerMessage | null {
     case 'error':
       return isStr(raw.code) && Object.hasOwn(ERROR_TEXT, raw.code) && isStr(raw.text) ? { v, t: 'error', code: raw.code as ErrorCode, text: raw.text } : null;
     case 'room':
-      return isRoomView(raw) ? { v, t: 'room', roomId: raw.roomId, state: raw.state, mode: raw.mode, seats: raw.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } : null;
+      return isRoomView(raw) ? { v, t: 'room', roomId: raw.roomId, state: raw.state, mode: raw.mode, nextSubject: raw.nextSubject, seats: raw.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } : null;
     case 'joined': {
       const y = raw.you;
       if (!isObject(y) || !isStr(y.name) || !isStr(y.room) || !isInt(y.seat) || !isInt(y.team) || !isRoomView(raw.room)) return null;
       const r = raw.room;
       return { v, t: 'joined', you: { name: y.name, room: y.room, seat: y.seat, team: y.team },
-        room: { roomId: r.roomId, state: r.state, mode: r.mode, seats: r.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } };
+        room: { roomId: r.roomId, state: r.state, mode: r.mode, nextSubject: r.nextSubject, seats: r.seats.map(s => ({ index: s.index, team: s.team, kind: s.kind, name: s.name })) } };
     }
     case 'begin':
       return isStr(raw.map) && isInt(raw.seat) && raw.seat >= 0 && raw.seat < SEATS && isInt(raw.match) && typeof raw.hz === 'number' && raw.hz > 0
@@ -486,13 +492,15 @@ export const TEACHER_PATH = '/profesor';
 /** The teacher's WebSocket path (accepted only from loopback). */
 export const TEACHER_WS_PATH = '/ws-profesor';
 /** Every message type only the teacher may send. */
-export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear', 'trename', 'tauto'] as const;
+export const TEACHER_TYPES = ['tsession', 'tcsv', 'tsplit', 'taddroom', 'tmove', 'troom', 'tall', 'texport', 'tclear', 'trename', 'tauto', 'tcsvdel'] as const;
 
 /**
  * Teacher to server: the session choices, applied to every room's next match. `topics` is empty for subject 'custom'.
  * `friendlyFire` and `buyTime` (whole seconds, inside tinfo's `buyTime` range) are the match options (story 017, protocol 7); `streakRewards` (story 018, protocol 11); `mode` the game mode (story 019, protocol 12).
  */
-export interface TSessionMessage { v: number; t: 'tsession'; subject: string; level: Level; topics: string[]; map: string; friendlyFire: boolean; buyTime: number; streakRewards: boolean; mode: GameModeId }
+export interface TSessionMessage { v: number; t: 'tsession'; subjects: { id: string; topics: string[] }[]; level: Level; map: string; friendlyFire: boolean; buyTime: number; streakRewards: boolean; mode: GameModeId }
+/** Teacher to server: removes a loaded CSV entry by id (protocol 21, story 030); it leaves the rotation. */
+export interface TCsvDelMessage { v: number; t: 'tcsvdel'; id: string }
 /** Teacher to server: a CSV of questions. `data` is the file's bytes in base64 (the server decodes UTF-8, else Windows-1252, like single player). */
 export interface TCsvMessage { v: number; t: 'tcsv'; name: string; data: string }
 /** Teacher to server: "Repartir automáticamente": replace the waiting rooms by rooms of up to 4 v 4 holding the connected students. */
@@ -516,7 +524,7 @@ export interface TExportMessage { v: number; t: 'texport' }
 /** Teacher to server: "Borrar resultados": forgets every student's results (a student mid-match counts from zero afterwards). */
 export interface TClearMessage { v: number; t: 'tclear' }
 /** Every message the teacher may send ('ping' is also accepted and answered with 'pong'). */
-export type TeacherMessage = TSessionMessage | TCsvMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRenameMessage | TRoomMessage | TAllMessage | TAutoMessage | TExportMessage | TClearMessage | PingMessage;
+export type TeacherMessage = TSessionMessage | TCsvMessage | TCsvDelMessage | TSplitMessage | TAddRoomMessage | TMoveMessage | TRenameMessage | TRoomMessage | TAllMessage | TAutoMessage | TExportMessage | TClearMessage | PingMessage;
 
 /** The catalogue the form is built from, sent once on connect. */
 export interface TeacherInfoMessage {
@@ -527,6 +535,8 @@ export interface TeacherInfoMessage {
   weakBelowPct: number; weakMinAnswers: number;
   /** Largest CSV (bytes) and most questions the server accepts. */
   csvMaxBytes: number; csvMaxQuestions: number;
+  /** Most CSV files loaded at once (aula.json csv_max_files; protocol 21). */
+  csvMaxFiles: number;
   /** The buy time's range and step in seconds (data/config.json buy_time), for the page's selector (story 017). */
   buyTime: { min: number; max: number; step: number };
   /** The game modes, their names and traits (MODE_INFO), for the page's "Modo de juego" choice and its rooms (story 019, protocol 12; traits protocol 19). */
@@ -549,6 +559,8 @@ export interface TeacherRoom {
   last: string;
   /** The room's vote window (protocol 20, story 029); null when none is open. */
   vote: TeacherVote | null;
+  /** The subject label the room's current (or last) match plays ('' before its first start) and the one its next match takes (protocol 21, story 030). */
+  current: string; next: string;
 }
 /** A room's vote as the teacher sees it: the whole seconds left, the connected students and how many pressed Continuar, the tally, and what would start now. */
 export interface TeacherVote { left: number; ready: number; students: number; modes: Record<string, number>; maps: Record<string, number>; next: { mode: GameModeId; map: string } }
@@ -556,17 +568,19 @@ export interface TeacherVote { left: number; ready: number; students: number; mo
 export interface TeacherStudent { id: number; name: string; connected: boolean; room: string; seat: number; team: number }
 /** The session as set (applied to every room's next match). */
 export interface TeacherSession {
-  subject: string; level: Level; topics: string[]; map: string;
+  /** The marked entries in list order, each with its contents selection (built-in subjects; [] for a CSV): the rotation (protocol 21). */
+  marked: { id: string; topics: string[] }[];
+  level: Level; map: string;
   /** The match options (story 017): shots hurt teammates; the buy phase's length in seconds. Story 018: streak rewards on. */
   friendlyFire: boolean; buyTime: number; streakRewards: boolean;
   /** The game mode (story 019). */
   mode: GameModeId;
   /** "Reinicio automático" (protocol 20, story 029): teacher rooms vote and restart by themselves when a match ends by itself. */
   autoRestart: boolean;
-  /** The CSV loaded (null for none): kept when another subject is chosen. */
-  csv: { name: string; count: number; skipped: number } | null;
-  /** Questions the choice has (the CSV's count for a custom file); null when they are generated without limit (math). */
-  available: number | null;
+  /** The CSV files loaded, in load order (protocol 21): an entry is marked or not through `marked`. */
+  csvs: { id: string; name: string; count: number; skipped: number }[];
+  /** Questions each marked entry has at the level (a CSV: its count); null when generated without limit (math). */
+  available: Record<string, number | null>;
 }
 /** The teacher's results: one row per student (by typed name) and one per topic, weakest first. Held in memory only. */
 export interface TeacherResults {
@@ -592,7 +606,7 @@ export type TeacherReply = TeacherInfoMessage | TeacherStateMessage | TeacherCsv
 export type TeacherParsed = { ok: true; msg: TeacherMessage } | { ok: false; code: ErrorCode };
 const ID = /^[a-z0-9_-]{1,32}$/, ROOM_ID = /^sala-\d{1,6}$/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
 const TKEYS: Record<TeacherMessage['t'], string[]> = {
-  tsession: ['v', 't', 'subject', 'level', 'topics', 'map', 'friendlyFire', 'buyTime', 'streakRewards', 'mode'], tcsv: ['v', 't', 'name', 'data'], tsplit: ['v', 't'], taddroom: ['v', 't'],
+  tsession: ['v', 't', 'subjects', 'level', 'map', 'friendlyFire', 'buyTime', 'streakRewards', 'mode'], tcsv: ['v', 't', 'name', 'data'], tcsvdel: ['v', 't', 'id'], tsplit: ['v', 't'], taddroom: ['v', 't'],
   tmove: ['v', 't', 'student', 'room', 'team', 'seat'], troom: ['v', 't', 'room', 'action'], tall: ['v', 't', 'action'], texport: ['v', 't'], tclear: ['v', 't'], trename: ['v', 't', 'room', 'name'], tauto: ['v', 't', 'on'], ping: ['v', 't'],
 };
 /**
@@ -618,10 +632,12 @@ export function parseTeacherMessage(text: string, maxChars: number): TeacherPars
     case 'tclear': return { ok: true, msg: { v, t: 'tclear' } };
     case 'tauto': return typeof raw.on === 'boolean' ? { ok: true, msg: { v, t: 'tauto', on: raw.on } } : bad;
     case 'tsession':
-      if (!isStr(raw.subject) || !ID.test(raw.subject) || !isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
-      if (!Array.isArray(raw.topics) || raw.topics.length > 32 || !raw.topics.every(x => isStr(x) && ID.test(x))) return bad;
+      if (!isStr(raw.map) || !ID.test(raw.map) || !(LEVELS as readonly string[]).includes(raw.level as string)) return bad;
+      if (!Array.isArray(raw.subjects) || raw.subjects.length > 32 || !raw.subjects.every(x => isObject(x) && Object.keys(x).every(k => k === 'id' || k === 'topics') && isStr(x.id) && ID.test(x.id)
+        && Array.isArray(x.topics) && x.topics.length <= 32 && x.topics.every(y => isStr(y) && ID.test(y)))) return bad;
       if (typeof raw.friendlyFire !== 'boolean' || !isInt(raw.buyTime) || typeof raw.streakRewards !== 'boolean' || !isMode(raw.mode)) return bad; // the range is the server's check (teacher.ts)
-      return { ok: true, msg: { v, t: 'tsession', subject: raw.subject, level: raw.level as Level, topics: [...raw.topics] as string[], map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } };
+      return { ok: true, msg: { v, t: 'tsession', subjects: (raw.subjects as { id: string; topics: string[] }[]).map(x => ({ id: x.id, topics: [...x.topics] })), level: raw.level as Level, map: raw.map, friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } };
+    case 'tcsvdel': return isStr(raw.id) && ID.test(raw.id) ? { ok: true, msg: { v, t: 'tcsvdel', id: raw.id } } : bad;
     case 'tcsv':
       if (!isStr(raw.name) || raw.name.length < 1 || raw.name.length > 80 || !isStr(raw.data) || !B64.test(raw.data)) return bad;
       return { ok: true, msg: { v, t: 'tcsv', name: raw.name.replace(/[\u0000-\u001f<>]/g, '').trim() || 'preguntas.csv', data: raw.data } };

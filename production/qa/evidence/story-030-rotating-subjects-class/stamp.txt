@@ -1,0 +1,11 @@
+Reviewed-Content-Hash: src/net/protocol.ts 2c021eada10bb31a45844b46e643e5bb04e6d369
+Reviewed-Content-Hash: src/server/teacher.ts 99be8631710892db7d111d0f42e30cc25427a156
+Reviewed-Content-Hash: src/server/room.ts bbd10601ecd869fa3bedaf8f16bc658db388599e
+Reviewed-Content-Hash: src/server/lobby.ts 561d4d5204f10f8756bd7675f623dc42b19d5787
+Reviewed-Content-Hash: src/server/results.ts a838df8832d0571307fc7c351a35a5ce538903d2
+Reviewed-Content-Hash: src/server/profesor.html 579f83158877adaec19effdfc3a9eca49cc28116
+Reviewed-Content-Hash: src/server/aula.ts 78b2610ea7f2ebc746748e44cf0c45f66933307e
+Reviewed-Content-Hash: src/session-screen.ts 69902ebb4fc2b6a8b97b28d671dffe2eb2e2f0c6
+Reviewed-Content-Hash: src/main.ts 9875c1b67c186131dc7c7dd27b8e92d23480e87b
+Reviewed-Content-Hash: data/aula.json 0bc88bf83e73b01e6410390c9c4616a88b021c94
+Reviewed-Content-Hash: data/config-notes.md 163ad303a414607a6b8ded7b21a647e46964b117

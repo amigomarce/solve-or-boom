@@ -10,6 +10,11 @@
 //  - The session (subject, level, topics, map, CSV, match options) applies to every room built or STARTED after it is set.
 //    A waiting room is rebuilt from the session at the moment it starts; a running or paused room keeps its match
 //    until the teacher ends it (a new room then takes the new session).
+//  - Story 030 (rotating subjects): the teacher MARKS entries (the four built-in subjects, then every loaded CSV file, in that list order). Each teacher room has its
+//    own counter, its last played entry (`last`, by room id): its next match takes the first marked entry (none played yet), else the marked entry that follows the last
+//    one in list order (looping), or the first marked one when that CSV was removed. Each start (Iniciar, Iniciar todas, the vote restart) takes the room's pick and
+//    records it; a running match never changes. A CSV entry has the id 'csv-N' (N never reused), is replaced in place when a file with its name is loaded again, and a
+//    newly loaded file starts marked. Removing the only marked entry is refused.
 //  - The match options (story 017: friendly fire, buy time) are part of the session like the map: every room's next match.
 //    The buy time must be whole seconds inside data/config.json's buy_time min..max (not snapped to its step).
 //  - Teacher rooms stay: a won match, or one the teacher ends ("Terminar"), sends each student their results and the room waits again
@@ -31,14 +36,14 @@ import { loadQuestionFile, type ParsedQuestion } from '../game/csv';
 import * as QUESTIONS from '../questions';
 import { CONFIG, tune } from '../game/tune';
 import { GAME_MODES, MODE_INFO, PROTOCOL_VERSION, SEATS, SEATS_PER_TEAM, type GameModeId, type TeacherInfoMessage, type TeacherMessage, type TeacherReply, type TeacherRoom, type TeacherStateMessage } from '../net/protocol';
-import { rebuildMatch, type Room } from './room';
+import { rebuildMatch, subjectLabel, type Room } from './room';
 import { ranking } from '../game/ffa';
 import type { Rooms } from './rooms';
 import type { Lobby } from './lobby';
 import { roomLabel, type Results } from './results';
 
 /** The teacher's limits (data/aula.json). */
-export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; maxRooms: number; roomNameMax: number; finishedShown: number; weakBelowPct: number; weakMinAnswers: number }
+export interface TeacherLimits { csvMaxBytes: number; csvMaxQuestions: number; /** Most CSV files loaded at once (csv_max_files). */ csvMaxFiles: number; maxRooms: number; roomNameMax: number; finishedShown: number; weakBelowPct: number; weakMinAnswers: number }
 /** What the teacher needs: the rooms, the lobby (students) and a log. */
 export interface TeacherDeps { rooms: Rooms; lobby: Lobby; results: Results; log: (line: string) => void }
 /** The teacher screen's brain. */
@@ -60,7 +65,8 @@ export interface Teacher {
  * @example const teacher = createTeacher({ csvMaxBytes: 262144, csvMaxQuestions: 500, maxRooms: 16, finishedShown: 8 }, { rooms, lobby, log });
  */
 export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
-  const session = { subject: 'matematicas', level: 'medio' as Level, topics: ['arith', 'mult'], map: MAP_IDS[0], custom: [] as ParsedQuestion[], customName: '', skipped: 0,
+  const session = { marked: new Map<string, string[]>([['matematicas', ['arith', 'mult']]]), csvs: [] as { id: string; name: string; questions: ParsedQuestion[]; skipped: number }[], csvSerial: 0,
+    level: 'medio' as Level, map: MAP_IDS[0],
     friendlyFire: false, buyTime: Number(tune.buy_time), streakRewards: true, mode: 'bomb' as GameModeId };
   const buyRange = CONFIG.buy_time as { min: number; max: number; step: number };
   const v = PROTOCOL_VERSION;
@@ -68,33 +74,65 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   /** A room's name for the CSV: the teacher's, else "Sala N" (a removed room has none). */
   const labelOf = (id: string): string => deps.rooms.get(id)?.name || roomLabel(id);
   const err = (code: string, text: string): TeacherReply => ({ v, t: 'terror', code, text });
-  const matchChoices = () => ({
-    subject: session.subject, level: session.level, topics: session.subject === QUESTIONS.CUSTOM ? [] : [...session.topics],
-    custom: session.custom, customName: session.customName, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
+  /** Every entry id in list order: the built-in subjects, then the CSV files as loaded. */
+  const order = (): string[] => [...Object.keys(QUESTIONS.SUBJECTS), ...session.csvs.map(c => c.id)];
+  const markedIds = (): string[] => order().filter(id => session.marked.has(id));
+  /** Each teacher room's last played entry. */
+  const last = new Map<string, string>();
+  /** The label of each room's last played entry, kept when it starts so it still reads right after that entry is unmarked or its CSV removed. */
+  const lastLabel = new Map<string, string>();
+  /** The entry a room's next match takes (see the header: its counter). */
+  const pick = (room?: Room): string => {
+    const ids = markedIds(), l = room ? last.get(room.id) : undefined, o = order(), i = l ? o.indexOf(l) : -1;
+    return i < 0 ? ids[0] : ids.find(id => o.indexOf(id) > i) ?? ids[0];
+  };
+  const entry = (id: string) => {
+    const csv = session.csvs.find(c => c.id === id);
+    return csv ? { subject: QUESTIONS.CUSTOM, topics: [] as string[], custom: csv.questions, customName: csv.name }
+      : { subject: id, topics: [...(session.marked.get(id) ?? [])], custom: [] as ParsedQuestion[], customName: '' };
+  };
+  const labelOf2 = (id: string): string => subjectLabel(entry(id));
+  const matchChoices = (id: string = pick()) => ({
+    ...entry(id), level: session.level, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime,
     streakRewards: session.streakRewards, mode: session.mode,
   });
   const seed = (): number => (Math.random() * 2 ** 31) >>> 0;
-  const make = (): Room | null => (deps.rooms.all().length >= lim.maxRooms ? null
-    : deps.rooms.create({ managed: true, waiting: true, rematch: false, match: matchChoices(), seed: seed() }));
-  /** Starts a waiting room with the session as it is now. */
-  const start = (room: Room): boolean => { room.vote = null; return rebuildMatch(room, matchChoices(), seed()) && deps.rooms.transition(room.id, 'start'); };
   const refresh = (room: Room | undefined): void => { if (room) deps.lobby.refresh(room); };
+  /** Tells each teacher room's students the subject their room's next match takes (when it changed). */
+  const syncNext = (): void => {
+    for (const room of deps.rooms.all()) if (room.managed) { const next = labelOf2(pick(room)); if (room.nextSubject !== next) { room.nextSubject = next; refresh(room); } }
+  };
+  const make = (): Room | null => {
+    if (deps.rooms.all().length >= lim.maxRooms) return null;
+    const room = deps.rooms.create({ managed: true, waiting: true, rematch: false, match: matchChoices(), seed: seed() });
+    room.nextSubject = labelOf2(pick(room));
+    return room;
+  };
+  /** Starts a waiting room with the session as it is now: the room's next entry, which then becomes its last. */
+  const start = (room: Room): boolean => {
+    room.vote = null;
+    const id = pick(room);
+    if (!(rebuildMatch(room, matchChoices(id), seed()) && deps.rooms.transition(room.id, 'start'))) return false;
+    last.set(room.id, id); lastLabel.set(room.id, labelOf2(id)); syncNext();
+    return true;
+  };
   deps.rooms.onReopened = room => refresh(room); // a teacher room waits again: its students' waiting rooms follow at once
   /** Closes a room's vote window without a restart: the room waits for the teacher's start; its students are told. */
   const cancelVote = (room: Room): void => { room.vote = null; refresh(room); };
   // A vote window closed with students to play: the teacher's start, done by the server, with the winners and the session's other options. A changed
   // mode seats the students again first; the match is then rebuilt so the seated students enter it as a start does (Free for All's shop).
   deps.rooms.onVoteDone = (room, next) => {
-    const choices = { ...matchChoices(), mode: next.mode, map: next.map };
+    const id = pick(room), choices = { ...matchChoices(id), mode: next.mode, map: next.map };
     if (next.mode !== room.match.opts.mode) deps.lobby.reseat(room, choices, seed());
     rebuildMatch(room, choices, seed());
     deps.rooms.transition(room.id, 'start');
+    last.set(room.id, id); lastLabel.set(room.id, labelOf2(id)); syncNext();
     refresh(room);
   };
 
   /** The mode changed (story 023): each waiting room is rebuilt with the session (its students keep their seats) and its students get the new seating; other rooms keep their match. */
   const followMode = (): void => {
-    for (const room of deps.rooms.all()) if (room.managed && room.status === 'waiting' && !room.vote && rebuildMatch(room, matchChoices(), seed())) refresh(room);
+    for (const room of deps.rooms.all()) if (room.managed && room.status === 'waiting' && !room.vote && rebuildMatch(room, matchChoices(pick(room)), seed())) refresh(room);
   };
 
   const split = (): TeacherReply | null => {
@@ -122,9 +160,8 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
   return {
     info: () => ({
       v, t: 'tinfo', levels: LEVELS.map(id => ({ id, name: QUESTIONS.LEVEL_NAMES[id] })), maps: MAP_LIST.map(m => ({ ...m })), weakBelowPct: lim.weakBelowPct, weakMinAnswers: lim.weakMinAnswers,
-      subjects: [...Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
-        { id: QUESTIONS.CUSTOM, name: QUESTIONS.CUSTOM_NAME, topics: [] }],
-      csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
+      subjects: Object.entries(QUESTIONS.SUBJECTS).map(([id, s]) => ({ id, name: s.name, topics: Object.entries(s.topics).map(([tid, name]) => ({ id: tid, name })) })),
+      csvMaxBytes: lim.csvMaxBytes, csvMaxQuestions: lim.csvMaxQuestions, csvMaxFiles: lim.csvMaxFiles, buyTime: { min: buyRange.min, max: buyRange.max, step: buyRange.step },
       address,
       modes: GAME_MODES.map(id => ({ id, ...MODE_INFO[id] })),
     }),
@@ -174,14 +211,15 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       const row = (r: Room, live: boolean): TeacherRoom => ({
         mode: r.match.opts.mode, summary: summaryOf(r), last: live ? lastOf(r.prev) : '',
         vote: live ? voteOf(r) : null,
+        current: live ? lastLabel.get(r.id) ?? '' : '', next: live && r.managed ? labelOf2(pick(r)) : '',
         id: r.id, name: deps.rooms.get(r.id)?.name ?? '', status: r.status, managed: r.managed, map: r.spec.match.map, round: r.match.round, score: [...r.match.score], matches: r.matches, reason: r.reason,
         seats: live ? seatsOf(r) : [],
       });
       return {
         v, t: 'tstate', students: students.map(s => ({ ...s })),
-        session: { subject: session.subject, level: session.level, topics: [...session.topics], map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards, mode: session.mode, autoRestart: deps.rooms.autoRestart,
-          csv: session.customName ? { name: session.customName, count: session.custom.length, skipped: session.skipped } : null,
-          available: QUESTIONS.availableCount(session.subject, session.topics, session.level, session.custom) },
+        session: { marked: markedIds().map(id => ({ id, topics: [...session.marked.get(id)!] })), level: session.level, map: session.map, friendlyFire: session.friendlyFire, buyTime: session.buyTime, streakRewards: session.streakRewards, mode: session.mode, autoRestart: deps.rooms.autoRestart,
+          csvs: session.csvs.map(c => ({ id: c.id, name: c.name, count: c.questions.length, skipped: c.skipped })),
+          available: Object.fromEntries(markedIds().map(id => { const e = entry(id); return [id, QUESTIONS.availableCount(e.subject, e.topics, session.level, e.custom)]; })) },
         results: deps.results.view(),
         rooms: [...deps.rooms.all().map(r => row(r, true)), ...deps.rooms.finished.slice(-lim.finishedShown).map(r => row(r, false))],
       };
@@ -192,33 +230,45 @@ export function createTeacher(lim: TeacherLimits, deps: TeacherDeps): Teacher {
       switch (msg.t) {
         case 'ping': return { v, t: 'pong' };
         case 'tsession': {
-          const topics = [...new Set(msg.topics)];
           if (!MAP_IDS.includes(msg.map)) return err('mapa', 'Ese mapa no existe.');
           if (msg.buyTime < buyRange.min || msg.buyTime > buyRange.max) return err('compra', `El tiempo de compra va de ${buyRange.min} a ${buyRange.max} segundos.`);
-          const modeChanged = msg.mode !== session.mode;
-          const options = { friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards, mode: msg.mode };
-          if (msg.subject === QUESTIONS.CUSTOM) {
-            if (!session.custom.length) return err('sin_csv', 'Primero sube un archivo CSV de preguntas.');
-            Object.assign(session, { subject: msg.subject, level: msg.level, topics: [], map: msg.map, ...options });
-            if (modeChanged) followMode();
-            return null;
+          if (!msg.subjects.length) return err('sin_materias', 'Marca al menos una asignatura.');
+          if (new Set(msg.subjects.map(x => x.id)).size !== msg.subjects.length) return err('materia', 'Una asignatura está repetida.');
+          const marked = new Map<string, string[]>();
+          for (const { id, topics: asked } of msg.subjects) {
+            if (session.csvs.some(c => c.id === id)) { marked.set(id, []); continue; }
+            if (!Object.hasOwn(QUESTIONS.SUBJECTS, id)) return err('materia', 'Esa materia no existe.');
+            const topics = [...new Set(asked)], known = QUESTIONS.SUBJECTS[id].topics;
+            if (!topics.length || !topics.every(t => Object.hasOwn(known, t))) return err('temas', `Elige al menos un tema de ${QUESTIONS.SUBJECTS[id].name}.`);
+            const n = QUESTIONS.availableCount(id, topics, msg.level, []);
+            if (n !== null && n < 1) return err('sin_preguntas', `${QUESTIONS.SUBJECTS[id].name} no tiene preguntas con esa elección.`);
+            marked.set(id, topics);
           }
-          if (!Object.hasOwn(QUESTIONS.SUBJECTS, msg.subject)) return err('materia', 'Esa materia no existe.');
-          const known = QUESTIONS.SUBJECTS[msg.subject].topics;
-          if (!topics.length || !topics.every(t => Object.hasOwn(known, t))) return err('temas', 'Elige al menos un tema de la materia.');
-          const n = QUESTIONS.availableCount(msg.subject, topics, msg.level, session.custom);
-          if (n !== null && n < 1) return err('sin_preguntas', 'Esa elección no tiene preguntas.');
-          Object.assign(session, { subject: msg.subject, level: msg.level, topics, map: msg.map, ...options });
+          const modeChanged = msg.mode !== session.mode;
+          Object.assign(session, { marked, level: msg.level, map: msg.map, friendlyFire: msg.friendlyFire, buyTime: msg.buyTime, streakRewards: msg.streakRewards, mode: msg.mode });
           if (modeChanged) followMode();
+          syncNext();
           return null;
         }
         case 'tcsv': {
-          if (msg.data.length > Math.ceil(lim.csvMaxBytes / 3) * 4) return { v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: 0, text: `El archivo es demasiado grande (máximo ${Math.floor(lim.csvMaxBytes / 1024)} KB).` };
+          const fail = (text: string): TeacherReply => ({ v, t: 'tcsvok', ok: false, name: msg.name, count: 0, skipped: 0, text });
+          if (msg.data.length > Math.ceil(lim.csvMaxBytes / 3) * 4) return fail(`El archivo es demasiado grande (máximo ${Math.floor(lim.csvMaxBytes / 1024)} KB).`);
+          const old = session.csvs.find(c => c.name === msg.name);
+          if (!old && session.csvs.length >= lim.csvMaxFiles) return fail(`Ya hay ${lim.csvMaxFiles} archivos cargados, el máximo: quita uno antes de subir otro.`);
           const bytes = Buffer.from(msg.data, 'base64');
           const res = loadQuestionFile(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer, msg.name, { maxBytes: lim.csvMaxBytes, maxQuestions: lim.csvMaxQuestions });
           if (!res.ok) return { v, t: 'tcsvok', ok: false, name: msg.name, count: res.count, skipped: res.skipped, text: res.text };
-          Object.assign(session, { custom: res.questions, customName: msg.name, skipped: res.skipped, subject: QUESTIONS.CUSTOM, topics: [] });
+          if (old) Object.assign(old, { questions: res.questions, skipped: res.skipped });
+          else { const id = `csv-${++session.csvSerial}`; session.csvs.push({ id, name: msg.name, questions: res.questions, skipped: res.skipped }); session.marked.set(id, []); }
+          syncNext();
           return { v, t: 'tcsvok', ok: true, name: msg.name, count: res.count, skipped: res.skipped, text: res.text };
+        }
+        case 'tcsvdel': {
+          if (!session.csvs.some(c => c.id === msg.id)) return err('sin_csv', 'Ese archivo ya no está cargado.');
+          if (session.marked.size === 1 && session.marked.has(msg.id)) return err('sin_materias', 'Marca otra asignatura antes de quitar la única marcada.');
+          session.csvs = session.csvs.filter(c => c.id !== msg.id); session.marked.delete(msg.id);
+          syncNext();
+          return null;
         }
         case 'texport': { const text = deps.results.csv(labelOf); return { v, t: 'texported', name: 'resultados.csv', text, rows: text.split('\r\n').length - 2 }; }
         case 'tclear': deps.results.clear(); deps.log('Resultados borrados por el profesor'); return null;

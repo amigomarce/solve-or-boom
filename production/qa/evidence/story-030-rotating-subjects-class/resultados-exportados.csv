@@ -1,0 +1,6 @@
+﻿"Alumno";"Sala";"Materia";"Tema";"Nivel";"Correctas";"Incorrectas"
+"Ana";"Sala 5";"Matemáticas";"Multiplicación y división";"Medio";0;1
+"Ana";"Sala 5";"Matemáticas";"Sumas y restas";"Medio";0;1
+"Ana";"Sala 6";"Ciencias";"Fuerzas, energía y espacio";"Medio";1;0
+"Beto";"Sala 5";"Matemáticas";"Multiplicación y división";"Medio";1;1
+"Beto";"Sala 6";"Ciencias";"Seres vivos y el cuerpo";"Medio";0;2

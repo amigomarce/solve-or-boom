@@ -94,7 +94,7 @@ if (args.includes('--carga')) {
       maxConnections: aula.max_connections, rejoinGraceS: flag('--gracia') ?? aula.rejoin_grace_s, lobbyTickMs: aula.lobby_tick_ms, perSecond: aula.max_messages_per_second, burst: aula.message_burst,
       maxStrikes: aula.max_strikes, pingIntervalS: aula.ping_interval_s, snapshotHz: aula.snapshot_hz, eventRangeM: aula.event_range_m,
     }, { rooms, results, pages: new Map([['/', html], ['/index.html', html], [TEACHER_PATH, { type: 'text/html; charset=utf-8', body: Buffer.from(fillTeacherPage(profesorHtml)) }]]), clockMs, log, warn,
-      teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, maxRooms: aula.max_rooms, roomNameMax: aula.teacher_room_name_max, finishedShown: aula.finished_rooms_shown, weakBelowPct: aula.weak_below_pct, weakMinAnswers: aula.weak_min_answers,
+      teacher: { csvMaxBytes: aula.csv_max_bytes, csvMaxQuestions: aula.csv_max_questions, csvMaxFiles: aula.csv_max_files, maxRooms: aula.max_rooms, roomNameMax: aula.teacher_room_name_max, finishedShown: aula.finished_rooms_shown, weakBelowPct: aula.weak_below_pct, weakMinAnswers: aula.weak_min_answers,
         updateMs: aula.teacher_update_ms, heartbeatS: aula.teacher_heartbeat_s, maxChars: aula.teacher_max_message_bytes } });
   } catch (e) {
     console.error(`No se pudo abrir el servidor: ${e instanceof Error ? e.message : String(e)}`);

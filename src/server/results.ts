@@ -7,7 +7,7 @@ import * as QUESTIONS from '../questions';
 import { LEVELS } from '../game/types';
 
 /** Answers to one topic at one level in one room. `level` is a level id, or '' for a custom CSV. */
-export interface Cell { room: string; topic: string; level: string; right: number; wrong: number }
+export interface Cell { room: string; subject: string; topic: string; level: string; right: number; wrong: number }
 /** One student's counts: answers by (room, topic, level), kills and deaths. */
 export interface Tally { right: number; wrong: number; kills: number; deaths: number; cells: Map<string, Cell> }
 /** A new empty tally. */
@@ -16,10 +16,10 @@ export const newTally = (): Tally => ({ right: 0, wrong: 0, kills: 0, deaths: 0,
 export const nameKey = (name: string): string => name.toLocaleLowerCase('es');
 
 /** Adds one judged answer to a tally. */
-export function addAnswer(t: Tally, room: string, topic: string, level: string, right: boolean): void {
-  const k = `${room}\t${topic}\t${level}`;
+export function addAnswer(t: Tally, room: string, subject: string, topic: string, level: string, right: boolean): void {
+  const k = `${room}\t${subject}\t${topic}\t${level}`;
   let c = t.cells.get(k);
-  if (!c) { c = { room, topic, level, right: 0, wrong: 0 }; t.cells.set(k, c); }
+  if (!c) { c = { room, subject, topic, level, right: 0, wrong: 0 }; t.cells.set(k, c); }
   if (right) { c.right++; t.right++; } else { c.wrong++; t.wrong++; }
 }
 
@@ -59,11 +59,11 @@ export function csvCell(value: string): string {
 /** The CSV field separator: a semicolon, which Excel reads as columns in Spanish regional settings (a comma does not there). */
 export const CSV_SEP = ';';
 /** The CSV header row (Spanish). */
-export const CSV_HEADER = ['Alumno', 'Sala', 'Tema', 'Nivel', 'Correctas', 'Incorrectas'];
+export const CSV_HEADER = ['Alumno', 'Sala', 'Materia', 'Tema', 'Nivel', 'Correctas', 'Incorrectas'];
 
 /**
  * The results store, holding at most `maxStudents` names (more are not counted).
- * @example const r = createResults(1000); const t = r.tally('Ana', 'sala-1'); if (t) addAnswer(t, 'sala-1', 'Sumas', 'facil', true);
+ * @example const r = createResults(1000); const t = r.tally('Ana', 'sala-1'); if (t) addAnswer(t, 'sala-1', 'Matemáticas', 'Sumas', 'facil', true);
  */
 export function createResults(maxStudents: number): Results {
   const rows = new Map<string, { name: string; room: string; t: Tally }>();
@@ -93,10 +93,10 @@ export function createResults(maxStudents: number): Results {
     csv(label = roomLabel) {
       const lines = [CSV_HEADER.map(csvCell).join(CSV_SEP)];
       for (const e of [...rows.values()].sort((a, b) => by(a.name, b.name))) {
-        const cells = [...e.t.cells.values()].sort((a, b) => by(a.room, b.room) || by(a.topic, b.topic) || by(a.level, b.level));
+        const cells = [...e.t.cells.values()].sort((a, b) => by(a.room, b.room) || by(a.subject, b.subject) || by(a.topic, b.topic) || by(a.level, b.level));
         // A student with no answers still gets one row (empty topic, zeros) so the teacher sees who took part.
-        const list = cells.length ? cells : [{ room: e.room, topic: '', level: '', right: 0, wrong: 0 }];
-        for (const c of list) lines.push([csvCell(e.name), csvCell(label(c.room)), csvCell(c.topic), csvCell(levelLabel(c.level)), String(c.right), String(c.wrong)].join(CSV_SEP));
+        const list = cells.length ? cells : [{ room: e.room, subject: '', topic: '', level: '', right: 0, wrong: 0 }];
+        for (const c of list) lines.push([csvCell(e.name), csvCell(label(c.room)), csvCell(c.subject), csvCell(c.topic), csvCell(levelLabel(c.level)), String(c.right), String(c.wrong)].join(CSV_SEP));
       }
       return '﻿' + lines.join('\r\n') + '\r\n';
     },

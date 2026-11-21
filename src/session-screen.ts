@@ -122,6 +122,7 @@ export function drawWaiting() {
   if (!you || !room) return;
   const [words, colour] = ROOM_STATE[room.state];
   text(words, W / 2, 116, 26, colour);
+  if (room.nextSubject) text(clip(`Próxima asignatura: ${room.nextSubject}`, 560, 16, 'normal'), W / 2, 138, 16, '#c8d2e6', 'center', 'normal');
   // who and where
   rr(40, 146, 1200, 84, 16, 'rgba(14,19,30,0.92)', null);
   const roomNo = room.roomId.replace(/^sala-/, '');
@@ -316,7 +317,8 @@ export function drawVoteStrip(x: number, y: number, w: number, results: boolean)
   text(`Listos: ${v.ready} de ${v.students}`, x + 100, y + 104, 14, '#c8d2e6', 'center', 'normal');
   const win = `${MODE_INFO[v.next.mode].name} en ${MAPS[v.next.map]?.name ?? v.next.map}`;
   const mx = x + 210, mw = w - 210 - 240;
-  text(clip(`Va ganando: ${win}. Gana el más votado; si hay empate o nadie vota, se repite.`, mw, 14, 'normal'), mx + mw / 2, y + 14, 14, '#c8d2e6', 'center', 'normal');
+  const nextSubject = aula.room?.nextSubject ? ` Próxima asignatura: ${aula.room.nextSubject}.` : '';
+  text(clip(`Va ganando: ${win}.${nextSubject} Gana el más votado; si hay empate o nadie vota, se repite.`, mw, 14, 'normal'), mx + mw / 2, y + 14, 14, '#c8d2e6', 'center', 'normal');
   const row = (n: number, k: number, gap: number): [number, number] => { const bw = (mw - gap * (n - 1)) / n; return [mx + k * (bw + gap), bw]; };
   GAME_MODES.forEach((m, k) => {
     const [bx, bw] = row(GAME_MODES.length, k, 8), ok = v.fits.includes(m), mine = v.mine.mode === m, n = v.modes[m] ?? 0, name = MODE_INFO[m].name;

@@ -161,7 +161,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `max_rooms` 16: most live rooms (the split and "add room" refuse past it). `finished_rooms_shown` 8: ended rooms still listed to the teacher.
 - `teacher_room_name_max` 24: most letters in a room's name ("3.º A", "Grupo rojo"); the teacher's rename is trimmed, a blank one clears it, a longer one is refused in Spanish (story 027). The name lives on the server's room record until the room is removed.
 - `teacher_update_ms` 500: how often the teacher page's state is checked and pushed if changed; `teacher_heartbeat_s` 5: pushed anyway at least this often.
-- `teacher_max_message_bytes` 393216: largest teacher frame (a 262144-byte CSV is 349528 base64 chars). `csv_max_bytes` 262144 and `csv_max_questions` 500: the CSV limits (single player has none; these protect the server).
+- `teacher_max_message_bytes` 393216: largest teacher frame (a 262144-byte CSV is 349528 base64 chars). `csv_max_bytes` 262144 and `csv_max_questions` 500: the CSV limits per file (single player has none; these protect the server). `csv_max_files` 5: how many CSV files the teacher can have loaded at once (each is a subject of the rotation, story 030; one with the same name replaces it).
 
 ## Results (story 007), data/aula.json
 - `results_max_students` 1000: names the results store holds at most (memory only, nothing on disk); a new name past it is not counted. A class is 30 to 200 students; this only stops a runaway client opening names forever.

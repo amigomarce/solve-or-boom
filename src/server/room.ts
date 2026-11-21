@@ -10,6 +10,7 @@ import { createMatch, step, STEP, idleInput, seatHuman, seatBot, type Match, typ
 import type { Loose } from '../game/types';
 import { MAP_ID, MAP_IDS, loadMap } from '../game/map';
 import { GAME_MODES, MODE_INFO, SEATS, SEATS_PER_TEAM, studentSeats, type GameModeId, type RoomInfo, type SeatKind, type VoteView } from '../net/protocol';
+import * as QUESTIONS from '../questions';
 import { addAnswer, newTally, nameKey, type Results, type Tally } from './results';
 
 /** One of the 8 seats. `owner` is a connection id while a student sits there (never a name). */
@@ -98,6 +99,8 @@ export interface Room {
   results: Results | null;
   /** Story 029: the vote window of a teacher room whose match ended by itself (the room is 'waiting' meanwhile); null when none is open. */
   vote: Vote | null;
+  /** Story 030: the label of the subject this teacher room's next match takes (the teacher sets it); '' for other rooms. */
+  nextSubject: string;
 }
 
 /** The controls that only last one step: cleared when a seat's held controls are repeated. */
@@ -120,13 +123,15 @@ function bindCounting(room: Room): void {
     return all ? [mine, all] : [mine];
   };
   room.match.count = {
-    answer: (p, right, topic, level) => { for (const t of tallies(p)) addAnswer(t, room.id, topic, level, right); },
+    answer: (p, right, topic, level) => { for (const t of tallies(p)) addAnswer(t, room.id, subjectLabel(room.spec.match), topic, level, right); },
     kill: (killer, victim) => {
       if (killer) for (const t of tallies(killer)) t.kills++;
       for (const t of tallies(victim)) t.deaths++;
     },
   };
 }
+/** The subject as results and cards name it: a built-in's name, or "Preguntas propias (file)" for a CSV. */
+export const subjectLabel = (m: Pick<RoomSpec['match'], 'subject' | 'customName'>): string => m.subject === QUESTIONS.CUSTOM ? `${QUESTIONS.CUSTOM_NAME} (${m.customName})` : QUESTIONS.SUBJECTS[m.subject].name;
 /** A classroom match for this room's spec and seed, with the present students in their seats. */
 function roomMatch(spec: RoomSpec, seed: number, seats: Seat[]): Match {
   const match = createMatch({ ...spec.match, seed, humans: [], classroom: true });
@@ -195,7 +200,7 @@ export function newRoom(id: string, spec: RoomSpec, nowS: number, play: PlayLimi
     id, spec, seats, managed: !!spec.managed, name: '', match: roomMatch(spec, spec.seed, seats), matches: 0, status: spec.waiting ? 'waiting' : 'running', reason: '',
     owed: 0, lastT: nowS, emptySince: -1, stats: { steps: 0, totalMs: 0, maxMs: 0, dropped: 0 },
     matchNo: 0, pending: [], inputs: Array.from({ length: SEATS }, freshInputs), play, last: null, prev: null,
-    tally: new Map(), report: null, reported: false, results, vote: null,
+    tally: new Map(), report: null, reported: false, results, vote: null, nextSubject: '',
   };
   bindCounting(room);
   return room;

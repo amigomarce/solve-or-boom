@@ -169,7 +169,7 @@ function joinClass(): void {
     },
     onRoom: m => {
       if (gen !== aula.gen) return;
-      aula.room = { roomId: m.roomId, state: m.state, seats: m.seats, mode: m.mode };
+      aula.room = { roomId: m.roomId, state: m.state, seats: m.seats, mode: m.mode, nextSubject: m.nextSubject };
       if (m.state !== 'waiting') aula.vote = null; // a vote window only lives in a waiting room
       if (net.mirror) setNames(net.mirror, m.seats);
       // The match ended under the student: the room closed ('ended'), or a teacher room waits again for its next start ('waiting').

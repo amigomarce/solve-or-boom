@@ -45,3 +45,5 @@ Build order from the brief:
 | 027 | Students, rooms and results on the teacher page | Integration | Complete | N/A |
 | 028 | Results countdown (single player) | UI | Complete | N/A |
 | 029 | Results countdown and room votes (class) | Integration | Complete | N/A |
+| 030 | Rotating subjects per room (class) | Integration | Complete | N/A |
+| 031 | Change subject from the pause menu (single player) | UI | Ready | N/A |
