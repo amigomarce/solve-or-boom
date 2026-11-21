@@ -1,13 +1,13 @@
 # Story 032: A student's inputs after a room's first match
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-21
 
 ## Context
 
@@ -59,10 +59,8 @@
 
 ## Files
 
-- `src/server/room.ts`
-- `src/server/teacher.ts`
-- `src/server/rooms.ts`
-- `production/qa/evidence/story-032-room-inputs-after-first-match/`
+- `src/server/room.ts` — `resetInputs(room)`: every seat's input state (queue, held, ack, lastSeq, starved, dropped) starts clean when a room builds its next match (`rebuildMatch`, and `stepRoom`'s rematch branch)
+- `production/qa/evidence/story-032-room-inputs-after-first-match/` — 5 screenshots, `resultados-exportados.csv`, `run-log.md`, `stamp.txt`
 
 ---
 
@@ -88,3 +86,16 @@
 
 - Depends on: `production/epics/solve-or-boom/story-029-class-results-votes.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-21
+**Criteria**: 7/8 passing (deferred, requires playtest session: AC-6 several rooms each with students — only a second room of bots was run)
+**Deviations**: None. Residual risk: an old match's input still in flight when the next match starts could raise a seat's `lastSeq` again; closing it needs a match number on the input message (a wire change). Not seen in the run. Not checked: shooting on its own, a phone.
+**Test Evidence**: waived at qa.level minimal; the bounded class run and screenshots are in `production/qa/evidence/story-032-room-inputs-after-first-match/`
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- The reset is in `rebuildMatch` (every teacher start: Iniciar, Iniciar todas, the vote restart) and in `stepRoom`'s rematch branch; it replaces the whole `room.inputs` array, every seat (bots, open and held seats too) including the `dropped` counter; no protocol change (`src/server/room.ts`: `resetInputs`) · kept 2026-11-21

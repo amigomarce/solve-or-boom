@@ -106,6 +106,14 @@ export interface Room {
 /** The controls that only last one step: cleared when a seat's held controls are repeated. */
 const PRESSED: (keyof PlayerInput)[] = ['usePress', 'firePress', 'shop', 'prone', 'jump', 'primary', 'pistol', 'swap', 'reload', 'closeShop', 'closeCard', 'spectate', 'spectateKey', 'medkit'];
 const freshInputs = (): SeatInputs => ({ queue: [], held: idleInput(), ack: -1, lastSeq: -1, starved: 0, dropped: 0 });
+
+/**
+ * Starts every seat's input state clean for a new match (queue, held, ack, lastSeq, starved, dropped): a student's page counts its
+ * input seq from 0 in each match, so the old match's lastSeq would drop all its inputs as repeats, and its ack would reach the new mirror.
+ */
+function resetInputs(room: Room): void {
+  room.inputs = Array.from({ length: SEATS }, freshInputs);
+}
 /**
  * Starts counting the room's current match: an empty tally, and a Match.count that adds each answer and kill of a
  * seated student (found by seat, keyed by the typed name) to that tally and to the teacher's store. Bots are never
@@ -221,7 +229,7 @@ export function stepRoom(room: Room, clockMs: () => number): void {
   if (!room.match.over) return;
   room.matches++;
   room.report = room.tally;
-  if (room.spec.rematch) { room.last = { match: room.match, events: room.pending.splice(0) }; room.match = roomMatch(room.spec, (room.spec.seed + room.matches) >>> 0, room.seats); bindCounting(room); room.matchNo++; room.pending.push(...room.match.events); room.match.events.length = 0; }
+  if (room.spec.rematch) { room.last = { match: room.match, events: room.pending.splice(0) }; room.match = roomMatch(room.spec, (room.spec.seed + room.matches) >>> 0, room.seats); bindCounting(room); resetInputs(room); room.matchNo++; room.pending.push(...room.match.events); room.match.events.length = 0; }
   else { room.status = 'ended'; room.reason = 'partida terminada'; }
 }
 
@@ -279,6 +287,7 @@ export function rebuildMatch(room: Room, match: RoomSpec['match'], seed: number)
   if (room.status !== 'waiting') return false;
   room.spec = { ...room.spec, match, seed };
   room.match = roomMatch(room.spec, seed, room.seats); bindCounting(room);
+  resetInputs(room); // the next match's seqs start from 0 again
   room.pending.length = 0; room.match.events.length = 0;
   return true;
 }

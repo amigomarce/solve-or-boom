@@ -47,4 +47,4 @@ Build order from the brief:
 | 029 | Results countdown and room votes (class) | Integration | Complete | N/A |
 | 030 | Rotating subjects per room (class) | Integration | Complete | N/A |
 | 031 | Change subject from the pause menu (single player) | UI | Complete | N/A |
-| 032 | A student's inputs after a room's first match | Integration | Ready | N/A |
+| 032 | A student's inputs after a room's first match | Integration | Complete | N/A |
