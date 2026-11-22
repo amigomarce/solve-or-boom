@@ -138,6 +138,22 @@
   table.res td.name { max-width: 220px; }
   table.res tr.weak td { background: #3a2220; color: #ffd9cf; }
   .flag { font-size: 14px; padding: 1px 8px; border-radius: 999px; background: #5a2a22; color: #ffd9cf; border: 1px solid var(--bad); white-space: nowrap; }
+  .charts { margin-bottom: 14px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--text); margin-bottom: 8px; }
+  .legend i { display: inline-block; width: 18px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+  .chartgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  @media (min-width: 1100px) { .chartgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .chart h3 { margin: 0 0 6px; }
+  .chart .list { max-height: 360px; overflow-y: auto; padding-right: 4px; }
+  .crow { display: grid; grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 150px; align-items: center; gap: 8px; min-height: 28px; font-size: 14px; }
+  .crow .cname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .crow .track { display: flex; height: 20px; background: #0f1424; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .crow .seg { height: 100%; width: 0; flex: none; transition: width .4s ease; }
+  .crow .seg.r { background: #4fb3d9; }
+  .crow .seg.w { background: repeating-linear-gradient(135deg, #f2a33a 0 6px, #c47a14 6px 9px); }
+  .crow .cnum { white-space: nowrap; color: var(--text); font-variant-numeric: tabular-nums; }
+  .legend .r { background: #4fb3d9; } .legend .w { background: repeating-linear-gradient(135deg, #f2a33a 0 6px, #c47a14 6px 9px); }
+  @media (prefers-reduced-motion: reduce) { .crow .seg { transition: none; } }
 </style>
 </head>
 <body>
@@ -233,6 +249,13 @@
         <span class="hint">Solo se guardan en la memoria de este programa: desaparecen al cerrar el servidor. Exporta el CSV para conservarlos.</span>
       </div>
       <div id="resfilters" class="filters"></div>
+      <div id="reschart" class="charts" hidden>
+        <div class="legend" aria-hidden="true"><span><i class="r"></i>Correctas</span><span><i class="w"></i>Incorrectas</span></div>
+        <div class="chartgrid">
+          <div class="chart" id="chart-topics" hidden><h3>Gráfico por tema (los más flojos primero)</h3><div class="list" role="img" tabindex="0"></div></div>
+          <div class="chart" id="chart-students" hidden><h3>Gráfico por alumno</h3><div class="list" role="img" tabindex="0"></div></div>
+        </div>
+      </div>
       <div id="restopics"></div>
       <div id="resstudents"></div>
     </section>
@@ -490,6 +513,46 @@ const th = (table, key, label, cls) => {
 };
 /** The student rows after the room and student filters. */
 const shownStudents = () => st.results.students.filter(x => (!fRoom || x.room === fRoom) && (!fStudent || x.name === fStudent));
+/** Stable bar rows per chart (key to its elements): a repaint updates them in place so the CSS transition animates the change. */
+const chartRows = { 'chart-topics': new Map(), 'chart-students': new Map() };
+/** Draws one stacked right/wrong bar chart from rows {key, label, title, right, wrong} in the order given; keeps, adds and removes rows by key. */
+function syncChart(id, items, noun) {
+  const box = $(id), list = box.querySelector('.list'), map = chartRows[id];
+  box.hidden = !items.length;
+  const max = Math.max(1, ...items.map(x => x.right + x.wrong)), seen = new Set(), parts = [];
+  let cur = list.firstChild;
+  for (const x of items) {
+    seen.add(x.key);
+    let o = map.get(x.key);
+    if (!o) {
+      const row = document.createElement('div'); row.className = 'crow';
+      row.innerHTML = '<span class="cname"></span><span class="track"><span class="seg r"></span><span class="seg w"></span></span><span class="cnum"></span>';
+      o = { row, name: row.children[0], r: row.querySelector('.seg.r'), w: row.querySelector('.seg.w'), num: row.children[2] };
+      map.set(x.key, o);
+    }
+    if (o.row !== cur) list.insertBefore(o.row, cur); else cur = cur.nextSibling;
+    if (o.name.textContent !== x.label) o.name.textContent = x.label;
+    if (o.name.title !== x.title) o.name.title = x.title;
+    const n = x.right + x.wrong, p = n ? Math.round(100 * x.right / n) : 0;
+    const txt = `${x.right} ✓ · ${x.wrong} ✗ · ${n ? p + ' %' : '—'}`;
+    if (o.num.textContent !== txt) o.num.textContent = txt;
+    if (o.row.dataset.fresh === undefined) { o.row.dataset.fresh = '1'; void o.row.offsetWidth; }
+    const wr = (100 * x.right / max).toFixed(2) + '%', ww = (100 * x.wrong / max).toFixed(2) + '%';
+    if (o.r.style.width !== wr) o.r.style.width = wr;
+    if (o.w.style.width !== ww) o.w.style.width = ww;
+    parts.push(`${x.label}: ${x.right} correctas, ${x.wrong} incorrectas, ${n ? p + ' %' : 'sin respuestas'}`);
+  }
+  for (const [k, o] of map) if (!seen.has(k)) { o.row.remove(); map.delete(k); }
+  const lbl = `Gráfico por ${noun}. ` + parts.join('; ');
+  if (list.getAttribute('aria-label') !== lbl) list.setAttribute('aria-label', lbl);
+}
+/** The two charts, from the same filtered and sorted rows as the tables. */
+function renderCharts() {
+  const r = st.results;
+  $('reschart').hidden = !r.topics.length;
+  syncChart('chart-topics', sorted(r.topics, 'topics').map(t => ({ key: t.topic, label: t.topic, title: t.topic, right: t.right, wrong: t.wrong })), 'tema');
+  syncChart('chart-students', r.topics.length ? sorted(shownStudents(), 'students').map(x => ({ key: x.room + '\u0000' + x.name, label: x.name, title: x.name + ' · ' + roomName(x.room), right: x.right, wrong: x.wrong })) : [], 'alumno');
+}
 /** The topic view (weakest first, the ones to reinforce marked) and the student table, with the filters and the sort. */
 function renderResults() {
   const r = st.results, weak = t => t.right + t.wrong >= info.weakMinAnswers && 100 * t.right / (t.right + t.wrong) < info.weakBelowPct;
@@ -503,6 +566,7 @@ function renderResults() {
     : '<h3>Por tema (los más flojos primero)</h3><table class="res"><thead><tr>' + th('topics', 'name', 'Tema') + th('topics', 'right', 'Correctas') + '<th>Incorrectas</th>' + th('topics', 'pct', '% correctas') + '<th>Alumnos</th><th class="l"></th></tr></thead><tbody>'
       + sorted(r.topics, 'topics').map(t => `<tr${weak(t) ? ' class="weak"' : ''}><td class="name">${esc(t.topic)}</td><td>${t.right}</td><td>${t.wrong}</td><td>${pct(t.right, t.wrong)}</td><td>${t.students}</td><td class="l">${weak(t) ? '<span class="flag">A reforzar</span>' : ''}</td></tr>`).join('')
       + '</tbody></table>');
+  renderCharts();
   const rows = shownStudents();
   put('resstudents', !r.students.length ? '' : '<h3>Por alumno</h3><table class="res"><thead><tr>' + th('students', 'name', 'Alumno') + '<th class="l">Sala</th>' + th('students', 'right', 'Correctas') + '<th>Incorrectas</th>' + th('students', 'pct', '% correctas') + th('students', 'kills', 'Bajas') + '<th>Muertes</th></tr></thead><tbody>'
     + (rows.length ? sorted(rows, 'students').map(x => `<tr><td class="name" title="${esc(x.name)}">${esc(x.name)}</td><td class="l">${esc(roomName(x.room))}</td><td>${x.right}</td><td>${x.wrong}</td><td>${pct(x.right, x.wrong)}</td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join('') : '<tr><td colspan="7" class="l">Ningún alumno con ese filtro.</td></tr>')

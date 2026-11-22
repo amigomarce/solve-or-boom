@@ -1,13 +1,13 @@
 # Story 038: Live result charts
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: UI
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-22
 
 ## Context
 
@@ -54,8 +54,8 @@
 
 ## Files
 
-- `src/server/profesor.html`
-- `production/qa/evidence/story-038-live-result-charts/`
+- `src/server/profesor.html` — two bar charts on the Resultados tab (by topic, by student: right and wrong stacked, the numbers printed), built from the same filtered and sorted rows as the tables, kept as stable elements so each answer animates the bars in place
+- `production/qa/evidence/story-038-live-result-charts/` — 3 screenshots, `stamp.txt`
 
 ---
 
@@ -81,3 +81,16 @@
 
 - Depends on: `production/epics/solve-or-boom/story-036-teacher-tabs.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-22
+**Criteria**: 5/6 passing (deferred, requires playtest session: AC-5 pressing "Exportar CSV" and "Borrar resultados" with the charts shown (their code is untouched); also unchecked: the bar animation on a live screen and the student list scrolling with about 40 students)
+**Deviations**: None.
+**Test Evidence**: `production/qa/evidence/story-038-live-result-charts/` (3 screenshots); tests waived at qa.level minimal
+**Reviewed by**: self, no independent review
+
+## Calls beyond the design
+- Right answers in blue (`#4fb3d9`), wrong in amber with diagonal stripes (`#f2a33a`); each bar is labelled "3 ✓ · 2 ✗ · 60 %" on its right; its length follows the answer total against the largest in that chart, not a fixed 100% bar; bars 20 px high, text 14 px (`src/server/profesor.html`) · kept 2026-11-22
+- Charts above the tables and side by side from 1100 px; long names clipped with the full name in the title; each list scrolls past 360 px; one shared legend; the chart block hidden with no answers; students with the same name in different rooms get separate bars; the width animation lasts 0.4 s and is off with reduced motion · kept 2026-11-22
