@@ -96,7 +96,7 @@ Round 1 is fair: everyone on pistols, bots react slowly. By round 3 the bots hav
 - [x] Teacher page tabs: the teacher page in tabs (Salas, Preguntas, Partida, Resultados) with the status bar fixed on top, the last tab remembered, a mark on a tab with news; nothing lost when switching.
 - [x] Move students by dragging: drag a student's name from one room card to another (mouse and touch), the rooms that can take them lit and the others dimmed with the reason; today's menu stays.
 - [x] Live result charts: bar charts by topic and by student on the Resultados tab, updating as answers arrive, with today's filters, drawn by the page itself.
-- [ ] Room panels that adapt and reorder: grid, list or compact view of the room cards, cards reordered by dragging and folded to one line, remembered in the browser, using the screen's width.
+- [x] Room panels that adapt and reorder: grid, list or compact view of the room cards, cards reordered by dragging and folded to one line, remembered in the browser, using the screen's width.
 - [ ] Watch a match live: a Ver en directo panel showing a running room's map from above with every player moving as a dot, sent by the server only for the watched room while it is open (protocol up by one).
 
 ## Your systems

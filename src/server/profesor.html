@@ -77,7 +77,8 @@
   .csvline .good { color: var(--ok); } .csvline .skip { color: #ffb38a; }
   ul.students { list-style: none; margin: 0; padding: 0; }
   ul.students li { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
-  ul.students li:first-child { border-top: 0; }
+  /* Story 039: on a wide screen the students list runs in several columns. */
+  ul.students { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); column-gap: 24px; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .gone { color: var(--soft); font-weight: 400; font-size: 14px; }
   /* Story 027: the students summary; one without a room or without a connection stands out. */
@@ -86,7 +87,7 @@
   ul.students li.off { border-left-color: var(--warn); opacity: .75; }
   .pill { font-size: 14px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: #22301f; color: var(--ok); }
   .pill.off { background: #3d2a12; color: var(--warn); } .pill.noroom { background: #5a2a22; color: #ffd9cf; border: 1px solid var(--bad); }
-  .seat select { min-width: 0; flex: 1; font-size: 14px; }
+  .seat select { min-width: 0; flex: 1 1 7em; font-size: 14px; }
   .room-head .rename { font-size: 14px; padding: 2px 8px; }
   input.rn { font: inherit; font-size: 16px; color: var(--text); background: #0f1424; border: 1px solid var(--gold); border-radius: 6px; padding: 3px 6px; min-width: 0; width: 12em; }
   .filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; font-size: 14px; color: var(--soft); }
@@ -96,21 +97,24 @@
     .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
   .room { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
   .room.s-running { border-color: #4f8a45; } .room.s-paused { border-color: #a8913f; } .room.s-failed { border-color: #a24d43; }
-  .room-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .room-head b { font-size: 18px; }
+  .room-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+  .rh-main { flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+  .room-head b { font-size: 18px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .badge { font-size: 14px; padding: 2px 8px; border-radius: 999px; background: #2a3247; }
   .s-waiting .badge { color: var(--text); } .s-running .badge { color: var(--ok); background: #1f3320; }
   .s-paused .badge { color: var(--warn); background: #3a3218; } .s-ended .badge, .s-failed .badge { color: var(--bad); background: #3a2220; }
   .meta { color: var(--soft); font-size: 14px; margin: 4px 0 8px; }
   .meta strong { color: var(--text); font-size: 16px; }
-  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .teams.one { grid-template-columns: 1fr; }
+  /* Story 039: the team columns stack when the card is narrow (auto-fit) instead of overflowing; every cell may shrink. */
+  .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+  .teams.one { grid-template-columns: minmax(0, 1fr); }
+  .team { min-width: 0; }
   .team h4 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
-  .seat { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.04); margin-bottom: 4px; font-size: 15px; min-width: 0; }
-  .seat .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seat { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.04); margin-bottom: 4px; font-size: 15px; min-width: 0; }
+  .seat .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .seat.bot { color: #8a93a3; }
   /* Story 037: dragging a student's name onto another room card. The handle is the only place with touch-action none. */
-  .seat .drag { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; padding: 2px 8px 2px 6px; border-radius: 6px; background: var(--btn); border: 1px solid #47557a; }
+  .seat .drag { flex: 0 1 auto; min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; padding: 2px 8px 2px 6px; border-radius: 6px; background: var(--btn); border: 1px solid #47557a; }
   .seat .drag::before { content: "\2807"; color: var(--soft); margin-right: 4px; }
   .seat .drag:hover { background: var(--btn-on); }
   .seat .drag.dragging { opacity: .45; }
@@ -127,6 +131,54 @@
   .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .empty { color: var(--soft); font-size: 15px; padding: 6px 0; }
   .finished { margin-top: 18px; }
+  /* Story 039: the view bar, the three views, the card header (drag handle, order and fold buttons) and the folded card. */
+  .viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 12px; font-size: 14px; color: var(--soft); }
+  #viewctl { display: inline-flex; border: 1px solid #47557a; border-radius: 8px; overflow: hidden; }
+  #viewctl button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 14px; background: var(--btn); }
+  #viewctl button + button { border-left: 1px solid #47557a; }
+  #viewctl button[aria-checked="true"] { background: var(--gold); color: #1b2232; font-weight: 600; }
+  #viewctl button:focus-visible { outline-offset: -3px; }
+  #rooms.view-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 500px), 1fr)); align-items: start; }
+  #rooms.view-list { grid-template-columns: minmax(0, 1fr); }
+  #rooms.view-compact { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; align-items: start; }
+  #rooms .room { min-width: 0; }
+  #rooms .room-head { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #rooms .room-head input, #rooms .room-head button { cursor: auto; }
+  #rooms .room-head button { cursor: pointer; }
+  .rc { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+  .rbtn { padding: 1px 8px; font-size: 14px; line-height: 1.4; }
+  .cnt { font-size: 14px; color: var(--soft); white-space: nowrap; }
+  .room .brief { font-size: 14px; color: var(--soft); min-width: 0; overflow-wrap: anywhere; }
+  .room.folded { padding: 6px 12px; }
+  .room.folded .room-head { align-items: center; }
+  .room.folded .rh-main { align-items: center; }
+  .room.folded .room-head b { font-size: 16px; }
+  .room-info .meta:first-child { margin-top: 6px; }
+  .view-list .room-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 18px; }
+  @media (min-width: 1100px) {
+    .view-list .room-body { grid-template-columns: minmax(200px, 300px) minmax(0, 1fr) auto; align-items: start; }
+    .view-list .actions { flex-direction: column; align-items: stretch; margin-top: 8px; }
+  }
+  .view-compact .room { padding: 8px 10px; }
+  .view-compact .room-head .hint, .view-compact .team h4, .view-compact .seat .tag, .view-compact .seat.bot, .view-compact .room-head .rename { display: none; }
+  .view-compact .room-head b { font-size: 16px; }
+  .view-compact .teams { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .view-compact .meta { margin: 2px 0; }
+  .view-compact .actions { margin-top: 6px; }
+  .view-compact .actions button, .view-compact .rbtn { padding: 3px 8px; font-size: 14px; }
+  .cghost { position: fixed; left: 0; top: 0; z-index: 20; pointer-events: none; padding: 6px 12px; border-radius: 8px; background: var(--gold); color: #1b2232; font-weight: 600; box-shadow: 0 6px 18px rgba(0,0,0,.5); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .room.ord-drag { opacity: .45; }
+  .room.ord-over::before { content: ""; position: absolute; background: var(--gold); border-radius: 2px; pointer-events: none; }
+  .room.ord-over.ord-x[data-ins="before"]::before { left: -9px; top: 0; bottom: 0; width: 4px; }
+  .room.ord-over.ord-x[data-ins="after"]::before { right: -9px; top: 0; bottom: 0; width: 4px; }
+  .room.ord-over.ord-y[data-ins="before"]::before { top: -9px; left: 0; right: 0; height: 4px; }
+  .room.ord-over.ord-y[data-ins="after"]::before { bottom: -9px; left: 0; right: 0; height: 4px; }
+  @media (max-width: 480px) {
+    #content { padding: 10px 8px; }
+    #tabs { padding: 6px 8px 0; gap: 2px; }
+    #tabs button[role="tab"] { padding: 8px 8px; font-size: 15px; }
+    header, #statusbar { padding-left: 8px; padding-right: 8px; }
+  }
   .finished .room { padding: 8px 12px; }
   .results { margin-top: 0; overflow-x: auto; }
   .results .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -185,7 +237,13 @@
 <div id="toasts" role="status" aria-live="polite"></div>
 <div id="content">
   <div id="tab-salas" role="tabpanel" aria-labelledby="tab-btn-salas">
-    <div id="rooms" class="rooms"></div>
+    <div class="viewbar"><span id="viewlbl">Vista de las salas</span>
+      <div id="viewctl" role="radiogroup" aria-labelledby="viewlbl">
+        <button type="button" role="radio" data-view="grid" aria-checked="true" tabindex="0">Cuadrícula</button><button type="button" role="radio" data-view="list" aria-checked="false" tabindex="-1">Lista</button><button type="button" role="radio" data-view="compact" aria-checked="false" tabindex="-1">Compacta</button>
+      </div>
+      <span class="hint">Arrastra una sala por su cabecera, o usa los botones ◀ ▶, para cambiar el orden.</span>
+    </div>
+    <div id="rooms" class="rooms view-grid"></div>
     <div id="finished" class="finished"></div>
     <section class="panel" style="margin-top:16px" aria-labelledby="h-students">
       <h2 id="h-students">Alumnos <span id="count" class="hint"></span></h2>
@@ -366,7 +424,11 @@ function render() {
         + `<span class="pill${x.connected ? '' : ' off'}">${x.connected ? 'Conectado' : 'Sin conexión'}</span></li>`;
     }).join('') + '</ul>');
 
-  put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : live.map(roomCard).join(''));
+  syncRoomPrefs(live);
+  cardIds = liveOrdered(live).map(r => r.id);
+  $('rooms').className = 'rooms view-' + view;
+  // While a card is being dragged the cards are left alone (a rebuild would drop the pointer); the drag's end repaints.
+  if (!(cdrag && cdrag.active)) put('rooms', !live.length ? '<div class="empty">No hay salas. Pulsa «Repartir automáticamente» o «Añadir sala».</div>' : liveOrdered(live).map(roomCard).join(''));
   const done = st.rooms.filter(r => !live.includes(r));
   put('finished', done.length ? '<h2>Salas terminadas</h2><div class="rooms">' + done.map(r =>
     `<div class="room s-${r.status}"><div class="room-head"><b>${esc(roomName(r.id))}</b><span class="badge">${STATE_NAME[r.status]}</span><span class="hint">Partidas jugadas: ${r.matches}</span></div>`
@@ -376,6 +438,7 @@ function render() {
   $('auto').checked = st.session.autoRestart;
   noticeChanges();
   noticeTabs();
+  orderApply();
   dragApply(); // a repaint of the cards drops the drag classes: put them back
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
@@ -482,16 +545,27 @@ function roomCard(r) {
     : [0, 1].map(t => `<div class="team" data-team="${t}"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(seatDiv).join('') + '</div>').join('');
   const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
   const played = r.status !== 'waiting';
+  const nm = roomName(r.id), foldedNow = folded.has(r.id) && renaming !== r.id;
+  const humans = r.seats.filter(x => x.kind === 'human').length, cnt = `<span class="cnt">${humans === 1 ? '1 alumno' : humans + ' alumnos'}</span>`;
+  // Story 039: order buttons (◀ ▶, or ▲ ▼ in the list view) and the fold button, in the header. They carry no data-act: the room buttons' handler ignores them.
+  const idx = cardIds.indexOf(r.id), vert = view === 'list';
+  const mv = (d, glyph, word) => `<button type="button" class="rbtn" data-mv="${d}" data-card="${esc(r.id)}" aria-label="Mover ${esc(nm)} ${word}" title="Mover ${word}"${(d < 0 ? idx <= 0 : idx >= cardIds.length - 1) ? ' disabled' : ''}>${glyph}</button>`;
+  const ctl = `<span class="rc">${mv(-1, vert ? '▲' : '◀', vert ? 'arriba' : 'antes')}${mv(1, vert ? '▼' : '▶', vert ? 'abajo' : 'después')}`
+    + `<button type="button" class="rbtn" data-fold="${esc(r.id)}" aria-expanded="${foldedNow ? 'false' : 'true'}" aria-label="${foldedNow ? 'Desplegar' : 'Plegar'} ${esc(nm)}" title="${foldedNow ? 'Desplegar' : 'Plegar'}">${foldedNow ? '▸' : '▾'}</button></span>`;
+  if (foldedNow) {
+    const brief = r.vote ? `Votación: quedan ${r.vote.left} s` : !modeOf(r.mode).bomb ? r.summary : played ? `Ronda ${r.round} · ${r.score[0]} – ${r.score[1]}` : 'Todavía no ha empezado';
+    return `<div class="room folded s-${r.status}" data-room="${esc(r.id)}"><div class="room-head"><div class="rh-main"><b>${esc(nm)}</b><span class="badge">${STATE_NAME[r.status]}</span><span class="brief">${esc(brief)}</span>${cnt}</div>${ctl}</div></div>`;
+  }
   const title = renaming === r.id ? `<input class="rn" data-rename="${esc(r.id)}" value="${esc(r.name)}" placeholder="${esc(roomNumber(r.id))}" aria-label="Nombre de la sala (Intro guarda, Esc cancela)">`
-    : `<b>${esc(roomName(r.id))}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(roomName(r.id))}">Renombrar</button>`;
-  return `<div class="room s-${r.status}" data-room="${esc(r.id)}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
-    + `<span class="hint">Modo ${esc(modeOf(r.mode).name || r.mode)} · Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
-    + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : !modeOf(r.mode).bomb ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
+    : `<b>${esc(nm)}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(nm)}">Renombrar</button>`;
+  return `<div class="room s-${r.status}" data-room="${esc(r.id)}"><div class="room-head"><div class="rh-main">${title}<span class="badge">${STATE_NAME[r.status]}</span>${cnt}`
+    + `<span class="hint">Modo ${esc(modeOf(r.mode).name || r.mode)} · Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>${ctl}</div>`
+    + `<div class="room-body"><div class="room-info"><div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : !modeOf(r.mode).bomb ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + (r.next ? `<div class="meta">Asignatura: <strong>${esc(r.current || 'todavía ninguna')}</strong> · Próxima: <strong>${esc(r.next)}</strong></div>` : '')
     + (r.vote ? `<div class="vote" role="status">Votación: quedan <strong>${r.vote.left} s</strong> · Listos ${r.vote.ready} de ${r.vote.students} · ${voteText(r.vote)}</div>` : '')
-    + `<div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
+    + `</div><div class="teams${ffa ? ' one' : ''}">${teams}</div><div class="actions">`
     + b('start', 'Iniciar', r.status === 'waiting', true) + b('pause', 'Pausar', r.status === 'running') + b('resume', 'Reanudar', r.status === 'paused')
-    + b('end', 'Terminar', played || !!r.vote) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div>';
+    + b('end', 'Terminar', played || !!r.vote) + b('remove', 'Quitar sala', r.status === 'waiting') + '</div></div></div>';
 }
 
 /** The percent right as text ("—" with no answers). */
@@ -675,6 +749,127 @@ $('rooms').addEventListener('change', e => {
   const [room, team] = sel.value.split('|');
   sel.blur();
   send('tmove', { student: Number(sel.dataset.student), room, team: Number(team) });
+});
+// ---- Story 039: view, order and folded rooms of the room cards ----
+/** The cards' view ('grid', 'list' or 'compact'), the room ids in the teacher's order and the folded room ids. They live here, never in the DOM (each tstate rebuilds the cards); roomCard/render() apply them on every repaint. */
+const VIEWS = ['grid', 'list', 'compact'];
+let view = 'grid', order = [], cardIds = [];
+const folded = new Set();
+/** Storage is never required: any read or write may throw (blocked storage, a full disk), and then the page just does not remember. */
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* no storage */ } };
+/** A stored JSON list of text ids ([] when missing or damaged). */
+function lsList(k) { try { const v = JSON.parse(lsGet(k)); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; } catch { return []; } }
+{ const v = lsGet('profesor.view'); if (VIEWS.includes(v)) view = v; order = [...new Set(lsList('profesor.order'))]; for (const id of lsList('profesor.folded')) folded.add(id); }
+/** Forgets the rooms that no longer exist and puts a new live room at the end of the order; saves when something changed. */
+function syncRoomPrefs(live) {
+  const ids = st.rooms.map(r => r.id), before = JSON.stringify(order) + JSON.stringify([...folded]);
+  order = order.filter(id => ids.includes(id));
+  for (const r of live) if (!order.includes(r.id)) order.push(r.id);
+  for (const id of [...folded]) if (!ids.includes(id)) folded.delete(id);
+  if (JSON.stringify(order) + JSON.stringify([...folded]) !== before) { lsSet('profesor.order', JSON.stringify(order)); lsSet('profesor.folded', JSON.stringify([...folded])); }
+}
+/** The live rooms in the teacher's order. */
+const liveOrdered = live => live.slice().sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+/** Moves a room next to another in the order (before or after it) and saves. */
+function moveRoom(id, target, before) {
+  const o = order.filter(x => x !== id), i = o.indexOf(target);
+  if (i < 0 || id === target) return;
+  o.splice(before ? i : i + 1, 0, id); order = o; lsSet('profesor.order', JSON.stringify(order));
+}
+/** Repaints the cards now (the order, the fold or the view changed). */
+function repaintRooms() { delete last.rooms; if (st && info) render(); }
+/** Shows which view is chosen in the radio group and on the grid. */
+function applyView() {
+  for (const b of $('viewctl').querySelectorAll('button')) { const on = b.dataset.view === view; b.setAttribute('aria-checked', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; }
+  $('rooms').className = 'rooms view-' + view;
+}
+function setView(v, focus) {
+  if (!VIEWS.includes(v)) return;
+  view = v; lsSet('profesor.view', v); applyView(); repaintRooms();
+  if (focus) $('viewctl').querySelector(`button[data-view="${v}"]`).focus();
+}
+$('viewctl').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) setView(b.dataset.view, false); });
+$('viewctl').addEventListener('keydown', e => {
+  const i = VIEWS.indexOf(view);
+  const to = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? (i + 1) % VIEWS.length : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? (i + VIEWS.length - 1) % VIEWS.length : -1;
+  if (to < 0) return;
+  e.preventDefault(); setView(VIEWS[to], true);
+});
+applyView();
+/** Gives the focus back to a header button after the cards were rebuilt (the other arrow when that one is now disabled). */
+function refocusCard(id, sel, alt) {
+  const card = [...$('rooms').querySelectorAll('.room')].find(c => c.dataset.room === id); if (!card) return;
+  let b = card.querySelector(sel); if (b && b.disabled && alt) b = card.querySelector(alt);
+  if (b && !b.disabled) b.focus();
+}
+$('rooms').addEventListener('click', e => {
+  const f = e.target.closest('button[data-fold]');
+  if (f) {
+    const id = f.dataset.fold;
+    if (folded.has(id)) folded.delete(id); else folded.add(id);
+    lsSet('profesor.folded', JSON.stringify([...folded])); repaintRooms(); refocusCard(id, 'button[data-fold]'); return;
+  }
+  const m = e.target.closest('button[data-mv]');
+  if (m && !m.disabled) {
+    const id = m.dataset.card, d = Number(m.dataset.mv), i = cardIds.indexOf(id), to = cardIds[i + d];
+    if (i < 0 || !to) return;
+    moveRoom(id, to, d < 0); repaintRooms(); refocusCard(id, `button[data-mv="${d}"]`, `button[data-mv="${-d}"]`);
+  }
+});
+/** The card drag lives here too (never in the DOM): { id, pid, x0, y0, active, over (room id under the pointer), ins ('before' or 'after' it), axis ('x' or 'y'), ghost }. null when none. */
+let cdrag = null;
+/** Puts the drag classes on the cards (the one dragged, the one under the pointer and where it would go); clears them when no card drag is active. */
+function orderApply() {
+  const on = !!(cdrag && cdrag.active);
+  for (const el of $('rooms').querySelectorAll('.room')) {
+    el.classList.toggle('ord-drag', on && el.dataset.room === cdrag.id);
+    const over = on && cdrag.over === el.dataset.room;
+    el.classList.toggle('ord-over', over); el.classList.toggle('ord-x', over && cdrag.axis === 'x'); el.classList.toggle('ord-y', over && cdrag.axis === 'y');
+    if (over) el.dataset.ins = cdrag.ins; else delete el.dataset.ins;
+  }
+}
+function cdragEnd() {
+  if (!cdrag) return;
+  if (cdrag.ghost) cdrag.ghost.remove();
+  cdrag = null;
+  document.body.classList.remove('is-dragging');
+  document.removeEventListener('pointermove', cdragMove); document.removeEventListener('pointerup', cdragUp);
+  document.removeEventListener('pointercancel', cdragCancel); document.removeEventListener('keydown', cdragKey, true);
+  repaintRooms(); // the cards were left alone during the drag: catch up
+}
+function cdragMove(e) {
+  if (!cdrag || e.pointerId !== cdrag.pid) return;
+  if (!cdrag.active) {
+    if (Math.hypot(e.clientX - cdrag.x0, e.clientY - cdrag.y0) < DRAG_THRESHOLD) return;
+    cdrag.active = true;
+    const g = document.createElement('div'); g.className = 'cghost'; g.textContent = roomName(cdrag.id); document.body.appendChild(g); cdrag.ghost = g;
+    document.body.classList.add('is-dragging');
+  }
+  cdrag.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 14}px)`;
+  const el = document.elementFromPoint(e.clientX, e.clientY), card = el && el.closest('#rooms .room');
+  if (card && card.dataset.room !== cdrag.id) {
+    const cards = [...$('rooms').querySelectorAll('.room')], r = card.getBoundingClientRect(), l0 = cards[0].getBoundingClientRect().left;
+    const single = cards.every(c => Math.abs(c.getBoundingClientRect().left - l0) < 2); // one column: order runs down, else across
+    cdrag.over = card.dataset.room; cdrag.axis = single ? 'y' : 'x';
+    cdrag.ins = (single ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2) ? 'before' : 'after';
+  } else cdrag.over = null;
+  orderApply();
+}
+function cdragUp(e) {
+  if (!cdrag || e.pointerId !== cdrag.pid) return;
+  if (cdrag.active) { cdragMove(e); if (cdrag.over) moveRoom(cdrag.id, cdrag.over, cdrag.ins === 'before'); }
+  cdragEnd();
+}
+function cdragCancel(e) { if (cdrag && e.pointerId === cdrag.pid) cdragEnd(); }
+function cdragKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cdragEnd(); } }
+// A card drags only by its header: never from a button, the rename input, or a student's handle (story 037).
+$('rooms').addEventListener('pointerdown', e => {
+  const h = e.target.closest('.room-head'); if (!h || cdrag || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (e.target.closest('button, input, select, .drag')) return;
+  cdrag = { id: h.closest('.room').dataset.room, pid: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, over: null, ins: 'after', axis: 'y', ghost: null };
+  document.addEventListener('pointermove', cdragMove); document.addEventListener('pointerup', cdragUp);
+  document.addEventListener('pointercancel', cdragCancel); document.addEventListener('keydown', cdragKey, true);
 });
 // ---- Story 037: drag a student's name from a room card onto another ----
 /** The drag lives here, never in the card DOM (cards are rebuilt by each tstate): { id: the student's id, name, x0, y0 (where the pointer went down), active (past the threshold), over: the room id under the pointer, ghost }. null when none. */

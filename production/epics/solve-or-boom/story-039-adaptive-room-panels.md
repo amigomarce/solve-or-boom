@@ -1,13 +1,13 @@
 # Story 039: Room panels that adapt and reorder
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: UI
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-22
 
 ## Context
 
@@ -54,8 +54,8 @@
 
 ## Files
 
-- `src/server/profesor.html`
-- `production/qa/evidence/story-039-adaptive-room-panels/`
+- `src/server/profesor.html` — the Salas tab: a view picker (Cuadrícula, Lista, Compacta); room cards reordered by dragging their header or with ◀ ▶ buttons; each card folds to one line; view, order and folded rooms remembered in the browser and applied on every repaint; card and team-column widths fixed so nothing overflows from 360 to 1920 px; the Alumnos list in columns on wide screens
+- `production/qa/evidence/story-039-adaptive-room-panels/` — 16 screenshots (9 from the programmer's check with a simulated connection, 7 `real-*` from the classroom server), `stamp.txt`
 
 ---
 
@@ -81,3 +81,16 @@
 
 - Depends on: `production/epics/solve-or-boom/story-036-teacher-tabs.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-22
+**Criteria**: 4/6 passing (deferred, requires playtest session: AC-2 dragging a room card by its header against the server (only the "Mover después" button was run there; the header drag was seen in the programmer's simulated-connection check) and with a finger on a tablet; AC-6 the phone at 360 px (measured, no screenshot))
+**Deviations**: None. Seen on the way: in the "Lista" view the help text still says "botones ◀ ▶" while that view's order buttons are ▲ ▼. This story also fixed the "Equipo 2" columns overflowing the room cards in Bomba (seen in stories 036 and 037); measured 0 overflowing elements in the three views at 1024, 1366 and 1920 px.
+**Test Evidence**: `production/qa/evidence/story-039-adaptive-room-panels/` (16 screenshots); tests waived at qa.level minimal
+**Reviewed by**: self, no independent review
+
+## Calls beyond the design
+- Default view "Cuadrícula"; grid card minimum 500 px (one column at 1024, two at 1366, three at 1920), compact 300 px; the list view has the header on top and, from 1100 px, info, team columns and actions in three blocks; the order buttons are ◀ ▶ (▲ ▼ in the list view) and each header has a ▾ fold button; the Alumnos list runs in columns of at least 440 px; the tab bar is smaller under 480 px (`src/server/profesor.html`) · kept 2026-11-22
+- A folded card shows name, state, a brief (vote seconds left, the server's summary, "Ronda N · a – b" in Bomba, or "Todavía no ha empezado"), the student count and the header buttons, and still takes a dropped student; a compact card hides the bots, team headings, tags and "Renombrar" but keeps the human students with their handle and menu; the card drag starts only from the header after 6 px, with no auto-scroll; finished rooms keep their old layout · kept 2026-11-22
