@@ -210,6 +210,7 @@ if (TOUCH) {
   secBtn = make('secondary', '', gw, `${pill(gw, gh)};${at(85, 10, gw, gh)}`); // story 033: picks the second bought gun, hidden without one
   secBtn.style.display = 'none';
   make('reload', 'Recargar', u, atRight(94.3, 22, u));
+  make('strike', 'Golpear', u, atRight(94.3, 38.5, u)); // story 034: the butt strike, above Recargar in the right column (no keyboard hint)
   // Saltar left of Fuego; Plantar / Desactivar left of Apuntar, only while it can be used (setUseLabel).
   make('jump', 'Saltar', u, at(64.5, 66, u));
   const uw = Math.round(u * 1.7), uh = Math.round(u * 0.8);

@@ -41,6 +41,8 @@ export interface PlayerInput {
   shop: boolean;
   /** Pressed: prone toggle, jump, first gun, second gun (story 033), pistol, swap guns, reload. Held: scope, aiming down the sights. */
   prone: boolean; jump: boolean; primary: boolean; secondary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
+  /** Pressed: strike with the butt of the gun in hand (story 034), any gun, no ammo spent. */
+  strike: boolean;
   /** Pressed: use a carried medkit (story 016). */
   medkit: boolean;
   /** Pressed: use the kept ability, the Cazador (story 018). */
@@ -61,7 +63,7 @@ export interface PlayerInput {
 export function idleInput(): PlayerInput {
   return {
     moveF: 0, moveS: 0, walk: false, sprint: false, crouch: false, use: false, usePress: false, fire: false, firePress: false,
-    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, medkit: false, ability: false,
+    lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, strike: false, medkit: false, ability: false,
     prone: false, jump: false, primary: false, secondary: false, pistol: false, swap: false, reload: false, scope: false, digits: [],
     buyItem: '', answer: -1, closeShop: false, closeCard: false, spectate: false, spectateKey: false,
   };
@@ -246,7 +248,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   // Medkits (story 016): using a carried one takes tune.medkit_time seconds, walking allowed; it is spent and heals
   // tune.medkit_heal when the time is up. Shooting, reloading or changing gun first stops it and keeps the medkit. Full health keeps the medkit.
   if (p.healT > 0) {
-    if (inp.fire || inp.firePress || inp.reload || inp.swap || inp.primary || inp.secondary || inp.pistol) stopHeal(match, p);
+    if (inp.fire || inp.firePress || inp.strike || inp.reload || inp.swap || inp.primary || inp.secondary || inp.pistol) stopHeal(match, p);
     else if ((p.healT -= dt) <= 0) { p.healT = 0; p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
   } else if (inp.medkit) {
     if (p.hp >= tune.max_hp) { if (match.t - (fullMsgAt.get(p) ?? -99) > tune.medkit_full_msg_s) { fullMsgAt.set(p, match.t); tell(match, p, 'Ya tienes toda la vida'); } }
@@ -279,6 +281,8 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     const auto = WEAPON[p.cur].auto;
     const trig = auto ? inp.fire : inp.firePress;
     if (trig && !me.sprint && me.proneT === 0) humanShoot(match, p);
+    // Story 034 (Brief MVP feature 46): the butt strike, the same code path as the empty-gun strike. A menu or card open returned above; dead players never get here.
+    if (inp.strike && !p.hidden && !me.sprint && me.proneT === 0) humanShoot(match, p, true);
   } else if (inp.firePress) tell(match, p, 'Se puede disparar cuando se abran las puertas');
   // The bomb.
   const b = match.bomb;

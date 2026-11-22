@@ -753,6 +753,15 @@ let decalI = 0;
 export function nextDecal() { return decals[decalI++ % decals.length]; }
 /** Story 016: seconds left of each player's melee swing (by player id), set by a 'melee' event and run down in placeModels. */
 export const swing: number[] = ROSTER.map(() => 0);
+/**
+ * Story 034: the butt-swing's shape for `t` (0..1, the share of `melee_time` gone): 0 to -1 (gun pulled back and up) over the first
+ * 30%, up to +1 (swung forward and down) by 60%, then back to 0. One shape for the first-person gun and the model, for every strike.
+ */
+export function swingK(t: number): number {
+  if (t < 0.3) return -t / 0.3;
+  if (t < 0.6) return -1 + 2 * (t - 0.3) / 0.3;
+  return Math.max(0, 1 - (t - 0.6) / 0.4);
+}
 /** Story 016: the dropped medkits and ammo boxes, pooled (a pickup in match.pickups shows the next free one of its kind). */
 export const pickupMeshes: Record<string, THREE.Group[]> = { medkit: [], ammo: [] };
 for (let i = 0; i < 16; i++) {

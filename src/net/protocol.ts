@@ -48,7 +48,8 @@ import { LEVELS, type Level } from '../game/types';
 //     the student's room view (`joined`, `room`) carries `nextSubject` ("" when unknown). The results CSV gains the "Materia" column (server side only).
 // 22: two bought weapons (story 033): the input carries `secondary` (the second-weapon key, pressed); the own row grows to 28 numbers: [21] the second weapon's
 //     WEAPON_IDS index (-1 none) and [22..27] mag, reserve of the pistol, the first and the second weapon (0, 0 for a place that is empty), so the HUD shows the stowed guns.
-export const PROTOCOL_VERSION = 22;
+// 23: the butt strike (story 034): the input carries `strike` (the Golpear key, pressed); the server judges it with the empty-gun strike's code and answers with the usual `melee` and `hit` events.
+export const PROTOCOL_VERSION = 23;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -335,7 +336,7 @@ const isLook: Check = v => typeof v === 'number' && Number.isFinite(v);
 const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   moveF: isAxis, moveS: isAxis, walk: isBool, sprint: isBool, crouch: isBool, use: isBool, usePress: isBool,
   fire: isBool, firePress: isBool, lookLeft: isBool, lookRight: isBool, lookUp: isBool, lookDown: isBool,
-  lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, secondary: isBool, pistol: isBool,
+  lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, strike: isBool, prone: isBool, jump: isBool, primary: isBool, secondary: isBool, pistol: isBool,
   swap: isBool, reload: isBool, scope: isBool, medkit: isBool, ability: isBool,
   digits: v => Array.isArray(v) && v.length <= 6 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 5),
   buyItem: v => typeof v === 'string' && v.length <= 16 && /^[a-z]*$/.test(v),

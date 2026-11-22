@@ -202,7 +202,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `drop_ammo_mags` 1: a dead player drops an ammo box and one medkit. Walking over the box adds this many magazines to each gun the taker holds whose reserve is not full (up to its `<gun>_reserve`); walking over the medkit puts it in the pack while they carry fewer than `medkit_max`. A full pack and full reserves leave both on the floor.
 - `pickup_radius` 1 m, `pickup_reach_y` 1.5 m: how close (flat distance, and feet height apart on a map with heights) a living person must be to take a dropped item by walking over it.
 - `pickup_life` 30 s: a dropped item vanishes after this long, and always at the end of the round.
-- `melee_dmg` 35, `melee_range` 1.6 m, `melee_rate` 0.6 s (story 016): with the magazine and reserve both empty, firing is a strike: a short ray like a shot's, no headshot bonus, quiet (bots do not hear it). `melee_time` 0.3 s is how long the swing animation lasts.
+- `melee_dmg` 35, `melee_range` 1.6 m, `melee_rate` 0.6 s (story 016): with the magazine and reserve both empty, firing is a strike: a short ray like a shot's, no headshot bonus, quiet (bots do not hear it). `melee_time` 0.3 s is how long the swing animation lasts (story 034: one butt-swing, pulled back then forward, for the Golpear key and the empty-gun strike; Golpear strikes with any gun using the same `melee_dmg`, `melee_range` and `melee_rate`).
 - `question_step_medkit` 0: the medkit's question is the match level.
 - `touch_fire_scale`: the touch Fuego button's size as a multiple of touch_button_size (the big button 2 of the HUD layout)
 - `touch_aim_scale`: the touch Apuntar button's size as a multiple of touch_button_size (button 3 of the HUD layout)

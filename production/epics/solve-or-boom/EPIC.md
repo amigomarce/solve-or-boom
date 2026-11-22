@@ -49,5 +49,5 @@ Build order from the brief:
 | 031 | Change subject from the pause menu (single player) | UI | Complete | N/A |
 | 032 | A student's inputs after a room's first match | Integration | Complete | N/A |
 | 033 | Two bought weapons and swapping in combat | Integration | Complete | N/A |
-| 034 | Butt strike | Integration | Ready | N/A |
+| 034 | Butt strike | Integration | Complete | N/A |
 | 035 | Keep one weapon on death and prices at 80% | Integration | Ready | N/A |

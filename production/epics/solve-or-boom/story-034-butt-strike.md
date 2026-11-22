@@ -1,13 +1,13 @@
 # Story 034: Butt strike
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-21
 
 ## Context
 
@@ -57,15 +57,16 @@
 
 ## Files
 
-- `src/game/combat.ts`
-- `src/game/player.ts`
-- `src/net/protocol.ts`
-- `src/server/room.ts`
-- `src/main.ts`
-- `src/touch.ts`
-- `data/keybinds.json`
-- the weapon renderer that draws the swing (found when building)
-- `production/qa/evidence/story-034-butt-strike/`
+- `src/game/combat.ts` — `humanShoot(match, p, strike)`: the strike takes the empty-gun strike path with any gun
+- `src/game/player.ts` — `strike` input; the strike in the live phase, not hidden, not sprinting or changing stance; it cancels a medkit
+- `src/net/protocol.ts` — PROTOCOL_VERSION 23 and its history entry; `strike` input
+- `src/server/room.ts` — `strike` in PRESSED
+- `src/main.ts` — the V key; the student's own swing in class; both swings use `swingK`
+- `src/scene3d.ts` — `swingK(t)`, the swing's shape
+- `src/touch.ts` — the "Golpear" button
+- `data/keybinds.json` — "Golpear" (KeyV)
+- `data/config-notes.md` — the melee note
+- `production/qa/evidence/story-034-butt-strike/` — 4 screenshots, `run-log.md`, `stamp.txt`
 
 ---
 
@@ -91,3 +92,17 @@
 
 - Depends on: `production/epics/solve-or-boom/story-033-two-weapons-swap.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-21
+**Criteria**: 4/7 passing (deferred, requires playtest session: AC-3 the blocks (menu or card open, dead, invisible) and the strike during a reload; AC-5 a student's strike hitting another student, the swing seen by another player and friendly fire on/off; AC-6 Duelo por equipos and Oleadas cooperativas; also unchecked: the strike's sound and walls)
+**Deviations**: None.
+**Test Evidence**: waived at qa.level minimal; the bounded runs and screenshots are in `production/qa/evidence/story-034-butt-strike/`
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png)
+
+## Calls beyond the design
+- The strike does not cancel a reload in progress but leaves the scope (the sights stay down until the aim button is released); it shares the shot cooldown (`melee_rate` 0.6 s blocks firing and striking); it is refused while sprinting, changing stance, outside the live phase (no message) and hidden; it cancels a medkit in use (`src/game/combat.ts`, `src/game/player.ts`) · kept 2026-11-21
+- Key V "Golpear"; the swing goes back and up for the first 30% of `melee_time` and forward and down by 60% (`swingK` in `src/scene3d.ts`); in class the student's page plays its own swing at once even if the server refuses the strike; the touch button is round, in the right column between Recargar and Tumbarse; no new config values (`src/main.ts`, `src/touch.ts`, `data/keybinds.json`) · kept 2026-11-21

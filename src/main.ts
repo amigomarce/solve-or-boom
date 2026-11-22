@@ -36,7 +36,7 @@ import { MODE_INFO, nextMode, SEATS_PER_TEAM, type GameModeId } from './net/prot
 import { createMirror, setNames, predict, applySnapshot, interpolate, type Mirror } from './net/mirror';
 import { css, drawHUD, drawTeacherPause } from './hud';
 import { drawClassInfo, drawFigures, drawJoin, drawMenu, drawResults, drawTitle, drawWaiting, flyover } from './session-screen';
-import { SIDE_HEX, backBombs, beacon, bombModel, boomColumn, boomFlash, boomMesh, boomRing, burst, camera, decals, gates, gunCam, gunScene, hitTint, models, nextDecal, nextPuff, pickupMeshes, poseSoldier, puffs, renderer, setHeld, setSide, sparks, swing, tracer, tracerI, tracers, useMap, viewBomb, viewGuns, world } from './scene3d';
+import { SIDE_HEX, backBombs, beacon, bombModel, boomColumn, boomFlash, boomMesh, boomRing, burst, camera, decals, gates, gunCam, gunScene, hitTint, models, nextDecal, nextPuff, pickupMeshes, poseSoldier, puffs, renderer, setHeld, setSide, sparks, swing, swingK, tracer, tracerI, tracers, useMap, viewBomb, viewGuns, world } from './scene3d';
 
 // ---- Class mode ------------------------------------------------------------------------
 /** Served by the classroom server (npm run aula), which adds <meta name="aula"> to the page: the page opens on the join screen. */
@@ -145,6 +145,10 @@ function netStep(inp: PlayerInput): void {
   } else if (me.alive && !me.hidden && match.phase === 'live' && (WEAPON[me.cur].auto ? inp.fire : inp.firePress) && !match.me.sprint && match.me.proneT === 0
     && me.reloadT <= 0 && net.cool <= 0 && a && a.mag === 0 && a.res === 0) {
     net.cool = tune.melee_rate; swing[me.id] = tune.melee_time; SFX.swing(); // story 016: the strike's look only; the server judges the hit
+  }
+  // Story 034: the butt strike's own swing at once, on the same conditions as the server's (it judges the hit; the `melee` event of this seat is skipped here).
+  if (inp.strike && me.alive && !me.hidden && match.phase === 'live' && !uiOpen(match) && !match.me.sprint && match.me.proneT === 0 && net.cool <= 0) {
+    net.cool = tune.melee_rate; swing[me.id] = tune.melee_time; SFX.swing(); me.scoped = false;
   }
   if (!me.alive && (inp.spectate || inp.spectateKey || !match.specP?.alive)) {
     const mates = match.players.filter(q => q.alive && q.squad === me.squad), pool = mates.length ? mates : match.players.filter(q => q.alive);
@@ -387,7 +391,7 @@ function readInput(act: string | undefined): PlayerInput {
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
   inp.shop = press('buy'); inp.medkit = press('medkit'); inp.ability = press('ability'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
-  inp.secondary = press('secondary'); inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
+  inp.secondary = press('secondary'); inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload'); inp.strike = press('strike');
   inp.digits = [0, 1, 2, 3, 4, 5].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
   inp.spectateKey = pressed('Space');
   if (act && act.startsWith('buy:')) inp.buyItem = act.slice(4);
@@ -753,7 +757,7 @@ function placeModels() {
     m.group.position.set(x, p.st?.y ?? 0, z); m.group.rotation.set(0, p.yaw, 0); // at the feet height (story 011; 0 on a flat map)
     setSide(m, sideOf(state, p)); setHeld(m, p.cur);
     poseSoldier(m, p, dist, dt, clock);
-    if (swing[p.id] > 0) m.aim.rotation.x += Math.sin((1 - swing[p.id] / tune.melee_time) * Math.PI) * 1.1; // the strike: arms and gun chop forward
+    if (swing[p.id] > 0) m.aim.rotation.x += swingK(1 - swing[p.id] / tune.melee_time) * 1.1; // the strike (story 034): arms and gun pulled back, then chopped forward
     m.flash.visible = p.alive && p.flashT > 0 && m.hold.visible;
     m.flash.rotation.z = state.t * 40; m.flash.scale.setScalar((tune['fx_' + p.cur + '_flash'] ?? 0.45) / 0.45); // 0.45: the soldier flash's own size (makeSoldier); an unknown gun keeps it
     const bb = backBombs[p.id].group, planting = p.alive && (p.plantT > 0 || (state.plantT > 0 && state.bomb.carrier === p));
@@ -851,8 +855,8 @@ function drawWorld() {
       g.rotation.set(Math.atan2(-y, ahead) + p.recoil * 2 - rl * 0.6, Math.atan2(x, ahead), 0);
     }
     if (swing[p.id] > 0) { // story 016: the melee strike, the gun swung forward and across
-      const s = Math.sin((1 - swing[p.id] / tune.melee_time) * Math.PI);
-      g.position.x -= s * 0.16; g.position.y += s * 0.06; g.position.z -= s * 0.22; g.rotation.x -= s * 0.9; g.rotation.z += s * 0.5;
+      const k = swingK(1 - swing[p.id] / tune.melee_time), f = Math.max(0, k); // k < 0: pulled back and up; k > 0: forward and down
+      g.position.x -= f * 0.16; g.position.y -= k * 0.07; g.position.z -= k * 0.22; g.rotation.x -= k * 0.9; g.rotation.z += f * 0.5;
     }
     viewGuns[p.cur].flash.visible = p.flashT > 0;
     viewGuns[p.cur].flash.rotation.z = state.t * 50; viewGuns[p.cur].flash.scale.setScalar(tune['fx_' + p.cur + '_flash']);

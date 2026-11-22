@@ -7,6 +7,7 @@
     { "id": "shoot", "label": "Disparar", "key": "KeyF" },
     { "id": "aim", "label": "Apuntar (mantener)", "key": "Mouse2" },
     { "id": "reload", "label": "Recargar", "key": "KeyR" },
+    { "id": "strike", "label": "Golpear", "key": "KeyV" },
     { "id": "buy", "label": "Comprar", "key": "KeyB" },
     { "id": "use", "label": "Plantar / desactivar", "key": "KeyE" },
     { "id": "medkit", "label": "Usar botiquín", "key": "KeyG" },

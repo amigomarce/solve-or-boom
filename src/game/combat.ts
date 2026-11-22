@@ -61,11 +61,16 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   match.events.push(ev);
 }
 
-export function humanShoot(match: Match, p: Loose): void {
+/**
+ * The human's trigger: a shot, or (no ammo at all) the empty-gun strike. With `strike` (story 034, the Golpear key) it is the same strike
+ * with any gun and no ammo spent: it may start during a reload (which goes on), leaves the scope, and shares the `cool` timer with firing.
+ */
+export function humanShoot(match: Match, p: Loose, strike = false): void {
   const w = p.cur, a = p.ammo[w];
-  if (p.reloadT > 0 || p.cool > 0) return;
+  if ((p.reloadT > 0 && !strike) || p.cool > 0) return;
+  if (strike) { p.scoped = false; p.st.aimGun = '!'; } // the butt strike lowers the sights until the aim button is let go
   // No ammo at all (story 016): the trigger is a strike with the hands or the gun, a short ray along the aim, and quiet.
-  const melee = a.mag <= 0 && a.res <= 0;
+  const melee = strike || (a.mag <= 0 && a.res <= 0);
   if (a.mag <= 0 && !melee) { match.events.push({ type: 'empty', p: p.id }); p.cool = 0.25; startReload(match, p); return; }
   if (melee) p.cool = tune.melee_rate;
   else {
