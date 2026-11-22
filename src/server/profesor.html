@@ -109,6 +109,19 @@
   .seat { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.04); margin-bottom: 4px; font-size: 15px; min-width: 0; }
   .seat .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .seat.bot { color: #8a93a3; }
+  /* Story 037: dragging a student's name onto another room card. The handle is the only place with touch-action none. */
+  .seat .drag { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; padding: 2px 8px 2px 6px; border-radius: 6px; background: var(--btn); border: 1px solid #47557a; }
+  .seat .drag::before { content: "\2807"; color: var(--soft); margin-right: 4px; }
+  .seat .drag:hover { background: var(--btn-on); }
+  .seat .drag.dragging { opacity: .45; }
+  body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+  #ghost { position: fixed; left: 0; top: 0; z-index: 20; pointer-events: none; padding: 6px 12px; border-radius: 8px; background: var(--gold); color: #1b2232; font-weight: 600; font-size: 15px; box-shadow: 0 6px 18px rgba(0,0,0,.5); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .room { position: relative; }
+  .room.drop-ok { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(159,240,138,.35); }
+  .room.drop-ok.drop-over { box-shadow: 0 0 0 3px var(--ok); background: #1f3320; }
+  .room.drop-no > * { opacity: .35; }
+  .room.drop-no::after { content: attr(data-reason); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 6px 14px; border-radius: 8px; background: #3a2220; color: #ffd9cf; border: 1px solid var(--bad); font-weight: 600; white-space: nowrap; pointer-events: none; }
+  .room.drop-ok .team.drop-team { outline: 2px dashed var(--ok); outline-offset: 2px; border-radius: 6px; }
   .tag { font-size: 14px; padding: 0 6px; border-radius: 4px; background: #2a3247; color: var(--soft); flex: none; }
   .seat.human .tag { background: #3a4a2a; color: var(--ok); }
   .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
@@ -340,6 +353,7 @@ function render() {
   $('auto').checked = st.session.autoRestart;
   noticeChanges();
   noticeTabs();
+  dragApply(); // a repaint of the cards drops the drag classes: put them back
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
   $('split').disabled = !on || live.some(r => r.status === 'running' || r.status === 'paused');
@@ -437,17 +451,17 @@ function roomCard(r) {
     ? [`<option value="${esc(q.id)}|0"${q.id === r.id ? ' selected' : ''}>${esc(roomName(q.id))}</option>`]
     : [0, 1].map(t => `<option value="${esc(q.id)}|${t}"${q.id === r.id && x.team === t ? ' selected' : ''}>${esc(roomName(q.id))} · Equipo ${t + 1}</option>`)).join('') + '</select>';
   const seatDiv = x => x.kind === 'human' && x.student !== null
-    ? `<div class="seat human"><span class="tag">Alumno</span>${moveMenu(x)}</div>`
+    ? `<div class="seat human"><span class="tag">Alumno</span><span class="drag" data-drag="${x.student}" title="Arrastra para mover a otra sala">${esc(x.name)}</span>${moveMenu(x)}</div>`
     : x.kind === 'human'
     ? `<div class="seat human"><span class="tag">Alumno</span><span class="who" title="${esc(x.name)}">${esc(x.name)}</span></div>`
     : `<div class="seat bot"><span class="tag">Bot</span><span class="who">${esc(x.name)}</span></div>`;
   const teams = ffa ? `<div class="team"><h4>Jugadores</h4>${r.seats.map(seatDiv).join('')}</div>`
-    : [0, 1].map(t => `<div class="team"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(seatDiv).join('') + '</div>').join('');
+    : [0, 1].map(t => `<div class="team" data-team="${t}"><h4>Equipo ${t + 1}</h4>` + r.seats.filter(x => x.team === t).map(seatDiv).join('') + '</div>').join('');
   const b = (act, label, ok, main) => `<button type="button" data-room="${esc(r.id)}" data-act="${act}"${main ? ' class="main"' : ''}${ok ? '' : ' disabled'}>${label}</button>`;
   const played = r.status !== 'waiting';
   const title = renaming === r.id ? `<input class="rn" data-rename="${esc(r.id)}" value="${esc(r.name)}" placeholder="${esc(roomNumber(r.id))}" aria-label="Nombre de la sala (Intro guarda, Esc cancela)">`
     : `<b>${esc(roomName(r.id))}</b><button type="button" class="rename" data-act="rename" data-room="${esc(r.id)}" aria-label="Renombrar ${esc(roomName(r.id))}">Renombrar</button>`;
-  return `<div class="room s-${r.status}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
+  return `<div class="room s-${r.status}" data-room="${esc(r.id)}"><div class="room-head">${title}<span class="badge">${STATE_NAME[r.status]}</span>`
     + `<span class="hint">Modo ${esc(modeOf(r.mode).name || r.mode)} · Mapa ${esc(mapName(r.map))}${r.matches ? ` · Partidas jugadas: ${r.matches}` : ''}</span></div>`
     + `<div class="meta">${!played && r.last ? `Última partida: ${esc(r.last)}` : !modeOf(r.mode).bomb ? esc(r.summary) : played ? `Ronda <strong>${r.round}</strong> · Equipo 1 <strong>${r.score[0]} – ${r.score[1]}</strong> Equipo 2` : 'Todavía no ha empezado'}</div>`
     + (r.next ? `<div class="meta">Asignatura: <strong>${esc(r.current || 'todavía ninguna')}</strong> · Próxima: <strong>${esc(r.next)}</strong></div>` : '')
@@ -597,6 +611,87 @@ $('rooms').addEventListener('change', e => {
   const [room, team] = sel.value.split('|');
   sel.blur();
   send('tmove', { student: Number(sel.dataset.student), room, team: Number(team) });
+});
+// ---- Story 037: drag a student's name from a room card onto another ----
+/** The drag lives here, never in the card DOM (cards are rebuilt by each tstate): { id: the student's id, name, x0, y0 (where the pointer went down), active (past the threshold), over: the room id under the pointer, ghost }. null when none. */
+let drag = null;
+const DRAG_THRESHOLD = 6; // px the pointer must travel before a press becomes a drag (a click is not a drag)
+/** Where the student sits now, from the latest tstate: { room, name } or null (left or gone). */
+function seatOfStudent(id) {
+  if (!st) return null;
+  for (const r of st.rooms) { const s = r.seats.find(x => x.kind === 'human' && x.student === id); if (s) return { room: r.id, name: s.name }; }
+  return null;
+}
+/** Free seats (not a student's) in a room's team, or in the whole room when it has no teams (the page's seats already leave out Oleadas' enemy seats). Mirrors lobby.move. */
+const freeSeats = (q, team) => q.seats.filter(s => s.kind !== 'human' && (team === null || s.team === team)).length;
+/** Why a room cannot take the student now ('' when it looks able). The server decides; this only mirrors lobby.move's rules for the highlight. */
+function dropProblem(q, from) {
+  if (q.id === from) return 'Ya está aquí';
+  if (!(q.status === 'waiting' || q.status === 'running' || q.status === 'paused')) return q.status === 'ended' ? 'Sala terminada' : 'Sala no disponible';
+  const teams = modeOf(q.mode).teams;
+  return (teams ? freeSeats(q, 0) + freeSeats(q, 1) : freeSeats(q, null)) ? '' : 'Sala llena';
+}
+/** Puts the drag classes on the cards (and the source name) from the current state; clears them when no drag is active. Called on each pointermove and after each render(). */
+function dragApply() {
+  const box = $('rooms');
+  const on = !!(drag && drag.active), me = on ? seatOfStudent(drag.id) : null;
+  if (on && !me) { dragEnd(); return; } // the student left or was removed: nothing to drop
+  for (const el of box.querySelectorAll('.room')) {
+    const q = on ? st.rooms.find(x => x.id === el.dataset.room) : null, why = q ? dropProblem(q, me.room) : '';
+    el.classList.toggle('drop-ok', !!q && !why);
+    el.classList.toggle('drop-no', !!q && !!why);
+    el.classList.toggle('drop-over', !!q && !why && drag.over === el.dataset.room);
+    if (q && why) el.dataset.reason = why; else delete el.dataset.reason;
+  }
+  for (const h of box.querySelectorAll('.drag')) h.classList.toggle('dragging', on && Number(h.dataset.drag) === drag.id);
+}
+/** Ends the drag (drop or cancel): removes the ghost and every drag class. */
+function dragEnd() {
+  if (!drag) return;
+  if (drag.ghost) drag.ghost.remove();
+  drag = null;
+  document.body.classList.remove('is-dragging');
+  document.removeEventListener('pointermove', dragMove); document.removeEventListener('pointerup', dragUp);
+  document.removeEventListener('pointercancel', dragCancel); document.removeEventListener('keydown', dragKey, true);
+  if (st && info) dragApply();
+}
+function dragMove(e) {
+  if (!drag || e.pointerId !== drag.pid) return;
+  if (!drag.active) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < DRAG_THRESHOLD) return;
+    const me = seatOfStudent(drag.id); if (!me) { dragEnd(); return; }
+    drag.active = true; drag.name = me.name;
+    const g = document.createElement('div'); g.id = 'ghost'; g.textContent = me.name; document.body.appendChild(g); drag.ghost = g;
+    document.body.classList.add('is-dragging');
+  }
+  drag.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 14}px)`;
+  const el = document.elementFromPoint(e.clientX, e.clientY), card = el && el.closest('#rooms .room');
+  drag.over = card ? card.dataset.room : null;
+  drag.team = null; const t = el && el.closest('#rooms .team[data-team]'); if (t) drag.team = Number(t.dataset.team);
+  dragApply();
+  for (const tm of $('rooms').querySelectorAll('.team')) tm.classList.remove('drop-team');
+  if (card && card.classList.contains('drop-ok') && t) t.classList.add('drop-team');
+}
+function dragUp(e) {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const was = drag; 
+  if (!was.active) { dragEnd(); return; }
+  dragMove(e); // the final position
+  const me = seatOfStudent(was.id), q = was.over && st.rooms.find(x => x.id === was.over), team = was.team;
+  dragEnd();
+  if (!me || !q || dropProblem(q, me.room)) return; // outside any card, the same card, or a card that looks full: nothing is sent (the dim card already told why)
+  // The same message the menu sends (tmove): the server decides, and a refusal comes back as a terror shown in #msg. In a team mode the team under the pointer, else the first with room.
+  const teams = modeOf(q.mode).teams;
+  const to = !teams ? 0 : team !== null && freeSeats(q, team) ? team : (freeSeats(q, 0) ? 0 : 1);
+  send('tmove', { student: was.id, room: q.id, team: to });
+}
+function dragCancel(e) { if (drag && e.pointerId === drag.pid) dragEnd(); }
+function dragKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dragEnd(); } }
+$('rooms').addEventListener('pointerdown', e => {
+  const h = e.target.closest('.drag'); if (!h || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  drag = { id: Number(h.dataset.drag), pid: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, over: null, team: null, ghost: null, name: '' };
+  document.addEventListener('pointermove', dragMove); document.addEventListener('pointerup', dragUp);
+  document.addEventListener('pointercancel', dragCancel); document.addEventListener('keydown', dragKey, true);
 });
 /** Closes the rename input (saving the name when `save`) and draws the cards again. */
 function endRename(save, input) {
