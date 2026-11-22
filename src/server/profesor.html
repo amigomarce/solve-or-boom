@@ -20,7 +20,7 @@
   #statusbar .stat b { color: var(--text); }
   #statusbar .addr { color: var(--soft); min-width: 0; overflow-wrap: anywhere; }
   #statusbar .addr b { color: var(--gold); }
-  #statusbar .auto { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text); }
+  .auto { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text); font-size: 15px; }
   .room .vote { margin: 4px 0; padding: 6px 10px; border-radius: 8px; background: #3d2a12; color: var(--warn); border: 1px solid #a8913f; font-size: 14px; }
   #statusbar .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
   #statusbar button { padding: 4px 10px; font-size: 14px; }
@@ -28,10 +28,7 @@
   #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 32px)); pointer-events: none; }
   .toast { padding: 8px 12px; border-radius: 8px; background: #3d2a12; color: var(--warn); border: 1px solid #a8913f; font-size: 15px; overflow-wrap: anywhere; }
   .toast.back { background: #233a24; color: #d8f7cf; border-color: var(--ok); }
-  details.sec { border-top: 1px solid var(--line); padding: 4px 0; }
-  details.sec:first-of-type { border-top: 0; }
-  details.sec > summary { cursor: pointer; font-size: 16px; font-weight: 600; color: var(--gold); padding: 6px 0; }
-  details.sec > summary:focus-visible, details.fold > summary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  details.fold > summary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
   details.fold { margin-top: 6px; }
   details.fold > summary { cursor: pointer; font-size: 14px; color: var(--soft); }
   details.fold > div { margin-top: 4px; }
@@ -41,9 +38,20 @@
   #msg.ok { background: #233a24; color: #d8f7cf; border-color: var(--ok); }
   #msg.show { display: flex; }
   #msg span { flex: 1; min-width: 0; }
-  main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; padding: 12px 20px; align-items: start; }
-  main > div { min-width: 0; }
-  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } #statusbar .btns { margin-left: 0; } }
+  /* Story 036: the tab bar sits under the status bar (both fixed in #top); one content area holds the four panels. */
+  [hidden] { display: none !important; }
+  #tabs { display: flex; gap: 4px; padding: 6px 20px 0; border-top: 1px solid var(--line); overflow-x: auto; }
+  #tabs button[role="tab"] { position: relative; font-size: 16px; font-weight: 600; padding: 8px 18px; border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; background: transparent; border-color: transparent; color: var(--soft); white-space: nowrap; }
+  #tabs button[role="tab"]:hover { color: var(--text); background: var(--btn); }
+  #tabs button[role="tab"][aria-selected="true"] { color: var(--gold); background: var(--panel); border-color: var(--line); border-bottom-color: var(--gold); }
+  #tabs .dot { display: inline-block; width: 10px; height: 10px; margin-left: 8px; border-radius: 50%; background: #e07a1c; vertical-align: middle; }
+  #content { padding: 12px 20px; }
+  #content > [role="tabpanel"] { min-width: 0; }
+  /* Preguntas and Partida: panels side by side when the width allows (projector), stacked on narrow screens. */
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 14px; align-items: start; }
+  .cols > section.panel { margin-bottom: 0; }
+  #statusbar .btns { margin-left: auto; }
+  @media (max-width: 1000px) { #statusbar .btns { margin-left: 0; } }
   section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
   h2 { font-size: 18px; margin: 0 0 10px; color: var(--gold); }
   h3 { font-size: 15px; margin: 12px 0 6px; color: var(--text); }
@@ -131,7 +139,6 @@
   <span class="stat" id="st-rooms">Salas: —</span>
   <span class="stat" id="st-game">Modo: — · Mapa: —</span>
   <span class="addr" id="st-addr"></span>
-  <label class="auto"><input type="checkbox" id="auto" checked> Reinicio automático</label>
   <div class="btns">
     <button id="all-start" type="button" class="main">Iniciar todas</button>
     <button id="all-end" type="button">Terminar todas</button>
@@ -139,52 +146,71 @@
     <button id="add" type="button">Añadir sala</button>
   </div>
 </div>
+<div id="tabs" role="tablist" aria-label="Secciones de la pantalla del profesor">
+  <button type="button" role="tab" id="tab-btn-salas" data-tab="salas" aria-controls="tab-salas" aria-selected="true" tabindex="0">Salas<span class="dot" hidden aria-hidden="true"></span></button>
+  <button type="button" role="tab" id="tab-btn-preguntas" data-tab="preguntas" aria-controls="tab-preguntas" aria-selected="false" tabindex="-1">Preguntas<span class="dot" hidden aria-hidden="true"></span></button>
+  <button type="button" role="tab" id="tab-btn-partida" data-tab="partida" aria-controls="tab-partida" aria-selected="false" tabindex="-1">Partida<span class="dot" hidden aria-hidden="true"></span></button>
+  <button type="button" role="tab" id="tab-btn-resultados" data-tab="resultados" aria-controls="tab-resultados" aria-selected="false" tabindex="-1">Resultados<span class="dot" hidden aria-hidden="true"></span></button>
+</div>
 </div>
 <div id="toasts" role="status" aria-live="polite"></div>
-<main>
-  <div>
-    <section class="panel" aria-labelledby="h-session">
-      <h2 id="h-session">Sesión (para todas las salas)</h2>
-      <details class="sec" id="sec-preguntas" data-sec="preguntas" open>
-        <summary>Preguntas</summary>
-        <h3>1. Asignaturas (marca una o varias: rotan de partida en partida)</h3>
-        <div id="subjects" class="chips"></div>
-        <h3>2. Contenido</h3>
-        <div class="hint" style="margin-bottom:4px">Nivel</div>
-        <div id="levels" class="chips"></div>
-        <div id="topics" class="topics" style="margin-top:8px"></div>
-        <h3>Tus preguntas</h3>
-        <button id="upload" type="button">Subir CSV</button>
-        <button id="template" type="button">Descargar plantilla</button>
-        <details class="fold" id="sec-csvhelp" data-sec="csvhelp"><summary>Cómo escribir el CSV</summary><div id="tplhelp" class="hint"></div></details>
-        <input id="file" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
-        <div id="csv" class="csvline"></div>
-        <div id="available" class="csvline"></div>
-      </details>
-      <details class="sec" id="sec-mapa" data-sec="mapa">
-        <summary>Mapa y partida</summary>
-        <h3>Mapa</h3>
-        <div id="maps" class="chips"></div>
-        <h3>Partida</h3>
-        <div class="hint" style="margin-bottom:4px">Modo de juego (Free for All: todos contra todos, sin bomba; gana quien tenga más bajas. Duelo por equipos: dos equipos de 4, sin bomba; gana el equipo con más bajas. Oleadas cooperativas: todos los alumnos juntos contra oleadas de bots; pierden cuando caen todos. En los tres, al caer se responde para volver)</div>
-        <div id="mode" class="chips"></div>
-        <div class="hint" style="margin:8px 0 4px">Tiempo de compra</div>
-        <div id="buytime" class="stepper"></div>
-        <div class="hint" style="margin:8px 0 4px">Fuego amigo (los disparos dañan a los compañeros)</div>
-        <div id="ff" class="chips"></div>
-        <div class="hint" style="margin:8px 0 4px">Premios por racha (3 aciertos seguidos: Escudo; 5: Cazador; 8: Rifle dorado)</div>
-        <div id="streak" class="chips"></div>
-      </details>
-      <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
-    </section>
-  </div>
-  <div>
+<div id="content">
+  <div id="tab-salas" role="tabpanel" aria-labelledby="tab-btn-salas">
     <div id="rooms" class="rooms"></div>
     <div id="finished" class="finished"></div>
     <section class="panel" style="margin-top:16px" aria-labelledby="h-students">
       <h2 id="h-students">Alumnos <span id="count" class="hint"></span></h2>
       <div id="students"></div>
     </section>
+  </div>
+  <div id="tab-preguntas" role="tabpanel" aria-labelledby="tab-btn-preguntas" hidden>
+    <div class="cols">
+      <section class="panel" aria-labelledby="h-preg">
+        <h2 id="h-preg">Preguntas</h2>
+        <h3>1. Asignaturas (marca una o varias: rotan de partida en partida)</h3>
+        <div id="subjects" class="chips"></div>
+        <h3>2. Contenido</h3>
+        <div class="hint" style="margin-bottom:4px">Nivel</div>
+        <div id="levels" class="chips"></div>
+        <div id="topics" class="topics" style="margin-top:8px"></div>
+      </section>
+      <section class="panel" aria-labelledby="h-csv">
+        <h2 id="h-csv">Tus preguntas</h2>
+        <button id="upload" type="button">Subir CSV</button>
+        <button id="template" type="button">Descargar plantilla</button>
+        <details class="fold" id="sec-csvhelp"><summary>Cómo escribir el CSV</summary><div id="tplhelp" class="hint"></div></details>
+        <input id="file" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
+        <div id="csv" class="csvline"></div>
+        <div id="available" class="csvline"></div>
+        <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
+      </section>
+    </div>
+  </div>
+  <div id="tab-partida" role="tabpanel" aria-labelledby="tab-btn-partida" hidden>
+    <div class="cols">
+      <section class="panel" aria-labelledby="h-mapmode">
+        <h2 id="h-mapmode">Mapa y modo</h2>
+        <h3>Mapa</h3>
+        <div id="maps" class="chips"></div>
+        <h3>Modo de juego</h3>
+        <div class="hint" style="margin-bottom:4px">Free for All: todos contra todos, sin bomba; gana quien tenga más bajas. Duelo por equipos: dos equipos de 4, sin bomba; gana el equipo con más bajas. Oleadas cooperativas: todos los alumnos juntos contra oleadas de bots; pierden cuando caen todos. En los tres, al caer se responde para volver.</div>
+        <div id="mode" class="chips"></div>
+      </section>
+      <section class="panel" aria-labelledby="h-opts">
+        <h2 id="h-opts">Opciones de la partida</h2>
+        <div class="hint" style="margin:0 0 4px">Tiempo de compra</div>
+        <div id="buytime" class="stepper"></div>
+        <div class="hint" style="margin:8px 0 4px">Fuego amigo (los disparos dañan a los compañeros)</div>
+        <div id="ff" class="chips"></div>
+        <div class="hint" style="margin:8px 0 4px">Premios por racha (3 aciertos seguidos: Escudo; 5: Cazador; 8: Rifle dorado)</div>
+        <div id="streak" class="chips"></div>
+        <div class="hint" style="margin:8px 0 4px">Cuando termina una partida</div>
+        <label class="auto"><input type="checkbox" id="auto" checked> Reinicio automático</label>
+        <p class="hint" style="margin:10px 0 0">Los cambios se aplican al momento. Una sala en marcha o en pausa sigue con su partida hasta que la termines.</p>
+      </section>
+    </div>
+  </div>
+  <div id="tab-resultados" role="tabpanel" aria-labelledby="tab-btn-resultados" hidden>
     <section class="panel results" aria-labelledby="h-results">
       <h2 id="h-results">Resultados</h2>
       <div class="bar">
@@ -198,7 +224,7 @@
       <div id="resstudents"></div>
     </section>
   </div>
-</main>
+</div>
 <script>
 'use strict';
 // The teacher page: renders each tstate as it comes and sends the teacher's choices (src/net/protocol.ts).
@@ -313,6 +339,7 @@ function render() {
   renderBar(live, on);
   $('auto').checked = st.session.autoRestart;
   noticeChanges();
+  noticeTabs();
   $('all-start').disabled = !live.some(r => r.status === 'waiting');
   $('all-end').disabled = !live.length;
   $('split').disabled = !on || live.some(r => r.status === 'running' || r.status === 'paused');
@@ -347,21 +374,53 @@ function noticeChanges() {
   if (prevConn) for (const x of st.students) {
     const was = prevConn.get(x.id);
     if (was === undefined) continue;
-    if (was && !x.connected) toast(`${x.name} se ha desconectado.`, false);
-    else if (!was && x.connected) toast(`${x.name} ha vuelto.`, true);
+    if (was && !x.connected) { toast(`${x.name} se ha desconectado.`, false); markTab('salas', true); }
+    else if (!was && x.connected) { toast(`${x.name} ha vuelto.`, true); markTab('salas', true); }
   }
   prevConn = now;
 }
 
-/** Remembers each folded section's open state (never required: no storage, no memory). */
-function initFolds() {
-  for (const d of document.querySelectorAll('details[data-sec]')) {
-    const key = 'profesor.sec.' + d.dataset.sec;
-    try { const v = localStorage.getItem(key); if (v === '1') d.open = true; else if (v === '0') d.open = false; } catch { /* no storage */ }
-    d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch { /* no storage */ } });
+/** The tabs (story 036): panels are hidden or shown, never rebuilt. The last tab is remembered (never required: no storage, no memory). */
+const TABS = ['salas', 'preguntas', 'partida', 'resultados'];
+let tab = 'salas';
+/** Shows the tab's panel, hides the others, clears the tab's news mark. */
+function showTab(name, focus) {
+  if (!TABS.includes(name)) name = 'salas';
+  tab = name;
+  for (const t of TABS) {
+    const b = $('tab-btn-' + t), on = t === name;
+    b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+    $('tab-' + t).hidden = !on;
   }
+  markTab(name, false);
+  if (focus) $('tab-btn-' + name).focus();
+  try { localStorage.setItem('profesor.tab', name); } catch { /* no storage */ }
 }
-initFolds();
+/** Puts or clears a tab's news dot; a news mark on the tab being shown is never set. */
+function markTab(name, on) {
+  if (on && name === tab) return;
+  $('tab-btn-' + name).querySelector('.dot').hidden = !on;
+}
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab, false); });
+$('tabs').addEventListener('keydown', e => {
+  const i = TABS.indexOf(tab);
+  const to = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
+  if (to < 0) return;
+  e.preventDefault(); showTab(TABS[to], true);
+});
+let saved = null; try { saved = localStorage.getItem('profesor.tab'); } catch { /* no storage */ }
+showTab(TABS.includes(saved) ? saved : 'salas', false);
+
+/** What makes a room's news: its id and state (and whether it exists); null until the first tstate. */
+let prevRooms = null, prevAnswers = null;
+/** Marks "Salas" when a room appeared, went away or changed state, and "Resultados" when answers were added, while that tab is not shown. */
+function noticeTabs() {
+  const rooms = st.rooms.map(r => r.id + ':' + r.status).join('|');
+  const answers = st.results.topics.reduce((n, t) => n + t.right + t.wrong, 0);
+  if (prevRooms !== null && rooms !== prevRooms) markTab('salas', true);
+  if (prevAnswers !== null && answers > prevAnswers) markTab('resultados', true);
+  prevRooms = rooms; prevAnswers = answers;
+}
 
 /** A room's vote as one line (story 029): the tally by mode and by map, and what starts if it ended now. */
 function voteText(v) {

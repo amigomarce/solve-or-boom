@@ -51,3 +51,8 @@ Build order from the brief:
 | 033 | Two bought weapons and swapping in combat | Integration | Complete | N/A |
 | 034 | Butt strike | Integration | Complete | N/A |
 | 035 | Keep one weapon on death and prices at 80% | Integration | Complete | N/A |
+| 036 | Tabs on the teacher page | UI | Complete | N/A |
+| 037 | Move students by dragging | UI | Ready | N/A |
+| 038 | Live result charts | UI | Ready | N/A |
+| 039 | Room panels that adapt and reorder | UI | Ready | N/A |
+| 040 | Watch a match live | Integration | Ready | N/A |
