@@ -250,6 +250,16 @@ export function drawHUD(paused?: boolean): void {
     text(WEAPON[p.cur].name, W - 270, H - 50, 20, p.cur === 'gold' ? GOLD_CSS : '#c8d2e6', 'left');
     if (a.mag === 0 && a.res === 0) text('Sin balas: golpe', W - 34, H - 50, 22, '#ffb366', 'right'); // story 016: fire strikes
     else text(p.reloadT > 0 ? 'Recargando' : `${a.mag} / ${a.res}`, W - 34, H - 50, 30, a.mag === 0 ? '#ff6a5a' : '#fff', 'right');
+    // Story 033: the other carried guns (the pistol and the bought ones not in hand) beside the ammo box: key, name, magazine / reserve.
+    if (p.primary) {
+      const others = [['pistol', bind.pistol], [p.primary, bind.primary], ...(p.secondary ? [[p.secondary, bind.secondary]] : [])].filter(([g]) => g !== p.cur);
+      rr(W - 566, H - 82, 268, 64, 12, 'rgba(15,20,32,0.78)', null);
+      others.forEach(([g, k], i) => {
+        const o = p.ammo[g], ry = H - 64 + i * 28, col = g === 'gold' ? GOLD_CSS : '#c8d2e6';
+        text(`${TOUCH ? '' : keyName(k) + '  '}${WEAPON[g].name}`, W - 552, ry, 17, col, 'left', 'normal');
+        text(o ? `${o.mag} / ${o.res}` : '', W - 312, ry, 17, '#fff', 'right', 'normal');
+      });
+    }
     // stance: a drawn figure and its word, above the health box, only when not just standing
     const word = state.me.proneT > 0 || state.me.stance === 'prone' ? 'tumbado' : state.me.stance === 'crouch' ? 'agachado' : state.me.sprint ? 'corriendo' : '';
     if (word) {

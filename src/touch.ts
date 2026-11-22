@@ -27,7 +27,7 @@ export type TouchMode = 'off' | 'pause' | 'all';
 interface Btn { el: HTMLElement; action: string; toggle: boolean; id: number }
 const btns: Btn[] = [];
 const held = new Set<Btn>();
-let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement, gunBtn: HTMLElement, abilityBtn: HTMLElement;
+let root: HTMLElement, aimZone: HTMLElement, stickZone: HTMLElement, knob: HTMLElement, base: HTMLElement, useBtn: HTMLElement, gunBtn: HTMLElement, secBtn: HTMLElement, abilityBtn: HTMLElement;
 /** The stance buttons (Tumbarse, Agacharse, De pie) and the stance main.ts last reported, which they light and act on. */
 const stanceBtns: Record<string, HTMLElement> = {};
 let stance = 'stand';
@@ -68,6 +68,14 @@ export function setAbilityButton(show: boolean): void {
   if (!TOUCH) return;
   const d = mode === 'all' && show ? 'flex' : 'none';
   if (abilityBtn.style.display !== d) abilityBtn.style.display = d;
+}
+
+/** Story 033: the second-weapon button's word (the second bought gun's name, a tap picks it); '' hides the button. */
+export function setSecondLabel(name: string): void {
+  if (!TOUCH) return;
+  const s = name || '', d = s && mode === 'all' ? 'flex' : 'none';
+  if (secBtn.textContent !== s) secBtn.textContent = s;
+  if (secBtn.style.display !== d) secBtn.style.display = d;
 }
 
 /** The weapon selector's word: the gun in hand (a tap swaps to the other one). */
@@ -199,6 +207,8 @@ if (TOUCH) {
   // 9: the weapon selector, the gun in hand (a tap swaps guns), with Recargar beside it at the edge.
   const gw = Math.round(u * 2.1), gh = Math.round(u * 0.75);
   gunBtn = make('swap', 'Pistola ⇄', gw, `${pill(gw, gh)};${at(85, 22, gw, gh)}`);
+  secBtn = make('secondary', '', gw, `${pill(gw, gh)};${at(85, 10, gw, gh)}`); // story 033: picks the second bought gun, hidden without one
+  secBtn.style.display = 'none';
   make('reload', 'Recargar', u, atRight(94.3, 22, u));
   // Saltar left of Fuego; Plantar / Desactivar left of Apuntar, only while it can be used (setUseLabel).
   make('jump', 'Saltar', u, at(64.5, 66, u));

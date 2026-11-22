@@ -145,7 +145,9 @@ export function applySnapshot(m: Mirror, snap: SnapMessage, nowMs: number): Snap
   // The own player's private values.
   const y = snap.y;
   me.hp = y[0]; me.armor = y[1]; me.money = y[2];
-  me.ammo = { [me.cur]: { mag: y[3], res: y[4] } }; me.reloadT = y[5] / T; me.primary = y[6] >= 0 ? WEAPON_IDS[y[6]] : null;
+  me.primary = y[6] >= 0 ? WEAPON_IDS[y[6]] : null; me.secondary = y[21] >= 0 ? WEAPON_IDS[y[21]] : null; // protocol 22: both places and the stowed guns' ammo
+  me.ammo = {}; ['pistol', me.primary, me.secondary].forEach((g, i) => { if (g) me.ammo[g] = { mag: y[22 + 2 * i], res: y[23 + 2 * i] }; });
+  me.ammo[me.cur] = { mag: y[3], res: y[4] }; me.reloadT = y[5] / T;
   me.recoil = y[12] / A; me.cool = y[13] / T; me.medkits = y[15]; me.healT = y[16] / T;
   me.streak = y[17]; me.kept = y[18] === 1; me.hunterT = y[19] / T; me.hidden = y[20] === 1; // story 018: the streak, the kept Cazador and its time left (the radar and the speed read it)
   // The pickups as the server has them (story 016): not predicted, so one walked over goes when the server says it was taken.

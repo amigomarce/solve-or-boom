@@ -72,7 +72,8 @@ export function buildSnapshot(match: Match, seat: number, ack: number, tick: num
     p: match.players.map(p => playerRow(match, p, seat)),
     y: [Math.ceil(me.hp), Math.ceil(me.armor), me.money, a.mag, a.res, q(me.reloadT, T), WEAPON_IDS.indexOf(me.primary),
       st.prone ? 1 : 0, q(st.proneT, T), q(st.jumpY, P), q(st.vy, P), q(st.eye, P), q(me.recoil, SCALE.ang), q(me.cool, T),
-      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1, me.medkits, q(me.healT, T), me.streak, me.kept ? 1 : 0, q(me.hunterT, T), me.hidden ? 1 : 0], // protocol 11: the streak rewards; 13: hidden
+      st.aimGun === '' ? 0 : st.aimGun === '!' ? 2 : 1, me.medkits, q(me.healT, T), me.streak, me.kept ? 1 : 0, q(me.hunterT, T), me.hidden ? 1 : 0,
+      WEAPON_IDS.indexOf(me.secondary), ...[ 'pistol', me.primary, me.secondary].flatMap((g: string | null) => { const m = g && me.ammo[g]; return m ? [m.mag, m.res] : [0, 0]; })], // protocol 11: the streak rewards; 13: hidden; 22: the second gun and the stowed ammo
     // The dropped medkits and ammo (story 016): the same list for everybody, the height only where there are heights.
     d: match.pickups.map(k => [k.id, PICKUP_KINDS.indexOf(k.kind), q(k.x, P), q(k.z, P), ...(hasHeights ? [q(k.y, P)] : [])]),
     e: eventsFor(match, seat, events, rangeM),

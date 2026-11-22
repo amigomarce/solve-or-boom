@@ -169,12 +169,25 @@ function newPlayer(r: Loose, i: number, human: boolean): Loose {
   // `medkits` (story 016), the bought medkits carried, and `healT`, the seconds left of a medkit being used, are hidden for the same reason.
   // Story 018, hidden too: `streak`, right answers in a row; `kept`, a Cazador kept to use; `hunterT`, the seconds left of a Cazador running.
   const hid = (value: unknown): PropertyDescriptor => ({ value, enumerable: false, writable: true });
+  // Story 033, hidden too: `secondary`, the second bought gun's id (null for none); `primary` stays the first place. Each carried gun keeps its own `ammo[id]`.
   // Story 021, hidden too: `hidden`, true while a Free for All player buys at the match's start or a respawn (invisible and untouchable), and `hideT`, the seconds it may last.
-  return Object.defineProperties(p, { st: hid(freshStance()), medkits: hid(0), healT: hid(0), streak: hid(0), kept: hid(false), hunterT: hid(0), hidden: hid(false), hideT: hid(0) });
+  return Object.defineProperties(p, { st: hid(freshStance()), medkits: hid(0), healT: hid(0), streak: hid(0), kept: hid(false), hunterT: hid(0), hidden: hid(false), hideT: hid(0), secondary: hid(null) });
 }
-/** Takes a player's primary gun, armour and medkits away and gives back the pistol with a full magazine. */
+/**
+ * Story 033: which place ('primary' or 'secondary') a gun that must REPLACE one takes: the place of the gun in hand; with the
+ * pistol in hand and both places taken, the cheaper gun's (the Rifle dorado and any gun without a price count as dearest);
+ * with the second place empty, the first (what a single gun did before). Used by a purchase with both places taken and by the Rifle dorado.
+ */
+export function replacePlace(p: Loose): 'primary' | 'secondary' {
+  if (!p.secondary) return 'primary';
+  if (p.cur === p.secondary) return 'secondary';
+  if (p.cur === p.primary) return 'primary';
+  const price = (g: string): number => tune['price_' + g] ?? Infinity;
+  return price(p.secondary) < price(p.primary) ? 'secondary' : 'primary';
+}
+/** Takes a player's bought guns (both places), armour and medkits away and gives back the pistol with a full magazine. */
 export function resetGuns(p: Loose): void {
-  p.primary = null; p.medkits = 0; p.healT = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
+  p.primary = null; p.secondary = null; p.medkits = 0; p.healT = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
   p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
 }
 

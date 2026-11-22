@@ -11,7 +11,7 @@ import { streakRight, streakWrong, useAbility, hunterTick, hunterSpeed } from '.
 import { respawn, openShop, syncHidden } from './ffa';
 import { duelRespawn } from './teamduel';
 import { markReady } from './waves';
-import { closeCard, deskOf, feed, isDuel, isRoam, isWaves, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, type Match, type Pickup, type Stance } from './state';
+import { closeCard, deskOf, feed, isDuel, isRoam, isWaves, openCard, personal, tell, sideOf, uiOpen, SHOP, WEAPON, replacePlace, type Match, type Pickup, type Stance } from './state';
 
 /**
  * One human player's inputs for one step: actions, not keys. "Held" fields are true while the control is
@@ -39,8 +39,8 @@ export interface PlayerInput {
   aimYaw?: number; aimPitch?: number;
   /** Pressed: open or close the buy menu (and a buy card). */
   shop: boolean;
-  /** Pressed: prone toggle, jump, primary gun, pistol, swap guns, reload. Held: scope, aiming down the sights. */
-  prone: boolean; jump: boolean; primary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
+  /** Pressed: prone toggle, jump, first gun, second gun (story 033), pistol, swap guns, reload. Held: scope, aiming down the sights. */
+  prone: boolean; jump: boolean; primary: boolean; secondary: boolean; pistol: boolean; swap: boolean; reload: boolean; scope: boolean;
   /** Pressed: use a carried medkit (story 016). */
   medkit: boolean;
   /** Pressed: use the kept ability, the Cazador (story 018). */
@@ -62,7 +62,7 @@ export function idleInput(): PlayerInput {
   return {
     moveF: 0, moveS: 0, walk: false, sprint: false, crouch: false, use: false, usePress: false, fire: false, firePress: false,
     lookLeft: false, lookRight: false, lookUp: false, lookDown: false, lookYaw: 0, lookPitch: 0, shop: false, medkit: false, ability: false,
-    prone: false, jump: false, primary: false, pistol: false, swap: false, reload: false, scope: false, digits: [],
+    prone: false, jump: false, primary: false, secondary: false, pistol: false, swap: false, reload: false, scope: false, digits: [],
     buyItem: '', answer: -1, closeShop: false, closeCard: false, spectate: false, spectateKey: false,
   };
 }
@@ -74,8 +74,9 @@ export function shopBlock(p: Loose, it: typeof SHOP[number]): string {
   if (it.id === 'armor' && p.armor >= 100) return 'Lleno';
   if (it.id === 'medkit' && p.medkits >= tune.medkit_max) return 'Lleno';
   if (it.id === 'ammo' && Object.entries(p.ammo as Record<string, Loose>).every(([w, a]) => a.res >= tune[w + '_reserve'])) return 'Lleno';
-  if (p.primary === it.id) return 'Comprada';
-  if (p.primary === 'gold' && WEAPON[it.id]) return 'Tienes el Rifle dorado'; // story 018: a bought gun would replace it
+  if (p.primary === it.id || p.secondary === it.id) return 'Comprada';
+  // Story 018: with both places taken a bought gun replaces the one in hand (story 033), so the Rifle dorado in that place blocks it.
+  if (WEAPON[it.id] && p.primary && p.secondary && p[replacePlace(p)] === 'gold') return 'Tienes el Rifle dorado';
   if (p.money < tune[it.price]) return 'Falta $' + (tune[it.price] - p.money);
   return '';
 }
@@ -86,7 +87,11 @@ export function grant(match: Match, p: Loose, id: string): void {
   if (id === 'armor') p.armor = 100;
   else if (id === 'medkit') p.medkits++;
   else if (id === 'ammo') for (const [w, a] of Object.entries(p.ammo as Record<string, Loose>)) a.res = tune[w + '_reserve'];
-  else { p.primary = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
+  else {
+    // Story 033: the first free place; with both taken, the place of the gun in hand (the cheaper one with the pistol in hand).
+    const place = !p.primary ? 'primary' : !p.secondary ? 'secondary' : replacePlace(p), old = p[place] as string | null;
+    if (old && old !== id) delete p.ammo[old]; // the replaced gun is gone, with its ammo
+    p[place] = id; p.cur = id; p.ammo[id] = { mag: tune[id + '_mag'], res: tune[id + '_reserve'] }; p.reloadT = 0; }
   if (p === match.human) feed(match, `Compraste: ${it.name}`, true);
   personal(match, p, { type: 'buy', item: id });
 }
@@ -196,7 +201,7 @@ function stopHeal(match: Match, p: Loose): void { p.healT = 0; tell(match, p, 'C
 const fullMsgAt = new WeakMap<Loose, number>();
 /** The guns `q` holds whose reserve is not full: what a dropped ammo box refills. */
 function hungryGuns(q: Loose): string[] {
-  return [q.primary, 'pistol'].filter((g): g is string => !!g && !!q.ammo[g] && q.ammo[g].res < tune[g + '_reserve']);
+  return [q.primary, q.secondary, 'pistol'].filter((g): g is string => !!g && !!q.ammo[g] && q.ammo[g].res < tune[g + '_reserve']);
 }
 /** True when `q` is close enough to pickup `k` (radius and height) and has room for it: a medkit while carrying fewer than `medkit_max`, ammo while a held gun's reserve is not full. */
 function canTake(q: Loose, k: Pickup): boolean {
@@ -241,7 +246,7 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
   // Medkits (story 016): using a carried one takes tune.medkit_time seconds, walking allowed; it is spent and heals
   // tune.medkit_heal when the time is up. Shooting, reloading or changing gun first stops it and keeps the medkit. Full health keeps the medkit.
   if (p.healT > 0) {
-    if (inp.fire || inp.firePress || inp.reload || inp.swap || inp.primary || inp.pistol) stopHeal(match, p);
+    if (inp.fire || inp.firePress || inp.reload || inp.swap || inp.primary || inp.secondary || inp.pistol) stopHeal(match, p);
     else if ((p.healT -= dt) <= 0) { p.healT = 0; p.medkits--; p.hp = Math.min(tune.max_hp, p.hp + tune.medkit_heal); personal(match, p, { type: 'pickup', kind: 'heal' }); }
   } else if (inp.medkit) {
     if (p.hp >= tune.max_hp) { if (match.t - (fullMsgAt.get(p) ?? -99) > tune.medkit_full_msg_s) { fullMsgAt.set(p, match.t); tell(match, p, 'Ya tienes toda la vida'); } }
@@ -263,9 +268,12 @@ export function humanUpdate(match: Match, p: Loose, dt: number, inp: PlayerInput
     match.pickups.splice(i, 1); personal(match, p, { type: 'pickup', kind: k.kind });
   }
   // Weapons.
-  if (inp.primary && p.primary && p.cur !== p.primary) { p.cur = p.primary; p.reloadT = 0; p.scoped = false; p.cool = 0.3; }
-  if (inp.pistol && p.cur !== 'pistol') { p.cur = 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
-  if (inp.swap && p.primary) { p.cur = p.cur === 'pistol' ? p.primary : 'pistol'; p.reloadT = 0; p.scoped = false; p.cool = 0.25; }
+  // Story 033: the first-gun, second-gun and pistol keys pick a place; swap steps pistol -> first -> second (an empty place skipped) -> pistol.
+  const equip = (g: string, cool: number): void => { p.cur = g; p.reloadT = 0; p.scoped = false; p.cool = cool; };
+  if (inp.primary && p.primary && p.cur !== p.primary) equip(p.primary, tune.swap_gun_time);
+  if (inp.secondary && p.secondary && p.cur !== p.secondary) equip(p.secondary, tune.swap_gun_time);
+  if (inp.pistol && p.cur !== 'pistol') equip('pistol', tune.swap_pistol_time);
+  if (inp.swap && p.primary) { const ring = ['pistol', p.primary, ...(p.secondary ? [p.secondary] : [])]; equip(ring[(ring.indexOf(p.cur) + 1) % ring.length], tune.swap_pistol_time); }
   if (inp.reload) startReload(match, p);
   if (live) {
     const auto = WEAPON[p.cur].auto;

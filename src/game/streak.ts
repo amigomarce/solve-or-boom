@@ -6,7 +6,7 @@
 // The fields live on the player, hidden (state.ts newPlayer): p.streak, p.kept, p.hunterT. No browser in here.
 import { tune } from './tune';
 import type { Loose } from './types';
-import { tell, type Match } from './state';
+import { tell, replacePlace, type Match } from './state';
 
 /** True when `p` can earn streak rewards in this match: the option is on and a person plays it. */
 const earns = (match: Match, p: Loose): boolean => match.opts.streakRewards && !!p.human;
@@ -38,8 +38,8 @@ export function streakRight(match: Match, p: Loose): void {
     if (p.kept) tell(match, p, `¡Racha de ${p.streak}! Ya tienes un Cazador guardado`, 3);
     else { p.kept = true; tell(match, p, `¡Racha de ${p.streak}! Cazador guardado: úsalo cuando quieras`, 3.5); }
   } else if (r === 'gold') {
-    const had = p.primary === 'gold';
-    p.primary = 'gold'; p.cur = 'gold'; p.reloadT = 0; p.scoped = false; p.st.aimGun = '';
+    const had = p.primary === 'gold' || p.secondary === 'gold';
+    p[p.primary === 'gold' ? 'primary' : p.secondary === 'gold' ? 'secondary' : replacePlace(p)] = 'gold'; p.cur = 'gold'; p.reloadT = 0; p.scoped = false; p.st.aimGun = '';
     p.ammo.gold = { mag: tune.gold_mag, res: tune.gold_reserve };
     p.streak = 0; // the streak starts again
     tell(match, p, had ? `¡Racha de ${tune.streak_gold_at}! Rifle dorado recargado` : `¡Racha de ${tune.streak_gold_at}! Arma secreta: Rifle dorado`, 4);

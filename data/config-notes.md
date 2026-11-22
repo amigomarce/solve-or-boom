@@ -258,3 +258,5 @@ holds no comments. The values themselves are in `data/config.json`.
 - `waves_hunt_interval` 4: seconds between the orders that send an enemy bot with nothing in sight toward the nearest player standing, and a teammate bot toward the nearest enemy
 - `waves_notice_time` 3: seconds the big "Oleada N" notice stays on screen when a wave starts
 - `waves_kill_money` 300: money per kill in Oleadas cooperativas; there is no round pay, wave pay or first-kill bonus. The wrong-answer wait of the respawn question is `ffa_wrong_wait`
+- `swap_gun_time` 0.3 s: the shooting pause after the first-weapon or second-weapon key puts a bought gun in hand (story 033; a reload and the scope are cancelled)
+- `swap_pistol_time` 0.25 s: the same pause after the pistol key or the swap key (Q)

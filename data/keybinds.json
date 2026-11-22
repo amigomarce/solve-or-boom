@@ -14,6 +14,7 @@
     { "id": "scores", "label": "Marcador (mantener)", "key": "Tab" },
     { "id": "swap", "label": "Cambiar arma", "key": "KeyQ" },
     { "id": "primary", "label": "Arma principal", "key": "Digit1" },
+    { "id": "secondary", "label": "Segunda arma", "key": "Digit3" },
     { "id": "pistol", "label": "Pistola", "key": "Digit2" },
     { "id": "jump", "label": "Saltar", "key": "Space" },
     { "id": "sprint", "label": "Correr", "key": "ShiftLeft" },

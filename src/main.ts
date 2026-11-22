@@ -25,7 +25,7 @@ import {
 } from './game/match';
 import { startAudio, setMuted, isMuted, SFX } from './audio';
 import { down, hit, pressed, clicks, mouse, buttons } from './input';
-import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel, setGunLabel, setStance, setAbilityButton } from './touch';
+import { TOUCH, touch, renderRatio, setTouchMode, setUseLabel, setGunLabel, setSecondLabel, setStance, setAbilityButton } from './touch';
 import { nextReward, REWARD_NAME } from './game/streak';
 import { ACTIONS, bind, keyName, setKey, resetKeys } from './keys';
 import { W, H, FONT, canvas, glCanvas, ctx, setRenderer, fit, clear, text, rr, wrapText, clip, button, type ButtonOpts } from './screen';
@@ -387,7 +387,7 @@ function readInput(act: string | undefined): PlayerInput {
   }
   inp.lookYaw = lookYaw; inp.lookPitch = lookPitch; lookYaw = 0; lookPitch = 0;
   inp.shop = press('buy'); inp.medkit = press('medkit'); inp.ability = press('ability'); inp.prone = press('prone'); inp.jump = press('jump'); inp.primary = press('primary');
-  inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
+  inp.secondary = press('secondary'); inp.pistol = press('pistol'); inp.swap = press('swap'); inp.reload = press('reload');
   inp.digits = [0, 1, 2, 3, 4, 5].filter(k => pressed('Digit' + (k + 1)) || pressed('Numpad' + (k + 1)));
   inp.spectateKey = pressed('Space');
   if (act && act.startsWith('buy:')) inp.buyItem = act.slice(4);
@@ -888,7 +888,7 @@ function drawFrame() {
     setTouchMode(!live ? 'off' : p.alive && !uiOpen(state) ? 'all' : 'pause');
     if (live) setUseLabel(b.carrier === p ? 'Plantar' : b.state === 'planted' && sideOf(state, p) === 'def' ? 'Desactivar' : 'Bomba');
     if (live) setAbilityButton(p.alive && !!p.kept); // story 018: the Cazador button, only while one is kept
-    if (live) { setGunLabel(WEAPON[p.cur].name); setStance(p.st.prone ? 'prone' : p.st.stance === 'crouch' ? 'crouch' : 'stand'); }
+    if (live) { setGunLabel(WEAPON[p.cur].name); setSecondLabel(p.secondary ? WEAPON[p.secondary].name : ''); setStance(p.st.prone ? 'prone' : p.st.stance === 'crouch' ? 'crouch' : 'stand'); }
   }
 }
 // Turned upright mid-play on a phone: the game pauses, as it does when the mouse leaves on a computer. Like the pause

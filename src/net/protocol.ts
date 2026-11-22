@@ -46,7 +46,9 @@ import { LEVELS, type Level } from '../game/types';
 //     'csv-N') instead of one `subject` and its `topics`; the new `tcsvdel` {id} removes a CSV entry; `tinfo` drops the 'custom' subject and carries `csvMaxFiles`;
 //     `tstate` session carries `marked`, `csvs` (the loaded files) and `available` by entry, and a teacher room `current` and `next` (the subject labels);
 //     the student's room view (`joined`, `room`) carries `nextSubject` ("" when unknown). The results CSV gains the "Materia" column (server side only).
-export const PROTOCOL_VERSION = 21;
+// 22: two bought weapons (story 033): the input carries `secondary` (the second-weapon key, pressed); the own row grows to 28 numbers: [21] the second weapon's
+//     WEAPON_IDS index (-1 none) and [22..27] mag, reserve of the pistol, the first and the second weapon (0, 0 for a place that is empty), so the HUD shows the stowed guns.
+export const PROTOCOL_VERSION = 22;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -202,7 +204,8 @@ export type PlayerRow = number[];
  * aim (protocol 5) is 0 not aiming, 1 aiming with the current gun, 2 an aim ended that waits for the button to be let go;
  * medkits (protocol 6) is the count of bought medkits carried; healT (protocol 10), the seconds left of a medkit being used (SCALE.time);
  * streak (protocol 11) the right answers in a row, kept 1 while a Cazador is kept to use, hunterT the seconds left of a Cazador running (SCALE.time);
- * hidden (protocol 13) 1 while the student is invisible and untouchable, buying at a Free for All start or respawn.
+ * hidden (protocol 13) 1 while the student is invisible and untouchable, buying at a Free for All start or respawn;
+ * then (protocol 22) secondary (the second bought gun, -1 none) and the mag, reserve of the pistol, the first and the second gun (0, 0 where empty).
  */
 export type OwnRow = number[];
 /** The bomb: [state (0 carried, 1 dropped, 2 planted, 3 defused, 4 exploded), x, z, timer, carrier id (-1), site (0 none, 1 A, 2 B), defuser id (-1), y?]; `y` (SCALE.pos), the bomb's height, only on a map with heights (protocol 4). */
@@ -332,7 +335,7 @@ const isLook: Check = v => typeof v === 'number' && Number.isFinite(v);
 const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   moveF: isAxis, moveS: isAxis, walk: isBool, sprint: isBool, crouch: isBool, use: isBool, usePress: isBool,
   fire: isBool, firePress: isBool, lookLeft: isBool, lookRight: isBool, lookUp: isBool, lookDown: isBool,
-  lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, pistol: isBool,
+  lookYaw: isLook, lookPitch: isLook, aimYaw: isLook, aimPitch: isLook, shop: isBool, prone: isBool, jump: isBool, primary: isBool, secondary: isBool, pistol: isBool,
   swap: isBool, reload: isBool, scope: isBool, medkit: isBool, ability: isBool,
   digits: v => Array.isArray(v) && v.length <= 6 && v.every(d => Number.isInteger(d) && d >= 0 && d <= 5),
   buyItem: v => typeof v === 'string' && v.length <= 16 && /^[a-z]*$/.test(v),
@@ -448,7 +451,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
           friendlyFire: raw.friendlyFire, buyTime: raw.buyTime, streakRewards: raw.streakRewards, mode: raw.mode } : null;
     case 'snap': {
       const ok = isInt(raw.k) && isInt(raw.a) && (raw.ph === 'buy' || raw.ph === 'live' || raw.ph === 'post') && isInt(raw.pt) && isInt(raw.rt)
-        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 21) && (raw.y[20] === 0 || raw.y[20] === 1)
+        && isInt(raw.r) && isNums(raw.s, 2) && isInt(raw.as) && isInt(raw.g) && isInt(raw.pl) && (isNums(raw.b, 7) || isNums(raw.b, 8)) && isNums(raw.y, 28) && (raw.y[20] === 0 || raw.y[20] === 1)
         && Array.isArray(raw.d) && raw.d.length <= PICKUPS_MAX && raw.d.every(r => (isNums(r, 4) || isNums(r, 5)) && isInt(r[0]) && (r[1] === 0 || r[1] === 1))
         && Array.isArray(raw.p) && raw.p.length <= SEATS && raw.p.every(r => (isNums(r, 12) || isNums(r, 13)) && isInt(r[0]) && r[0] >= 0 && r[0] < SEATS)
         && Array.isArray(raw.e) && raw.e.every(e => isObject(e) && isStr(e.type)) && (raw.m === 0 || raw.m === 1) && (raw.c === null || isCard(raw.c));

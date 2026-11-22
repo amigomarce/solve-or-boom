@@ -355,5 +355,7 @@
   "waves_enemy_spawn_dist": { "value": 25, "min": 5, "max": 100, "step": 5 },
   "waves_hunt_interval": { "value": 4, "min": 1, "max": 15, "step": 1 },
   "waves_notice_time": { "value": 3, "min": 1, "max": 8, "step": 0.5 },
-  "waves_kill_money": { "value": 300, "min": 0, "max": 1500, "step": 50 }
+  "waves_kill_money": { "value": 300, "min": 0, "max": 1500, "step": 50 },
+  "swap_gun_time": { "value": 0.3, "min": 0, "max": 2, "step": 0.05 },
+  "swap_pistol_time": { "value": 0.25, "min": 0, "max": 2, "step": 0.05 }
 }
