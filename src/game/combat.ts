@@ -4,7 +4,7 @@ import { EYE, solidAt, center, SITE, hasHeights, rayStop, levelOfY, losClear } f
 import { yawTo, hitChance, armourHit } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
-import { closeDesk, feed, isDuel, isFfa, isRoam, isWaves, level, nextSpec, resetGuns, say, sideOf, tell, WEAPON, type Match } from './state';
+import { closeDesk, feed, isDuel, isFfa, isRoam, isWaves, level, nextSpec, keepOnDeath, say, sideOf, tell, WEAPON, type Match } from './state';
 
 export function applyDamage(match: Match, t: Loose, dmg: number, from: Loose): void {
   if (!t.alive || t.hidden) return; // story 021: a Free for All player buying at the start or a respawn cannot be hurt
@@ -42,7 +42,7 @@ export function kill(match: Match, t: Loose, from: Loose): void {
   const h = t.st.y + 0.5, side = (dx: number): number => (solidAt(t.x + dx, t.z, h, h) ? t.x : t.x + dx);
   match.pickups.push({ id: match.nextPickupId++, kind: 'medkit', gun: '', x: side(-tune.pickup_offset), z: t.z, y: t.st.y, age: 0 },
     { id: match.nextPickupId++, kind: 'ammo', gun: t.cur, x: side(tune.pickup_offset), z: t.z, y: t.st.y, age: 0 });
-  if (isRoam(match)) resetGuns(t); // story 019: the dead come back with the pistol (the drop above already took the gun in hand)
+  if (isRoam(match)) keepOnDeath(t); // story 019/035: the dead come back with the pistol and the dearer bought gun (the drop above only left pickups)
   const me = match.human;
   // "Tú eliminaste a Bot Kira", "Bot Kira te eliminó", "Bot Kira eliminó a Bot Rex", "La bomba te eliminó"
   const killer = from ? (from === me ? 'Tú' : from.name) : 'La bomba';

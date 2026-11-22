@@ -1,13 +1,13 @@
 # Story 035: Keep one weapon on death and prices at 80%
 
 > **Epic**: Solve or Boom
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Feature
 > **Type**: Integration
 > **Estimate**: M
 > **Build step**: core
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-11-21
 
 ## Context
 
@@ -57,13 +57,13 @@
 
 ## Files
 
-- `src/game/state.ts`
-- `src/game/player.ts`
-- `src/game/streak.ts`
-- the mode files that respawn a player (found when building)
-- `data/config.json`
-- `data/config-notes.md`
-- `production/qa/evidence/story-035-keep-weapon-on-death-prices/`
+- `src/game/state.ts` — `keepOnDeath(p)`: a human keeps the dearer bought weapon (tie: the one in hand), full magazine and reserve, in hand; gold never; a bot gets the pistol only
+- `src/game/combat.ts` — death in Free for All, Duelo and Oleadas calls `keepOnDeath`
+- `src/game/rounds.ts` — a player who died in a Bomba round starts the next one through `keepOnDeath`
+- `data/config.json` — `price_smg` 960, `price_rifle` 2160, `price_sniper` 3040 (step 50 → 10)
+- `data/config-notes.md` — the three prices, 80% of 1200, 2700, 3800
+- `tests/unit/__snapshots__/modes.test.ts.snap` — the seven mode replays after the new prices (accepted by the person)
+- `production/qa/evidence/story-035-keep-weapon-on-death-prices/` — 5 screenshots, `run-log.md`, `stamp.txt`
 
 ---
 
@@ -89,3 +89,18 @@
 
 - Depends on: `production/epics/solve-or-boom/story-033-two-weapons-swap.md`
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-11-21
+**Criteria**: 5/7 passing (deferred, requires playtest session: AC-3 the Rifle dorado at death beside a bought weapon; AC-5 Duelo por equipos and Oleadas cooperativas — only Free for All and Bomba in single player and Free for All in class were run; also unchecked: a price tie and a disconnected student's seat played by a bot)
+**Deviations**: Out of scope but a direct consequence of the story's prices: `tests/unit/__snapshots__/modes.test.ts.snap` (the seven bot mode replays), updated with the person's approval after confirming the bots buy at 80%. The keep-one-weapon rule is for human players only, as the person decided after the first build applied it to bots too.
+**Test Evidence**: waived at qa.level minimal; the bounded runs and screenshots are in `production/qa/evidence/story-035-keep-weapon-on-death-prices/`
+**Reviewed by**: self, no independent review
+**Same-seed run**: SAME — nothing broke (production/qa/evidence/grow-solve-or-boom/story.png); the seven bot mode replays CHANGED, accepted — the bots buy at 80%
+
+## Calls beyond the design
+- The kept weapon comes back with a full magazine and a full reserve (not the ammo it had), in hand, in the first place; tie between the two: the one in hand, else the first place; the Rifle dorado is never kept (with gold and one bought weapon, the bought one is kept) (`keepOnDeath` in `src/game/state.ts`) · kept 2026-11-21
+- `keepOnDeath` is a separate function; `resetGuns` is unchanged for match start, halftime and wave spawns; in Bomba the rule is applied when the next round starts, from what the player carried when they died (`src/game/combat.ts`, `src/game/rounds.ts`); a seat played by a bot follows the bot rule (pistol only) · kept 2026-11-21
+- The price step in `data/config.json` goes from 50 to 10 for the three weapon prices so 960, 2160 and 3040 sit on it (nothing validates `step` today) · kept 2026-11-21

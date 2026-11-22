@@ -1,0 +1,6 @@
+Reviewed-Content-Hash: src/game/state.ts d8a57b08f88ecbf208ebcefdc8c2a3ae4ab72be7
+Reviewed-Content-Hash: src/game/combat.ts e2dec269e9c1a7d877b79fb02777e3a0320af577
+Reviewed-Content-Hash: src/game/rounds.ts a57d6a694b68caf9e17d65b3acd0db29bcc3dbca
+Reviewed-Content-Hash: data/config.json d226c95a9bd2167d05a6c95bc7644443e0876e3e
+Reviewed-Content-Hash: data/config-notes.md 6d70cd28808b954cd493b63146130cd7469e95ca
+Reviewed-Content-Hash: tests/unit/__snapshots__/modes.test.ts.snap 147195da0b7227e1cc505f20ca659229ef287292

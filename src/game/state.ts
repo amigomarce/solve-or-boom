@@ -190,6 +190,20 @@ export function resetGuns(p: Loose): void {
   p.primary = null; p.secondary = null; p.medkits = 0; p.healT = 0; p.cur = 'pistol'; p.armor = 0; p.scoped = false; p.st.aimGun = '';
   p.ammo = { pistol: { mag: tune.pistol_mag, res: tune.pistol_reserve } };
 }
+/**
+ * Story 035 (Brief MVP feature 47): a DEATH. Keeps the dearer of the two bought guns (`tune['price_' + id]`; a tie: the one in hand; one gun: that one;
+ * none: the pistol only) and gives it back in hand with a full magazine and a full reserve, the other place empty. The Rifle dorado ('gold') is never kept.
+ * Armour and medkits are lost as in resetGuns. ONLY for a human (`p.human`, a single-player or class seat; a seat a bot stands in for is not human): a bot just gets resetGuns (pistol only).
+ * Not for a match/half-time/match-start reset or a wave enemy (those use resetGuns).
+ */
+export function keepOnDeath(p: Loose): void {
+  if (!p.human) { resetGuns(p); return; }
+  const bought = [p.primary, p.secondary].filter((g: string | null): g is string => !!g && g !== 'gold' && tune['price_' + g] !== undefined);
+  const keep = bought.length < 2 ? bought[0] : tune['price_' + bought[1]] > tune['price_' + bought[0]] ? bought[1] : tune['price_' + bought[0]] > tune['price_' + bought[1]] ? bought[0] : (bought.includes(p.cur) ? p.cur : bought[0]);
+  resetGuns(p);
+  if (!keep) return;
+  p.primary = keep; p.cur = keep; p.ammo[keep] = { mag: tune[keep + '_mag'], res: tune[keep + '_reserve'] };
+}
 
 /**
  * A match before its first round: the roster on their pistols, no question deck. This is what the

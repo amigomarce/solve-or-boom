@@ -198,6 +198,7 @@ holds no comments. The values themselves are in `data/config.json`.
 - `CRATE_TOP` (src/game/map.ts, not config: the models' size): a player's shot passes over a crate cell above its drawn height, crate 2.2, barrel 2.62, pallet 2.12, sandbag 1.5 m (story 015)
 - `first_kill_bonus` $500 (story 016): paid on top of `kill_money` to whoever makes the first kill of each round (a bot too); a person sees "Primera baja: +$500". Not paid for a bomb or self kill.
 - `price_medkit` $400 (story 016): the buy menu's Botiquín; it is carried (at most `medkit_max`, 2) and used with its own key (G) or the touch button; it is lost on death and at half-time.
+- `price_smg` $960, `price_rifle` $2160, `price_sniper` $3040 (story 035): the guns' shop prices, 80% of the first values (1200, 2700, 3800); their `step` is 10 so the values sit on the step. The dearer of a player's two bought guns is the one kept on death.
 - `medkit_heal` 50 hp: what a used medkit gives, and what a medkit picked up from the floor gives (never over `max_hp`).
 - `drop_ammo_mags` 1: a dead player drops an ammo box and one medkit. Walking over the box adds this many magazines to each gun the taker holds whose reserve is not full (up to its `<gun>_reserve`); walking over the medkit puts it in the pack while they carry fewer than `medkit_max`. A full pack and full reserves leave both on the floor.
 - `pickup_radius` 1 m, `pickup_reach_y` 1.5 m: how close (flat distance, and feet height apart on a map with heights) a living person must be to take a dropped item by walking over it.

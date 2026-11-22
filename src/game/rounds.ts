@@ -5,7 +5,7 @@ import { roundPay } from './rules';
 import { tune } from './tune';
 import type { Loose } from './types';
 import { botBuy, planRound } from './plans';
-import { closeDesk, freshStance, resetGuns, botFresh, say, sideOf, spawnSpots, type Match } from './state';
+import { closeDesk, freshStance, keepOnDeath, resetGuns, botFresh, say, sideOf, spawnSpots, type Match } from './state';
 
 export function startRound(match: Match) {
   match.round++;
@@ -16,7 +16,7 @@ export function startRound(match: Match) {
   for (const p of match.players) Object.assign(p.st, freshStance());
   const sides: Record<string, number> = { att: 0, def: 0 };
   for (const p of match.players) {
-    if (!p.alive) resetGuns(p);
+    if (!p.alive) keepOnDeath(p); // story 035: a Bomba death keeps the dearer bought gun (a half-time reset already emptied the guns)
     const side = sideOf(match, p), spot = spawnSpots(side)[sides[side]++];
     p.alive = true; p.hp = tune.max_hp; p.x = p.px = center(spot[0]); p.z = p.pz = center(spot[1]); p.st.y = levelY(spot[2] ?? 0);
     p.yaw = side === 'att' ? -Math.PI / 2 : Math.PI / 2; p.pitch = 0; p.recoil = 0; p.scoped = false; p.st.aimGun = '';
