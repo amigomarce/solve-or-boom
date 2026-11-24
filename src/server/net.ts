@@ -12,6 +12,7 @@ import { createTeacher, type Teacher, type TeacherLimits } from './teacher';
 import type { Rooms } from './rooms';
 import type { Room } from './room';
 import { STEP } from '../game/match';
+import { MAP_ID, loadMap } from '../game/map';
 import { createLobby } from './lobby';
 import { queueInput, ackOf, castVote } from './room';
 import { buildSnapshot } from '../net/snapshot';
@@ -75,8 +76,19 @@ export interface Net {
   close(): Promise<void>;
 }
 
+/**
+ * What a refused message does to its connection, counting it in `c`. A message over the allowance (rate_limited) is only dropped
+ * ('quiet': no strike, no error on the student's page): a Wi-Fi hiccup or a stalled event loop delivers a second or more of a
+ * student's inputs at once, and that must never close their connection. Any other refusal is a strike: the student is told
+ * ('tell'), and the maxStrikes-th closes the connection ('close').
+ * @example refusalOutcome({ strikes: 0, limited: 0 }, 'rate_limited', 30) // 'quiet'
+ */
+export function refusalOutcome(c: { strikes: number; limited: number }, code: ErrorCode, maxStrikes: number): 'quiet' | 'tell' | 'close' {
+  if (code === 'rate_limited') { c.limited++; return 'quiet'; }
+  return ++c.strikes >= maxStrikes ? 'close' : 'tell';
+}
 /** One connection's state: no name is kept beyond `named`, and no address at all. */
-interface Conn { id: number; tokens: number; lastT: number; strikes: number; alive: boolean; began: string; named: boolean }
+interface Conn { id: number; tokens: number; lastT: number; strikes: number; /** Messages dropped over the allowance (never strikes, only logged). */ limited: number; alive: boolean; began: string; named: boolean }
 
 /**
  * Listens on `port` on every interface (the next free port when it is busy, up to `tries` ports), serving
@@ -128,11 +140,14 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   const conns = new Map<WebSocket, Conn>();
   let made = 0, dropped = 0, accepted = 0, snapshots = 0, snapshotBytes = 0;
   const send = (ws: WebSocket, msg: ServerMessage): void => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
+  /** Drops a refused message: see refusalOutcome() for what happens to the connection. */
   const refuse = (ws: WebSocket, c: Conn, code: ErrorCode): void => {
-    dropped++; c.strikes++;
+    dropped++;
+    const what = refusalOutcome(c, code, lim.maxStrikes);
+    if (what === 'quiet') { deps.warn('limited-' + c.id, `Conexión ${c.id}: ${c.limited} mensajes por encima del límite descartados (¿un corte de la red?)`); return; }
     deps.warn('refused-' + code, `Mensaje descartado (${code}) de la conexión ${c.id}`);
-    if (c.strikes >= lim.maxStrikes) { deps.log(`Conexión ${c.id} cerrada: demasiados mensajes descartados`); ws.close(1008, 'demasiados mensajes no válidos'); return; }
-    if (code !== 'rate_limited' || c.strikes % 10 === 1) send(ws, errorMessage(code));
+    if (what === 'close') { deps.log(`Conexión ${c.id} cerrada: demasiados mensajes descartados`); ws.close(1008, 'demasiados mensajes no válidos'); return; }
+    send(ws, errorMessage(code));
   };
   const byId = new Map<number, WebSocket>();
   const lobby = createLobby({ rejoinGraceS: lim.rejoinGraceS, maxName: lim.maxName }, {
@@ -193,6 +208,8 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   const freezeFrames = (): void => {
     for (const room of deps.rooms.all()) {
       if (room.status !== 'paused') continue;
+      // The map module holds one map at a time (the last room stepped or built): load this room's, so the rows carry its heights or not.
+      if (MAP_ID !== room.match.opts.map) loadMap(room.match.opts.map);
       for (const seat of room.seats) {
         const ws = seat.kind === 'human' && seat.owner !== null ? byId.get(seat.owner) : undefined;
         const c = ws && conns.get(ws);
@@ -244,7 +261,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
   };
   wss.on('error', e => deps.warn('ws', `Error WebSocket: ${e.message}`));
   wss.on('connection', ws => {
-    const c: Conn = { id: ++made, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, alive: true, began: '', named: false };
+    const c: Conn = { id: ++made, tokens: lim.burst, lastT: deps.clockMs(), strikes: 0, limited: 0, alive: true, began: '', named: false };
     ws.on('error', e => deps.warn('ws-conn', `Conexión ${c.id}: ${e.message}`)); // a frame over maxPayload lands here, then the socket closes
     if (conns.size >= lim.maxConnections) { send(ws, errorMessage('server_full')); ws.close(1013, 'lleno'); return; }
     conns.set(ws, c); byId.set(c.id, ws);
@@ -270,7 +287,7 @@ export async function startNet(port: number, tries: number, lim: NetLimits, deps
         accepted++; lobby.refresh(at.room); return;
       }
       accepted++;
-      if (at.room.status === 'running') queueInput(at.room, at.seat, msg.seq, msg.input);
+      if (at.room.status === 'running') msg.inputs.forEach((input, i) => queueInput(at.room, at.seat, msg.seq + i, input)); // protocol 24: a batch of consecutive steps
     });
   });
   const pinger = setInterval(() => {

@@ -3,7 +3,7 @@
 // drawing code reads `mirror.match` like it reads a local match:
 //
 //   const m = createMirror(begin);                    // on `begin`
-//   every step:  const inp = readInput(); const seq = predict(m, inp, STEP); conn.sendInput(seq, inp);
+//   every step:  const inp = readInput(); const seq = predict(m, inp, STEP); conn.sendInput(seq, inp);   // sent input_batch_steps at a time
 //   on `snap`:   const events = applySnapshot(m, snap, nowMs);   // play them like the single-player events
 //   every frame: interpolate(m, nowMs);                // the other players, net_interp_ms in the past
 //

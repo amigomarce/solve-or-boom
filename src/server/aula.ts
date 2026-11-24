@@ -112,8 +112,18 @@ if (args.includes('--carga')) {
   console.log(`Pantalla del profesor (solo en este PC): http://localhost:${net.port}${TEACHER_PATH}`);
   console.log(`Salas de espera: ${aula.waiting_rooms}; salas de prueba (solo bots, en marcha): ${demo}. No hace falta internet.`);
   console.log('Para detenerlo: pulsa Ctrl+C en esta ventana.\n');
+  // The stall watch (2026-11-24 freezes): a timer every stall_check_ms that runs late means the whole process was held up (this
+  // program, the PC, or a console window paused by a click in it): every student froze meanwhile. It is logged with its length.
+  let worstStallMs = 0, expected = clockMs() + aula.stall_check_ms;
+  setInterval(() => {
+    const now = clockMs(), late = now - expected;
+    expected = now + aula.stall_check_ms;
+    worstStallMs = Math.max(worstStallMs, late);
+    if (late >= aula.stall_warn_ms) log(`AVISO: el servidor estuvo bloqueado ${(late / 1000).toFixed(1)} s: los alumnos vieron el juego congelado ese tiempo`);
+  }, aula.stall_check_ms);
   if (aula.status_every_s > 0) setInterval(() => {
     const c = net!.counts(), list = rooms.list();
-    log(`${list.length} salas en marcha (${list.map(r => `${r.id} ronda ${r.round} ${r.score.join('-')}`).join(', ')}); ${c.students} alumnos, ${c.connections} conexiones; ${c.accepted} mensajes aceptados, ${c.dropped} descartados`);
+    log(`${list.length} salas en marcha (${list.map(r => `${r.id} ronda ${r.round} ${r.score.join('-')}`).join(', ')}); ${c.students} alumnos, ${c.connections} conexiones; ${c.accepted} mensajes aceptados, ${c.dropped} descartados; bloqueo máx. ${Math.round(worstStallMs)} ms; memoria ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB`);
+    worstStallMs = 0;
   }, aula.status_every_s * 1000);
 }

@@ -49,7 +49,11 @@ import { LEVELS, type Level } from '../game/types';
 // 22: two bought weapons (story 033): the input carries `secondary` (the second-weapon key, pressed); the own row grows to 28 numbers: [21] the second weapon's
 //     WEAPON_IDS index (-1 none) and [22..27] mag, reserve of the pistol, the first and the second weapon (0, 0 for a place that is empty), so the HUD shows the stowed guns.
 // 23: the butt strike (story 034): the input carries `strike` (the Golpear key, pressed); the server judges it with the empty-gun strike's code and answers with the usual `melee` and `hit` events.
-export const PROTOCOL_VERSION = 23;
+// 24: batched inputs: an `input` carries `inputs` (1..INPUT_BATCH_MAX consecutive steps, the first one's seq in `seq`) instead of one `input`, so a page
+//     sends 20 messages a second instead of 60 (data/aula.json input_batch_steps): fewer packets for the network and the server.
+export const PROTOCOL_VERSION = 24;
+/** The most steps one `input` message may carry (protocol 24). A page sends input_batch_steps of them (data/aula.json), at most this many. */
+export const INPUT_BATCH_MAX = 6;
 /** The WebSocket path on the game's own port. */
 export const WS_PATH = '/ws';
 /** Seats in a room: 4 v 4. */
@@ -75,15 +79,16 @@ export interface HelloMessage {
 /** Client to server: the student leaves for good; the seat becomes a bot at once (no grace). */
 export interface LeaveMessage { v: number; t: 'leave' }
 /**
- * Client to server: the controls of one step, as src/game/player.ts reads them. Every field is optional
+ * Client to server: the controls of 1..INPUT_BATCH_MAX consecutive steps (protocol 24), as src/game/player.ts reads them. Every field is optional
  * (a missing one is idle). The answer to a question card is the `answer` field (0..3, -1 for none) and a
  * purchase is `buyItem`: the server checks both against the match, like the single-player game does.
  */
 export interface InputMessage {
   v: number; t: 'input';
-  /** The client's step number, one more each step (0..2^31-1): the server plays inputs in this order, once each, and acks the last one it played in every snapshot. */
+  /** The client's step number of `inputs[0]`, one more each step (0..2^31-1); inputs[i] has seq + i. The server plays inputs in this order, once each, and acks the last one it played in every snapshot. */
   seq: number;
-  input: Partial<PlayerInput>;
+  /** One step's controls each, oldest first. */
+  inputs: Partial<PlayerInput>[];
 }
 /** Client to server: a line check; the server answers pong. */
 export interface PingMessage { v: number; t: 'ping' }
@@ -344,7 +349,7 @@ const INPUT_FIELDS: Record<keyof PlayerInput, Check> = {
   closeShop: isBool, closeCard: isBool, spectate: isBool, spectateKey: isBool,
 };
 /** The keys each message type may carry; any other key refuses the message. */
-const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin', 'token'], input: ['v', 't', 'seq', 'input'], ping: ['v', 't'], leave: ['v', 't'], vote: ['v', 't', 'mode', 'map', 'ready'] };
+const KEYS: Record<ClientMessage['t'], string[]> = { hello: ['v', 't', 'name', 'rejoin', 'token'], input: ['v', 't', 'seq', 'inputs'], ping: ['v', 't'], leave: ['v', 't'], vote: ['v', 't', 'mode', 'map', 'ready'] };
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]*$/u;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -386,15 +391,19 @@ export function parseClientMessage(text: string, lim: ProtocolLimits): Parsed {
     if (raw.token) msg.token = raw.token as string;
     return { ok: true, msg };
   }
-  if (!isObject(raw.input)) return { ok: false, code: 'bad_shape' };
-  if (!Number.isInteger(raw.seq) || (raw.seq as number) < 0 || (raw.seq as number) > 0x7fffffff) return { ok: false, code: 'bad_field' };
-  const input: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(raw.input)) {
-    const check = Object.hasOwn(INPUT_FIELDS, k) ? INPUT_FIELDS[k as keyof PlayerInput] : undefined;
-    if (!check || !check(v, lim)) return { ok: false, code: 'bad_field' };
-    input[k] = Array.isArray(v) ? [...v] : k === 'lookYaw' || k === 'lookPitch' ? Math.max(-lim.maxLook, Math.min(lim.maxLook, v as number)) : v;
+  if (!Array.isArray(raw.inputs) || raw.inputs.length < 1 || raw.inputs.length > INPUT_BATCH_MAX || !raw.inputs.every(isObject)) return { ok: false, code: 'bad_shape' };
+  if (!Number.isInteger(raw.seq) || (raw.seq as number) < 0 || (raw.seq as number) + raw.inputs.length - 1 > 0x7fffffff) return { ok: false, code: 'bad_field' };
+  const inputs: Partial<PlayerInput>[] = [];
+  for (const one of raw.inputs as Record<string, unknown>[]) {
+    const input: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(one)) {
+      const check = Object.hasOwn(INPUT_FIELDS, k) ? INPUT_FIELDS[k as keyof PlayerInput] : undefined;
+      if (!check || !check(v, lim)) return { ok: false, code: 'bad_field' };
+      input[k] = Array.isArray(v) ? [...v] : k === 'lookYaw' || k === 'lookPitch' ? Math.max(-lim.maxLook, Math.min(lim.maxLook, v as number)) : v;
+    }
+    inputs.push(input as Partial<PlayerInput>);
   }
-  return { ok: true, msg: { v: PROTOCOL_VERSION, t, seq: raw.seq as number, input: input as Partial<PlayerInput> } };
+  return { ok: true, msg: { v: PROTOCOL_VERSION, t, seq: raw.seq as number, inputs } };
 }
 
 /** The error message for a code, ready to send. */

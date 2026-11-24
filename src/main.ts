@@ -166,6 +166,7 @@ function joinClass(): void {
   Object.assign(aula, { error: '', busy: true, retry: '' });
   aula.conn = connect({
     name: aula.name,
+    batchSteps: AULA.input_batch_steps.value, // protocol 24: 20 input messages a second instead of 60, fewer packets for the server to read
     onJoined: m => {
       if (gen !== aula.gen) return;
       nameInput.blur(); Object.assign(aula, { busy: false, you: m.you, room: m.room, retry: '', error: '' });

@@ -9,7 +9,7 @@
 // again with the name the server gave, so the student gets the same seat back. A page reload does the same
 // from the join screen: savedName() prefills the name and connect() with it returns the held seat.
 // Nothing is stored but the typed name, in localStorage, wrapped in try/catch (it may be blocked).
-import { PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type ResultsMessage, type RoomMessage, type SnapMessage, type VoteCastMessage, type VoteMessage } from './protocol';
+import { INPUT_BATCH_MAX, PROTOCOL_VERSION, WS_PATH, parseServerMessage, type BeginMessage, type ErrorCode, type JoinedMessage, type ResultsMessage, type RoomMessage, type SnapMessage, type VoteCastMessage, type VoteMessage } from './protocol';
 import { idleInput, type PlayerInput } from '../game/player';
 
 /** Why the connection ended for good. */
@@ -28,6 +28,8 @@ export interface ConnectOptions {
   name: string;
   /** The WebSocket address; by default ws(s)://<this page's host>/ws. */
   url?: string;
+  /** Steps of input sent together in one message (protocol 24; data/aula.json input_batch_steps), 1..INPUT_BATCH_MAX; by default 1. */
+  batchSteps?: number;
   /** Waits (ms) before each retry; by default RETRY_DELAYS_MS. An empty list means no retries. */
   retryDelaysMs?: readonly number[];
   /** The student has a seat (the first time, and again after every successful rejoin). */
@@ -64,7 +66,10 @@ export interface Connection {
   close(): void;
   /** The name the server gave (e.g. "Ana (2)"), or the typed one until joined. */
   name(): string;
-  /** Sends one step's controls with its seq (from predict()); only the fields that are not idle travel. Dropped while not connected. */
+  /**
+   * Queues one step's controls with its seq (from predict()) and sends them batchSteps at a time; only the fields that are not idle travel.
+   * Dropped while not connected; a seq that does not follow the queued ones (a new match counts from 0) drops the queued ones.
+   */
   sendInput(seq: number, input: PlayerInput): void;
   /** Sends a vote for the next mode and/or map, or the Continuar mark (story 029); the server answers with the new `vote`, or refuses it. Dropped while not connected. */
   sendVote(vote: Pick<VoteCastMessage, 'mode' | 'map' | 'ready'>): void;
@@ -114,6 +119,9 @@ export function connect(opts: ConnectOptions): Connection {
   const url = opts.url ?? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${WS_PATH}`;
   let name = opts.name, ws: WebSocket | null = null, timer: ReturnType<typeof setTimeout> | undefined;
   let everJoined = false, seated = false, attempt = 0, done = false;
+  const batch = Math.max(1, Math.min(INPUT_BATCH_MAX, Math.round(opts.batchSteps ?? 1)));
+  /** The steps not sent yet (protocol 24) and the seq of the first. */
+  let pending: Partial<PlayerInput>[] = [], pendingSeq = 0;
   const delay = opts.simDelayMs ?? delayFromAddress();
   /** Sends now, or after the simulated delay (equal delays keep the order). */
   const sendText = (s: WebSocket, text: string): void => {
@@ -137,6 +145,7 @@ export function connect(opts: ConnectOptions): Connection {
       const m = typeof data === 'string' ? parseServerMessage(data) : null;
       if (!m || done || ws !== s) return;
       if (m.t === 'joined') {
+        pending = [];
         everJoined = true; seated = true; attempt = 0; name = m.you.name;
         try { localStorage.setItem(NAME_KEY, opts.name.trim()); } catch { /* blocked: no prefill */ }
         opts.onJoined?.(m);
@@ -153,7 +162,7 @@ export function connect(opts: ConnectOptions): Connection {
     s.onmessage = ev => { if (delay > 0) setTimeout(() => read(ev.data), delay); else read(ev.data); };
     s.onclose = () => {
       if (done || ws !== s) return;
-      ws = null; seated = false;
+      ws = null; seated = false; pending = [];
       if (!everJoined) { finish('unreachable'); return; }
       if (attempt >= delays.length) { finish('gave_up'); return; }
       const wait = delays[attempt++];
@@ -171,6 +180,14 @@ export function connect(opts: ConnectOptions): Connection {
     close: () => finish('closed'),
     name: () => name,
     sendVote(vote) { if (ws && seated) sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'vote', ...vote })); },
-    sendInput(seq, input) { if (ws && seated) sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'input', seq, input: compact(input) })); },
+    sendInput(seq, input) {
+      if (!ws || !seated) { pending = []; return; }
+      if (pending.length && seq !== pendingSeq + pending.length) pending = []; // a new match (seq from 0): the old match's steps are of no use
+      if (!pending.length) pendingSeq = seq;
+      pending.push(compact(input));
+      if (pending.length < batch) return;
+      sendText(ws, JSON.stringify({ v: PROTOCOL_VERSION, t: 'input', seq: pendingSeq, inputs: pending }));
+      pending = [];
+    },
   };
 }
